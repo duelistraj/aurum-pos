@@ -28,7 +28,7 @@ services:
       - ./certbot/www:/var/www/certbot
 
   api:
-    image: ghcr.io/your-org/aurum-pos:latest
+    image: ghcr.io/duelistraj/aurum-pos:latest
     container_name: aurum-pos-api
 
     restart: unless-stopped
