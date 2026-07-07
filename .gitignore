@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.dist-info/
+.python-version
+.venv/
+.temp/
+
+# Virtual environments and caches
+__pypackages__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.cache/
+pip-wheel-metadata/
+
+# Environment variables
+.env
+.env.*.local
+
+# Node / frontend
+node_modules/
+*.tsbuildinfo
+dist/
+build/
+.vite/
+
+# Alembic
+alembic/versions/__pycache__/
+
+# Docker
+pgdata/
+*.log
+
+# Signing keys and local exports
+*.keystore
+*.jks
+*.p12
+release.keystore
+customer-data/
+exports/
+invoices/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+.agents/rules/configuration-context.md

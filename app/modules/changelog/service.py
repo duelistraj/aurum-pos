@@ -1,0 +1,53 @@
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import select, String, cast
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.changelog.models import ChangeLog
+
+
+async def get_change_log_history(
+    db: AsyncSession,
+    *,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    barcode: Optional[str] = None,
+    invoice_no: Optional[str] = None,
+    action: Optional[str] = None,
+):
+    stmt = select(ChangeLog)
+    filters = []
+
+    if from_date is not None:
+        filters.append(ChangeLog.created_at >= from_date)
+    if to_date is not None:
+        filters.append(ChangeLog.created_at <= to_date)
+    if action:
+        filters.append(ChangeLog.action == action)
+    if barcode:
+        filters.append(
+            cast(ChangeLog.payload["barcode"], String).ilike(f"%{barcode}%")
+        )
+    if invoice_no:
+        filters.append(
+            cast(ChangeLog.payload["invoice_no"], String).ilike(f"%{invoice_no}%")
+        )
+
+    if filters:
+        stmt = stmt.where(*filters)
+
+    stmt = stmt.order_by(ChangeLog.created_at.desc())
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    return [
+        {
+            "id": row.id,
+            "entity": row.entity,
+            "action": row.action,
+            "payload": row.payload,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]

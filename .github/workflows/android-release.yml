@@ -1,0 +1,79 @@
+name: Build Signed Android AAB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-aab:
+    runs-on: ubuntu-latest
+    env:
+      SIGNING_CONFIGURED: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+
+    steps:
+      - name: Skip when signing secrets are missing
+        if: ${{ env.SIGNING_CONFIGURED != 'true' }}
+        run: echo "Android signing secrets are not configured; skipping release AAB build."
+
+      - name: Checkout repository
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Web App
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        working-directory: frontend
+        run: npm run build
+
+      - name: Sync Capacitor
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        working-directory: frontend
+        run: npx cap sync
+
+      - name: Set up JDK 21
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - name: Decode keystore
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        working-directory: frontend/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Build signed AAB
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        working-directory: frontend/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file="$PWD/release.keystore" \
+            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+
+      - name: Upload signed AAB
+        if: ${{ env.SIGNING_CONFIGURED == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurum-pos-release-aab
+          path: frontend/android/app/build/outputs/bundle/release/app-release.aab
