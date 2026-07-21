@@ -12,6 +12,7 @@ import {
 } from '../components/UI';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
+import { useShop } from '../context/ShopContext';
 import { MetalRate } from '../types';
 import { removeLocalValue } from '../utils/storage';
 
@@ -23,29 +24,29 @@ const EMPTY_METALS: Record<string, number[]> = {};
 
 export const MetalRates: React.FC = () => {
   const queryClient = useQueryClient();
+  const { activeMembership, canManage } = useShop();
+  const shopId = activeMembership?.shop_id ?? '';
   const [error, setError] = React.useState<string>('');
   const [success, setSuccess] = React.useState<string>('');
   const [showModal, setShowModal] = React.useState(false);
-  const [showPasswordModal, setShowPasswordModal] = React.useState(false);
-  const [passwordInput, setPasswordInput] = React.useState('');
-  const [passwordError, setPasswordError] = React.useState('');
-  const [pendingUpdateRate, setPendingUpdateRate] = React.useState<RateWithId | null>(null);
   const [formData, setFormData] = React.useState({
     metal: '',
     rate_per_gram: '',
   });
 
   const ratesQuery = useQuery<RateWithId[]>({
-    queryKey: queryKeys.metalRates,
+    queryKey: queryKeys.metalRates(shopId),
     queryFn: () => apiClient.getAllMetalRates(),
+    enabled: Boolean(shopId),
   });
   const metalsQuery = useQuery<Record<string, number[]>>({
-    queryKey: queryKeys.availableMetals,
+    queryKey: queryKeys.availableMetals(shopId),
     queryFn: () => apiClient.getAvailableMetals(),
+    enabled: Boolean(shopId),
   });
   const updateRate = useMutation({
     mutationFn: (rate: MetalRate) => apiClient.addMetalRate(rate),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.metalRates }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.metalRates(shopId) }),
   });
   const rates = ratesQuery.data ?? [];
   const availableMetals = metalsQuery.data ?? EMPTY_METALS;
@@ -100,6 +101,10 @@ export const MetalRates: React.FC = () => {
   }));
 
   const handleAddRateClick = () => {
+    if (!canManage) {
+      setError('Your shop role does not allow rate changes.');
+      return;
+    }
     const metalKeys = Object.keys(availableMetals);
     setFormData({
       metal: metalKeys[0] || '',
@@ -109,34 +114,15 @@ export const MetalRates: React.FC = () => {
   };
 
   const handleUpdateClick = (rate: RateWithId) => {
-    setPendingUpdateRate(rate);
-    setPasswordInput('');
-    setPasswordError('');
-    setShowPasswordModal(true);
-  };
-
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const response = await apiClient.verifyManagerPassword(passwordInput.trim());
-      if (response.valid) {
-        setShowPasswordModal(false);
-        if (pendingUpdateRate) {
-          setFormData({
-            metal: pendingUpdateRate.metal,
-            rate_per_gram: String(pendingUpdateRate.rate_per_gram),
-          });
-          setShowModal(true);
-          setPendingUpdateRate(null);
-        }
-        setPasswordInput('');
-        setPasswordError('');
-      } else {
-        setPasswordError('Incorrect password. Please try again.');
-      }
-    } catch (err) {
-      setPasswordError((err as Error).message || 'Verification failed. Please try again.');
+    if (!canManage) {
+      setError('Your shop role does not allow rate changes.');
+      return;
     }
+    setFormData({
+      metal: rate.metal,
+      rate_per_gram: String(rate.rate_per_gram),
+    });
+    setShowModal(true);
   };
 
   return (
@@ -351,49 +337,6 @@ export const MetalRates: React.FC = () => {
           </form>
         </Modal>
 
-        <Modal
-          isOpen={showPasswordModal}
-          title="Manager Password Required"
-          onClose={() => {
-            setShowPasswordModal(false);
-            setPasswordInput('');
-            setPasswordError('');
-            setPendingUpdateRate(null);
-          }}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setPasswordInput('');
-                  setPasswordError('');
-                  setPendingUpdateRate(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handlePasswordSubmit}>Continue</Button>
-            </>
-          }
-        >
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <Input
-              label="Password"
-              type="password"
-              placeholder="Enter password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              required
-            />
-            {passwordError && (
-              <p className="text-sm text-red-600">{passwordError}</p>
-            )}
-            <p className="text-sm text-slate-600">
-              This update requires the manager password.
-            </p>
-          </form>
-        </Modal>
       </div>
     </div>
   );

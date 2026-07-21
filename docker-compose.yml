@@ -28,7 +28,7 @@ services:
       - ./certbot/www:/var/www/certbot
 
   api:
-    image: ghcr.io/duelistraj/aurum-pos:latest
+    image: ${AURUM_IMAGE:?Set AURUM_IMAGE to an immutable image digest}
     container_name: aurum-pos-api
 
     restart: unless-stopped

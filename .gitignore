@@ -43,6 +43,8 @@ release.keystore
 customer-data/
 exports/
 invoices/
+*.dump
+bmr-items.json
 
 # IDEs
 .vscode/

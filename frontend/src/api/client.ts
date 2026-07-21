@@ -1,6 +1,13 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { Item, MetalRate, Sale, ItemPOSWithPrice, DashboardSummary, ChangeLogEntry, AnalyticsDashboardResponse } from '../types';
-import { getAccessToken, getRefreshToken, setAuthData, clearAuthData } from '../utils/auth';
+import {
+  clearAuthData,
+  getAccessToken,
+  getActiveShopId,
+  getRefreshToken,
+  MembershipInfo,
+  setAuthData,
+} from '../utils/auth';
 import { getDeviceUUID } from '../utils/device';
 import { getApiBaseUrl } from '../utils/apiConfig';
 
@@ -25,18 +32,22 @@ const ERROR_MESSAGES: Record<number, string> = {
 
 client.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const [apiBaseUrl, token, deviceUuid] = await Promise.all([
+    const [apiBaseUrl, token, deviceUuid, shopId] = await Promise.all([
       getApiBaseUrl(),
       getAccessToken(),
       getDeviceUUID(),
+      getActiveShopId(),
     ]);
-    config.baseURL = apiBaseUrl;
+    config.baseURL = `${apiBaseUrl}/api/v1`;
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     if (deviceUuid) {
       config.headers['X-Device-UUID'] = deviceUuid;
+    }
+    if (shopId) {
+      config.headers['X-Shop-ID'] = shopId;
     }
     return config;
   },
@@ -57,25 +68,48 @@ interface ValidationIssue {
   msg?: string;
 }
 
+interface StructuredErrorDetail {
+  code?: string;
+  message?: string;
+}
+
 interface ApiErrorBody {
-  detail?: string | ValidationIssue[];
+  detail?: string | ValidationIssue[] | StructuredErrorDetail;
 }
 
 interface TokenResponse {
   access_token: string;
   refresh_token: string;
-  role: string;
   full_name: string;
   user_id: string;
+  email: string;
+  memberships: MembershipInfo[];
 }
 
 interface LoginPayload {
-  username: string;
+  email: string;
   password: string;
   device_uuid: string;
   device_name: string;
   platform: string;
   app_version: string;
+}
+
+interface RegisterPayload extends LoginPayload {
+  full_name: string;
+  shop_name: string;
+}
+
+interface GoogleAuthPayload extends Omit<LoginPayload, 'email' | 'password'> {
+  id_token: string;
+  nonce: string;
+  shop_name?: string;
+  invitation_token?: string;
+}
+
+interface InvitationAcceptPayload extends LoginPayload {
+  token: string;
+  full_name: string;
 }
 
 let isRefreshing = false;
@@ -125,13 +159,14 @@ client.interceptors.response.use(
             throw new Error('No refresh token available');
           }
           const apiBaseUrl = await getApiBaseUrl();
-          const { data } = await axios.post<TokenResponse>(`${apiBaseUrl}/auth/refresh`, {
+          const { data } = await axios.post<TokenResponse>(`${apiBaseUrl}/api/v1/auth/refresh`, {
             refresh_token: refreshToken,
           });
           await setAuthData(data.access_token, data.refresh_token, {
-            role: data.role,
             full_name: data.full_name,
             user_id: data.user_id,
+            email: data.email,
+            memberships: data.memberships,
           });
           client.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
           originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
@@ -163,6 +198,8 @@ client.interceptors.response.use(
         errorMessage = validationErrors || ERROR_MESSAGES[422];
       } else if (typeof data?.detail === 'string') {
         errorMessage = data.detail;
+      } else if (data?.detail && !Array.isArray(data.detail) && data.detail.message) {
+        errorMessage = data.detail.message;
       } else if (ERROR_MESSAGES[status]) {
         errorMessage = ERROR_MESSAGES[status];
       }
@@ -185,6 +222,61 @@ export const apiClient = {
     const { data } = await client.post<TokenResponse>('/auth/login', payload);
     return data;
   },
+
+  async register(payload: RegisterPayload) {
+    const { data } = await client.post<{
+      message: string;
+      verification_token?: string;
+    }>('/auth/register', payload);
+    return data;
+  },
+
+  async googleAuth(payload: GoogleAuthPayload) {
+    const { data } = await client.post<TokenResponse>('/auth/google', payload);
+    return data;
+  },
+
+  async acceptInvitation(payload: InvitationAcceptPayload) {
+    const { data } = await client.post<TokenResponse>('/auth/invitations/accept', payload);
+    return data;
+  },
+
+  async verifyEmail(token: string) {
+    const { data } = await client.post<{ message: string }>('/auth/verify-email', { token });
+    return data;
+  },
+
+  async requestAccountDeletion(email: string, deleteOwnedShops: boolean) {
+    const { data } = await client.post<{ message: string }>(
+      '/auth/account-deletion/request',
+      { email, delete_owned_shops: deleteOwnedShops },
+    );
+    return data;
+  },
+
+  async listShops() {
+    const { data } = await client.get<Array<{
+      id: string;
+      name: string;
+      slug: string;
+      role: string;
+    }>>('/shops');
+    return data;
+  },
+
+  async inviteStaff(
+    shopId: string,
+    payload: { email: string; role: 'ADMIN' | 'MANAGER' | 'CASHIER' },
+  ) {
+    const { data } = await client.post<{
+      id: string;
+      email: string;
+      role: string;
+      expires_at: string;
+      token?: string;
+    }>(`/shops/${shopId}/invitations`, payload);
+    return data;
+  },
   
   async logout() {
     try {
@@ -194,14 +286,44 @@ export const apiClient = {
     }
   },
 
-  async verifyManagerPassword(password: string) {
-    const { data } = await client.post<{ valid: boolean }>('/auth/verify-manager-password', { password });
+  // Health check
+  async health() {
+    const apiBaseUrl = await getApiBaseUrl();
+    const { data } = await axios.get<{ status: string; app: string; env: string }>(
+      `${apiBaseUrl}/health/live`,
+    );
     return data;
   },
 
-  // Health check
-  async health() {
-    const { data } = await client.get<{ status: string; app: string; env: string }>('/');
+  async version() {
+    const apiBaseUrl = await getApiBaseUrl();
+    const { data } = await axios.get<{
+      version: string;
+      revision: string;
+      license: string;
+      source: string;
+      deployment_mode: string;
+    }>(`${apiBaseUrl}/api/v1/version`);
+    return data;
+  },
+
+  async getEntitlement() {
+    const { data } = await client.get<{
+      plan: 'free' | 'premium';
+      source: string;
+      active_item_limit: number | null;
+      active_item_count: number;
+      can_add_item: boolean;
+      expires_at: string | null;
+    }>('/subscriptions/entitlement');
+    return data;
+  },
+
+  async submitPlayPurchase(purchaseToken: string) {
+    const { data } = await client.post('/billing/google-play/purchases', {
+      purchase_token: purchaseToken,
+      product_id: 'aurum_cloud_premium',
+    });
     return data;
   },
 
@@ -301,6 +423,8 @@ export const apiClient = {
       customer_phone: sale.customer_phone,
       customer_address: sale.customer_address,
       total_amount: sale.total_amount,
+    }, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
     });
     return data;
   },

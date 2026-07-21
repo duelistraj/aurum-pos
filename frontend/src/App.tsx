@@ -15,6 +15,8 @@ const MetalRates = lazy(() => import('./pages/MetalRates').then(({ MetalRates })
 const Analytics = lazy(() => import('./pages/Analytics').then(({ Analytics }) => ({ default: Analytics })));
 const History = lazy(() => import('./pages/History').then(({ History }) => ({ default: History })));
 const Login = lazy(() => import('./pages/Login').then(({ Login }) => ({ default: Login })));
+const Subscription = lazy(() => import('./pages/Subscription').then(({ Subscription }) => ({ default: Subscription })));
+const Staff = lazy(() => import('./pages/Staff').then(({ Staff }) => ({ default: Staff })));
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" role="status">
     Loading…
@@ -74,6 +76,8 @@ function App() {
                           <Route path="/rates" element={<MetalRates />} />
                           <Route path="/history" element={<History />} />
                           <Route path="/analytics" element={<Analytics />} />
+                          <Route path="/subscription" element={<Subscription />} />
+                          <Route path="/staff" element={<Staff />} />
                         </Routes>
                       </main>
                       <Navbar />

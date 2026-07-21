@@ -1,13 +1,9 @@
-# Security Policy
+# Security policy
 
-## Reporting Vulnerabilities
+Do not open a public issue for a suspected vulnerability or tenant-isolation
+failure. Report it privately to security@aurumpos.net with reproduction steps
+and the affected revision. Never include real customer data or credentials.
 
-Please report security issues privately to the project maintainers. Do not open
-public issues for vulnerabilities that expose credentials, customer data, or
-payment and business records.
-
-## Secrets
-
-Do not commit `.env` files, Android keystores, Play signing keys, production
-domains, database dumps, customer records, invoice PDFs, or access tokens. Run a
-secret scan before publishing forks or deployment repositories.
+Supported releases are the current hosted revision and the latest tagged public
+release. Self-hosters are responsible for applying updates and securing their
+deployment.

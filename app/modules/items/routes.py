@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.modules.auth.dependencies import RequireManager, ShopContext, get_shop_context
 from app.modules.items.models import Item
 from app.modules.items.pricing import calculate_suggested_price
 from app.modules.items.schemas import (
@@ -35,12 +36,13 @@ from app.utils.label import generate_batch_labels_pdf, generate_batch_labels_xls
 router = APIRouter(prefix="/items", tags=["Items"])
 
 
-@router.post("/", response_model=ItemOut)
+@router.post("/", response_model=ItemOut, dependencies=[RequireManager])
 async def create(
     data: ItemCreate,
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    return await create_item(db, data)
+    return await create_item(db, data, shop_id=context.shop.id)
 
 
 @router.get("/", response_model=ItemPaginationOut)
@@ -175,21 +177,22 @@ async def get_by_id(
     return item
 
 
-@router.patch("/{item_id}", response_model=ItemOut)
+@router.patch("/{item_id}", response_model=ItemOut, dependencies=[RequireManager])
 async def update(
     item_id: UUID,
     data: ItemUpdate,
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await update_item(db, item_id, data)
+        return await update_item(db, item_id, data, shop_id=context.shop.id)
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "does not exist" in message else 400
         raise HTTPException(status_code=status_code, detail=message) from exc
 
 
-@router.delete("/{item_id}", status_code=204)
+@router.delete("/{item_id}", status_code=204, dependencies=[RequireManager])
 async def delete(
     item_id: UUID,
     db: AsyncSession = Depends(get_db),

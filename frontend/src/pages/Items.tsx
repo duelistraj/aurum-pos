@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Plus, 
   AlertCircle, 
@@ -27,7 +28,9 @@ import {
 } from 'lucide-react';
 import { Card, Button, Input, Alert, Modal, Loader } from '../components/UI';
 import { apiClient } from '../api/client';
+import { queryKeys } from '../api/queryKeys';
 import { Item } from '../types';
+import { useShop } from '../context/ShopContext';
 import { formatCurrency, formatWeight, downloadBlob } from '../utils';
 
 // Helper SVGs matching the design mockup for spreadsheet and PDF sheets
@@ -72,6 +75,13 @@ const getPurityIconBg = (purityValue: string) => {
 };
 
 export const Items: React.FC = () => {
+  const { canManage, activeMembership } = useShop();
+  const shopId = activeMembership?.shop_id ?? '';
+  const entitlementQuery = useQuery({
+    queryKey: queryKeys.entitlement(shopId),
+    queryFn: () => apiClient.getEntitlement(),
+    enabled: Boolean(shopId),
+  });
   const [items, setItems] = React.useState<Item[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string>('');
@@ -102,9 +112,6 @@ export const Items: React.FC = () => {
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [selectedItems, setSelectedItems] = React.useState<Set<string>>(new Set());
   const [isManageMode, setIsManageMode] = React.useState(false);
-  const [showPasswordModal, setShowPasswordModal] = React.useState(false);
-  const [passwordInput, setPasswordInput] = React.useState('');
-  const [passwordError, setPasswordError] = React.useState('');
   const [availableMetals, setAvailableMetals] = React.useState<Record<string, number[]>>({});
   const [latestItem, setLatestItem] = React.useState<Item | null>(null);
   
@@ -316,6 +323,10 @@ export const Items: React.FC = () => {
   };
 
   const openAddItemModal = () => {
+    if (entitlementQuery.data && !entitlementQuery.data.can_add_item) {
+      setError('This shop has reached its active-item limit. Sell or remove an item, or activate Premium.');
+      return;
+    }
     if (latestItem) {
       setFormData({
         sku: latestItem.sku,
@@ -339,27 +350,10 @@ export const Items: React.FC = () => {
     if (isManageMode) {
       setIsManageMode(false);
       setSelectedItems(new Set());
-      setPasswordInput('');
-      setPasswordError('');
+    } else if (canManage) {
+      setIsManageMode(true);
     } else {
-      setShowPasswordModal(true);
-    }
-  };
-
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const response = await apiClient.verifyManagerPassword(passwordInput.trim());
-      if (response.valid) {
-        setIsManageMode(true);
-        setShowPasswordModal(false);
-        setPasswordInput('');
-        setPasswordError('');
-      } else {
-        setPasswordError('Incorrect password. Please try again.');
-      }
-    } catch (err) {
-      setPasswordError((err as Error).message || 'Verification failed. Please try again.');
+      setError('Your shop role does not allow inventory management.');
     }
   };
 
@@ -1092,52 +1086,6 @@ export const Items: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Enter Password Modal */}
-        <Modal
-          isOpen={showPasswordModal}
-          title="Enter Manage Password"
-          size="md"
-          onClose={() => {
-            setShowPasswordModal(false);
-            setPasswordError('');
-            setPasswordInput('');
-          }}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setPasswordError('');
-                  setPasswordInput('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handlePasswordSubmit}>
-                Unlock
-              </Button>
-            </>
-          }
-        >
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <Input
-              label="Password"
-              type="password"
-              placeholder="Enter manager password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              required
-            />
-            {passwordError && (
-              <p className="text-sm text-red-655">{passwordError}</p>
-            )}
-            <p className="text-sm text-slate-600">
-              Enter the management password to enable add, edit, delete, and label download actions.
-            </p>
-          </form>
-        </Modal>
 
         {/* Add/Edit Item Modal */}
         <Modal

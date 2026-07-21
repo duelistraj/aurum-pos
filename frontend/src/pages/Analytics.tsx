@@ -30,6 +30,7 @@ import { Line, Doughnut } from 'react-chartjs-2';
 import { Card, Loader } from '../components/UI';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
+import { useShop } from '../context/ShopContext';
 import { AnalyticsDashboardResponse } from '../types';
 import { formatCurrency } from '../utils';
 
@@ -63,6 +64,8 @@ const PRESETS = [
 ];
 
 export const Analytics: React.FC = () => {
+  const { activeMembership } = useShop();
+  const shopId = activeMembership?.shop_id ?? '';
   // State for date ranges
   const [activePreset, setActivePreset] = useState<string>('7d');
   const [startDate, setStartDate] = useState<string>('');
@@ -112,9 +115,9 @@ export const Analytics: React.FC = () => {
   const isoStart = startDate ? `${startDate}T00:00:00Z` : '';
   const isoEnd = endDate ? `${endDate}T23:59:59Z` : '';
   const analyticsQuery = useQuery<AnalyticsDashboardResponse>({
-    queryKey: queryKeys.analytics(isoStart, isoEnd, selectedJewellery),
+    queryKey: queryKeys.analytics(shopId, isoStart, isoEnd, selectedJewellery),
     queryFn: () => apiClient.getDashboardAnalytics(isoStart, isoEnd, selectedJewellery),
-    enabled: Boolean(isoStart && isoEnd),
+    enabled: Boolean(shopId && isoStart && isoEnd),
   });
   const data = analyticsQuery.data ?? null;
   const loading = analyticsQuery.isPending;

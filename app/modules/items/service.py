@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.changelog.service import log_change
 from app.modules.items.models import Item
 from app.modules.items.schemas import ItemBase, ItemCreate, ItemUpdate
+from app.modules.subscriptions.service import enforce_item_activation_limit
 
 
 async def generate_unique_barcode(db: AsyncSession) -> str:
@@ -23,8 +24,11 @@ async def generate_unique_barcode(db: AsyncSession) -> str:
     raise RuntimeError("Unable to generate a unique barcode")
 
 
-async def create_item(db: AsyncSession, data: ItemCreate) -> Item:
+async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> Item:
     item_data = data.model_dump()
+
+    if item_data.get("quantity", 1) > 0:
+        await enforce_item_activation_limit(db, shop_id)
 
     # Generate barcode if not provided
     if not item_data.get("barcode"):
@@ -54,7 +58,7 @@ async def create_item(db: AsyncSession, data: ItemCreate) -> Item:
     return item
 
 
-async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate) -> Item:
+async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop_id: UUID) -> Item:
     item = await get_item_by_id(db, item_id)
     if not item:
         raise ValueError("Item does not exist")
@@ -76,6 +80,9 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate) -> Item
     }
 
     requested_updates = data.model_dump(exclude_unset=True)
+    requested_quantity = requested_updates.get("quantity")
+    if item.quantity <= 0 and requested_quantity is not None and requested_quantity > 0:
+        await enforce_item_activation_limit(db, shop_id)
     current_item_data = {
         "sku": item.sku,
         "barcode": item.barcode,

@@ -1,0 +1,1 @@
+"""Reliable notification outbox."""

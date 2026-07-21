@@ -15,6 +15,7 @@ import {
 import { Card, Loader } from '../components/UI';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
+import { useShop } from '../context/ShopContext';
 import { DashboardSummary, ChangeLogEntry } from '../types';
 import { formatCurrency } from '../utils';
 
@@ -71,9 +72,12 @@ const IngotIcon: React.FC = () => (
 );
 
 export const Dashboard: React.FC = () => {
+  const { activeMembership } = useShop();
+  const shopId = activeMembership?.shop_id ?? '';
   const dashboardQuery = useQuery<DashboardSummary>({
-    queryKey: queryKeys.dashboard,
+    queryKey: queryKeys.dashboard(shopId),
     queryFn: () => apiClient.getDashboardSummary(),
+    enabled: Boolean(shopId),
   });
   const summary = dashboardQuery.data ?? null;
   const loading = dashboardQuery.isPending;

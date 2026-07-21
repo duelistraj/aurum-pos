@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
+import { useShop } from '../context/ShopContext';
 import { ChangeLogEntry } from '../types';
 import { Card, Input, Button, Loader } from '../components/UI';
 import { formatDate } from '../utils';
@@ -156,6 +157,8 @@ const getHistorySummary = (entry: ChangeLogEntry) => {
 };
 
 export const History: React.FC = () => {
+  const { activeMembership } = useShop();
+  const shopId = activeMembership?.shop_id ?? '';
   const [filters, setFilters] = React.useState({
     barcode: '',
     invoiceNo: '',
@@ -182,7 +185,7 @@ export const History: React.FC = () => {
   }, []);
 
   const historyQuery = useQuery<ChangeLogEntry[]>({
-    queryKey: queryKeys.history(appliedFilters),
+    queryKey: queryKeys.history(shopId, appliedFilters),
     queryFn: () => apiClient.getChangeLogHistory({
       barcode: appliedFilters.barcode || undefined,
       invoice_no: appliedFilters.invoiceNo || undefined,
@@ -190,6 +193,7 @@ export const History: React.FC = () => {
       from_date: appliedFilters.fromDate || undefined,
       to_date: appliedFilters.toDate || undefined,
     }),
+    enabled: Boolean(shopId),
   });
   const entries = historyQuery.data ?? [];
   const loading = historyQuery.isPending;

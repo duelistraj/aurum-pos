@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /bin/
 
 # Install production dependencies in a cacheable layer.
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock LICENSE README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
 
@@ -35,9 +35,16 @@ COPY alembic.ini .
 
 FROM python:3.12-slim AS runtime
 
+ARG VCS_REF=development
+
+LABEL org.opencontainers.image.source="https://github.com/duelistraj/aurum-pos" \
+      org.opencontainers.image.revision=$VCS_REF \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    GIT_SHA=$VCS_REF
 
 WORKDIR /app
 

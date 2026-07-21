@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verify your Aurum POS email</title>
+  <style>body{font:16px system-ui;max-width:600px;margin:4rem auto;padding:0 1.25rem;color:#1e293b}a{color:#b45309}.card{padding:2rem;border:1px solid #e2e8f0;border-radius:1rem}</style>
+</head>
+<body>
+  <main class="card"><h1>Verify your email</h1><p id="status" role="status">Verifying…</p><p><a href="/">Aurum POS home</a></p></main>
+  <script>
+    const status = document.querySelector('#status');
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token) {
+      status.textContent = 'This verification link is incomplete.';
+    } else {
+      fetch('https://api.aurumpos.net/api/v1/auth/verify-email', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token})
+      }).then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Verification failed');
+        status.textContent = 'Email verified. You can now sign in from the Aurum POS app.';
+      }).catch(error => { status.textContent = error.message; });
+    }
+  </script>
+</body>
+</html>

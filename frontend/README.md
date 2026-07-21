@@ -61,6 +61,7 @@ blank for generic Android/web builds, where users enter the URL on first launch.
 
 ```env
 VITE_API_URL=http://localhost:8080
+VITE_DISTRIBUTION=self_hosted
 ```
 
 ## Project Structure
@@ -115,4 +116,4 @@ The frontend integrates with the following backend endpoints:
 
 ## License
 
-MIT
+AGPL-3.0-only

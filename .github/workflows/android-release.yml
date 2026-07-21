@@ -8,6 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SIGNING_CONFIGURED: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+      AURUM_DISTRIBUTION: cloud
+      VITE_DISTRIBUTION: cloud
+      VITE_API_URL: https://api.aurumpos.net
+      VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      ANDROID_APPLICATION_ID: com.duelistraj.aurumpos
+      CAPACITOR_APP_ID: com.duelistraj.aurumpos
 
     steps:
       - name: Skip when signing secrets are missing

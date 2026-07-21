@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.modules.auth.dependencies import RequireManager
 from app.modules.metal_rates.schemas import MetalRateCreate
 from app.modules.metal_rates.service import (
     add_metal_rate,
@@ -29,7 +30,7 @@ async def get_metals(
     return metals
 
 
-@router.post("/")
+@router.post("/", dependencies=[RequireManager])
 async def create_rate(
     data: MetalRateCreate,
     db: AsyncSession = Depends(get_db),

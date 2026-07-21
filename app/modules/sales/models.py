@@ -6,9 +6,12 @@ from sqlalchemy import (
     JSON,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Numeric,
     String,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,6 +22,10 @@ from app.core.database import Base
 
 class Sale(Base):
     __tablename__ = "sales"
+    __table_args__ = (
+        UniqueConstraint("shop_id", "invoice_no", name="uq_sales_shop_invoice"),
+        UniqueConstraint("shop_id", "id", name="uq_sales_shop_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -26,9 +33,16 @@ class Sale(Base):
         default=uuid.uuid4,
     )
 
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shops.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        server_default=text("NULLIF(current_setting('app.current_shop_id', true), '')::uuid"),
+    )
+
     invoice_no: Mapped[str] = mapped_column(
         String(50),
-        unique=True,
         nullable=False,
     )
 
@@ -73,11 +87,18 @@ class Sale(Base):
         "SaleItem",
         back_populates="sale",
         cascade="all, delete-orphan",
+        overlaps="item,sale_items",
     )
 
 
 class SaleItem(Base):
     __tablename__ = "sale_items"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ("shop_id", "sale_id"), ("sales.shop_id", "sales.id"), ondelete="CASCADE"
+        ),
+        ForeignKeyConstraint(("shop_id", "item_id"), ("items.shop_id", "items.id")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -85,15 +106,21 @@ class SaleItem(Base):
         default=uuid.uuid4,
     )
 
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shops.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        server_default=text("NULLIF(current_setting('app.current_shop_id', true), '')::uuid"),
+    )
+
     sale_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("sales.id", ondelete="CASCADE"),
         nullable=False,
     )
 
     item_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("items.id"),
         nullable=False,
     )
 
@@ -117,9 +144,31 @@ class SaleItem(Base):
     sale = relationship(
         "Sale",
         back_populates="items",
+        overlaps="item,sale_items",
     )
 
     item = relationship(
         "Item",
         back_populates="sale_items",
+        overlaps="items,sale",
     )
+
+
+class SaleIdempotency(Base):
+    __tablename__ = "sale_idempotency"
+    __table_args__ = (UniqueConstraint("shop_id", "idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shops.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        server_default=text("NULLIF(current_setting('app.current_shop_id', true), '')::uuid"),
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    sale_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sales.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

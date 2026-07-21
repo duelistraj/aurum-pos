@@ -5,6 +5,7 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:4173",
     "https://localhost",
     "capacitor://localhost",
+    "https://aurumpos.net",
 )
 
 
@@ -14,16 +15,36 @@ class Settings(BaseSettings):
     database_url: str
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    jwt_issuer: str = "aurum-pos"
+    jwt_audience: str = "aurum-pos-api"
+    access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
-    manager_password: str = "manager"
     phone_number: str = "1010101010"
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
+    deployment_mode: str = "self_hosted"
+    free_active_item_limit: int = 50
+    source_repository_url: str = "https://github.com/duelistraj/aurum-pos"
+    git_sha: str = "development"
+    cloud_api_url: str = "https://api.aurumpos.net"
+    google_web_client_id: str | None = None
+    google_play_package_name: str = "com.duelistraj.aurumpos"
+    google_play_product_id: str = "aurum_cloud_premium"
+    google_play_service_account_json: str | None = None
+    google_play_pubsub_audience: str | None = None
+    google_play_pubsub_service_account_email: str | None = None
+    billing_token_encryption_key: str | None = None
+    email_from: str = "Aurum POS <noreply@aurumpos.net>"
+    ses_region: str = "ap-south-1"
+    public_site_url: str = "https://aurumpos.net"
 
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
     )
+
+    @property
+    def is_hosted(self) -> bool:
+        return self.deployment_mode == "hosted"
 
 
 settings = Settings()  # type: ignore[call-arg]

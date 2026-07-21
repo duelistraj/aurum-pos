@@ -1,5 +1,25 @@
 # Glossary
 
+### Shop and membership
+
+A **shop** is the tenant and subscription boundary. A user can hold OWNER,
+ADMIN, MANAGER, or CASHIER membership in several shops and selects one per
+request with `X-Shop-ID`.
+
+Evidence:
+- `app/modules/shops/models.py::ShopMembership`
+- `app/modules/auth/dependencies.py::get_shop_context`
+
+### Active item and entitlement
+
+An **active item** is an inventory row with positive quantity and status
+`in_stock` or `reserved`. A shop **entitlement** is either hosted free (50
+active rows), current premium, or unlimited self-hosted access.
+
+Evidence:
+- `app/modules/subscriptions/service.py::ACTIVE_ITEM_STATUSES`
+- `app/modules/subscriptions/service.py::resolve_entitlement`
+
 ### Item and stock status
 
 An **item** is a jewellery inventory record identified by UUID and barcode. It

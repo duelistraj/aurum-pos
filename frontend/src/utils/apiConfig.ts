@@ -5,6 +5,8 @@ const API_URL_KEY = 'api_base_url';
 const LEGACY_LOCAL_API_URL = 'http://localhost:8000';
 const LOCAL_API_URL = 'http://localhost:8080';
 const BUILD_DEFAULT_API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '';
+const CLOUD_API_URL = 'https://api.aurumpos.net';
+export const isCloudDistribution = import.meta.env.VITE_DISTRIBUTION === 'cloud';
 
 const normalizeApiUrl = (url: string): string => url.trim().replace(/\/+$/, '');
 const migrateLegacyLocalApiUrl = (url: string): string =>
@@ -23,11 +25,13 @@ export const getSavedApiUrl = async (): Promise<string | null> => {
 };
 
 export const getApiBaseUrl = async (): Promise<string> => {
+  if (isCloudDistribution) return CLOUD_API_URL;
   const savedUrl = await getSavedApiUrl();
   return savedUrl || migrateLegacyLocalApiUrl(normalizeApiUrl(BUILD_DEFAULT_API_URL));
 };
 
 export const saveApiBaseUrl = async (url: string): Promise<string> => {
+  if (isCloudDistribution) return CLOUD_API_URL;
   const normalizedUrl = migrateLegacyLocalApiUrl(normalizeApiUrl(url));
   await setPreference(API_URL_KEY, normalizedUrl);
   window.dispatchEvent(new CustomEvent('api-url-changed', { detail: normalizedUrl }));
@@ -46,4 +50,5 @@ export const validateApiBaseUrl = async (url: string): Promise<void> => {
   }
 };
 
-export const hasConfiguredApiUrl = async (): Promise<boolean> => Boolean(await getApiBaseUrl());
+export const hasConfiguredApiUrl = async (): Promise<boolean> =>
+  isCloudDistribution || Boolean(await getApiBaseUrl());

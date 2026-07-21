@@ -1,5 +1,8 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import jwt
 from passlib.context import CryptContext
@@ -17,39 +20,42 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def generate_opaque_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def create_access_token(
     subject: str | Any,
-    role: str,
+    session_id: UUID,
     expires_delta: timedelta | None = None,
 ) -> str:
-    if expires_delta:
-        expire = datetime.now(UTC) + expires_delta
-    else:
-        expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
-
-    to_encode = {"exp": expire, "sub": str(subject), "role": role, "type": "access"}
-    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return encoded_jwt
-
-
-def create_refresh_token(
-    subject: str | Any,
-    expires_delta: timedelta | None = None,
-) -> str:
-    if expires_delta:
-        expire = datetime.now(UTC) + expires_delta
-    else:
-        expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
-
-    to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
-    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return encoded_jwt
+    now = datetime.now(UTC)
+    expire = now + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
+    claims = {
+        "aud": settings.jwt_audience,
+        "exp": expire,
+        "iat": now,
+        "iss": settings.jwt_issuer,
+        "sid": str(session_id),
+        "sub": str(subject),
+        "type": "access",
+    }
+    return jwt.encode(claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str) -> dict[str, Any]:
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        return payload
+        return jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer,
+        )
     except jwt.ExpiredSignatureError as exc:
         raise ValueError("Token has expired") from exc
     except jwt.PyJWTError as exc:

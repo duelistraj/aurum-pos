@@ -1,13 +1,12 @@
 # Contributing
 
-## Development
+Contributions are accepted under AGPL-3.0-only. By submitting a contribution,
+you certify the Developer Certificate of Origin 1.1 using a signed-off commit:
 
-1. Copy `.env.example` to `.env` and set local values.
-2. Start PostgreSQL with `docker compose -f compose.dev.yml up -d --wait postgres`.
-3. Install backend dependencies with `uv sync --locked`.
-4. Run migrations with `uv run alembic upgrade head`.
-5. Install frontend dependencies from `frontend/` with `npm ci`.
-6. Run backend and frontend checks before opening a pull request.
+```text
+Signed-off-by: Your Name <you@example.com>
+```
 
-Keep shop-specific deployment files, domains, customer data, Android signing
-keys, and production secrets out of this public repository.
+Use `git commit -s`, add tests for behavior changes, and run the backend and
+frontend verification commands from the README. Do not include customer data,
+credentials, database exports, signing keys, or production configuration.

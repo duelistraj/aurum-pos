@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_API_URL?: string;
+  readonly VITE_DISTRIBUTION?: 'cloud' | 'self_hosted';
+  readonly VITE_GOOGLE_WEB_CLIENT_ID?: string;
+}
+
 interface DetectedBarcode {
   rawValue: string;
 }

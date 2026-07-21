@@ -6,37 +6,47 @@ From the repository root, copy `.env.example` to `.env`, run
 `uv sync --locked`, start PostgreSQL with
 `docker compose -f compose.dev.yml up -d --wait postgres`, apply migrations with
 `uv run alembic upgrade head`, and start the API with
-`uv run uvicorn app.main:app --reload --port 8080`. Local API development always
-uses port 8080. In
-`frontend/`, run `npm ci`, copy `.env.example` to `.env.local`, and run
-`npm run dev`; Vite strictly uses port 5174 and does not fall back to another
-port.
+`uv run uvicorn app.main:app --reload --port 8080`. In `frontend/`, run
+`npm ci`, copy `.env.example` to `.env.local`, and run `npm run dev`. Local API
+development always uses port 8080; Vite strictly uses port 5174.
 
 Evidence:
-- `README.md::Backend Setup`
-- `README.md::Frontend Setup`
-- `frontend/vite.config.ts::server.port`
+- `README.md::Local development`
+- `frontend/vite.config.ts::server`
 
-### Required configuration and secret hygiene
+### Tenancy and distribution invariants
 
-The backend cannot initialize without `DATABASE_URL` and `JWT_SECRET_KEY`.
-Production also needs a strong manager password and appropriate CORS origins.
-Never commit `.env`, signing keys, access tokens, customer records, database
-dumps, or generated invoices.
+Clients call `/api/v1` with an access token, `X-Device-UUID`, and selected
+`X-Shop-ID`. Tenant business tables use `shop_id`, shop-scoped constraints, and
+forced PostgreSQL RLS. Official cloud Android builds use package
+`com.duelistraj.aurumpos` and fixed API `https://api.aurumpos.net`; self-hosted
+builds configure their own endpoint and are unlimited. Hosted free shops may
+have at most 50 active inventory rows.
 
 Evidence:
-- `app/core/config.py::Settings`
-- `.env.example::JWT_SECRET_KEY`
+- `app/modules/auth/dependencies.py::get_shop_context`
+- `app/modules/subscriptions/service.py::resolve_entitlement`
+- `frontend/src/utils/apiConfig.ts::getApiBaseUrl`
+
+### Secrets and cutover safety
+
+Never commit `.env`, `.env.cloud`, signing keys, Play service-account JSON,
+billing encryption keys, access tokens, customer records, database dumps, or
+item exports. BMR cutover uses a clean SaaS database and the checksummed
+item-only export/import; keep the old deployment isolated for 30 days. Do not
+run the SaaS reset against the live BMR database.
+
+Evidence:
 - `SECURITY.md::Secrets`
+- `README.md::BMR item-only cutover`
 
 ### Verification commands
 
-Backend gates are `uv lock --check`, Ruff check and format check over `app tests`,
-`uv run mypy app`, and `uv run pytest`. Frontend gates are `npm run lint`,
-`npm run typecheck`, `npm test`, and `npm run build`. The PostgreSQL integration
-test runs only when `RUN_INTEGRATION=1` against a migrated database.
+Backend gates are `uv lock --check`, Ruff check/format, `uv run mypy app`, and
+`uv run pytest`. Frontend gates are lint, typecheck, Vitest, and production
+build. PostgreSQL integration tests require `RUN_INTEGRATION=1` and a migrated
+isolated database.
 
 Evidence:
-- `.github/workflows/ci.yml::jobs.backend`
-- `.github/workflows/ci.yml::jobs.frontend`
+- `.github/workflows/ci.yml::jobs`
 - `tests/test_integration_flow.py::pytestmark`

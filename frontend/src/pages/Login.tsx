@@ -1,132 +1,240 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, User as UserIcon, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { Capacitor } from '@capacitor/core';
+import { AlertCircle, Lock, Mail, Store, User as UserIcon } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
+import { useShop } from '../context/ShopContext';
+import { AurumGoogleAuth, createNonce } from '../native/googleAuth';
+import { getAccessToken, setAuthData } from '../utils/auth';
 import { getDeviceInfo, getDeviceUUID } from '../utils/device';
-import { setAuthData, getAccessToken } from '../utils/auth';
 
 export const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = React.useState<'login' | 'register' | 'staff'>('login');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [fullName, setFullName] = React.useState('');
+  const [shopName, setShopName] = React.useState('');
+  const [invitationToken, setInvitationToken] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [message, setMessage] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { reload } = useShop();
+  const googleClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
 
-  useEffect(() => {
-    // If already logged in, redirect
-    getAccessToken().then(token => {
-      if (token) {
-        navigate(location.state?.from?.pathname || '/', { replace: true });
-      }
+  React.useEffect(() => {
+    const token = new URLSearchParams(location.search).get('token');
+    if (token) {
+      setInvitationToken(token);
+      setMode('staff');
+    }
+    void getAccessToken().then((token) => {
+      if (token) navigate(location.state?.from?.pathname || '/', { replace: true });
     });
   }, [navigate, location]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const devicePayload = async () => {
+    const deviceInfo = getDeviceInfo();
+    return {
+      device_uuid: await getDeviceUUID(),
+      device_name: deviceInfo.device_name,
+      platform: deviceInfo.platform,
+      app_version: deviceInfo.app_version,
+    };
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
+    setMessage('');
     setLoading(true);
-
     try {
-      const deviceUuid = await getDeviceUUID();
-      const deviceInfo = getDeviceInfo();
-
-      const response = await apiClient.login({
-        username,
-        password,
-        device_uuid: deviceUuid,
-        device_name: deviceInfo.device_name,
-        platform: deviceInfo.platform,
-        app_version: deviceInfo.app_version,
-      });
-
+      const device = await devicePayload();
+      if (mode === 'register') {
+        const response = await apiClient.register({
+          email,
+          password,
+          full_name: fullName,
+          shop_name: shopName,
+          ...device,
+        });
+        if (response.verification_token) {
+          await apiClient.verifyEmail(response.verification_token);
+          setMessage('Account verified. You can now sign in.');
+        } else {
+          setMessage(response.message);
+        }
+        setMode('login');
+        return;
+      }
+      const response = mode === 'staff'
+        ? await apiClient.acceptInvitation({
+            email,
+            password,
+            full_name: fullName,
+            token: invitationToken,
+            ...device,
+          })
+        : await apiClient.login({ email, password, ...device });
       await setAuthData(response.access_token, response.refresh_token, {
-        role: response.role,
         full_name: response.full_name,
         user_id: response.user_id,
+        email: response.email,
+        memberships: response.memberships,
       });
-
-      // Redirect back or to dashboard
+      await reload();
       navigate(location.state?.from?.pathname || '/', { replace: true });
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to login');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-xl">
-        <div>
-          <div className="mx-auto h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-            <Lock className="h-6 w-6 text-blue-600" />
-          </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Secure POS Access
-          </p>
-        </div>
-        
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4 flex items-start">
-              <AlertCircle className="h-5 w-5 text-red-400 mt-0.5 mr-2" />
-              <div className="text-sm text-red-700">{error}</div>
-            </div>
-          )}
-          
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="username" className="sr-only">Username</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <UserIcon className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-3 pl-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">Password</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-3 pl-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
+  const handleGoogle = async () => {
+    if (!googleClientId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const nonce = createNonce();
+      const credential = await AurumGoogleAuth.signIn({ serverClientId: googleClientId, nonce });
+      const response = await apiClient.googleAuth({
+        id_token: credential.idToken,
+        nonce,
+        shop_name: mode === 'register' ? shopName : undefined,
+        invitation_token: mode === 'staff' ? invitationToken : undefined,
+        ...(await devicePayload()),
+      });
+      await setAuthData(response.access_token, response.refresh_token, {
+        full_name: response.full_name,
+        user_id: response.user_id,
+        email: response.email,
+        memberships: response.memberships,
+      });
+      await reload();
+      navigate('/', { replace: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Google Sign-In failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition-all duration-200"
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
+  const fields = [
+    ...(mode === 'register' || mode === 'staff' ? [
+      { id: 'full-name', icon: UserIcon, type: 'text', value: fullName, set: setFullName, placeholder: 'Your name' },
+    ] : []),
+    ...(mode === 'register' ? [
+      { id: 'shop-name', icon: Store, type: 'text', value: shopName, set: setShopName, placeholder: 'Shop name' },
+    ] : []),
+    ...(mode === 'staff' ? [
+      { id: 'invitation-token', icon: Lock, type: 'text', value: invitationToken, set: setInvitationToken, placeholder: 'Invitation code' },
+    ] : []),
+    { id: 'email', icon: Mail, type: 'email', value: email, set: setEmail, placeholder: 'Email address' },
+    { id: 'password', icon: Lock, type: 'password', value: password, set: setPassword, placeholder: 'Password' },
+  ];
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4">
+      <div className="max-w-md w-full space-y-6 bg-white p-8 rounded-2xl shadow-xl">
+        <div className="text-center">
+          <div className="mx-auto h-12 w-12 bg-amber-100 rounded-full flex items-center justify-center">
+            <Lock className="h-6 w-6 text-amber-700" />
           </div>
+          <h2 className="mt-5 text-3xl font-extrabold text-slate-900">
+            {mode === 'login'
+              ? 'Sign in to Aurum POS'
+              : mode === 'register'
+                ? 'Create your shop'
+                : 'Join your shop'}
+          </h2>
+        </div>
+
+        {error && (
+          <div className="rounded-md bg-red-50 p-4 flex items-start text-sm text-red-700">
+            <AlertCircle className="h-5 w-5 mr-2 flex-none" />{error}
+          </div>
+        )}
+        {message && <div className="rounded-md bg-emerald-50 p-4 text-sm text-emerald-800">{message}</div>}
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          {fields.map(({ id, icon: Icon, type, value, set, placeholder }) => (
+            <label key={id} htmlFor={id} className="relative block">
+              <span className="sr-only">{placeholder}</span>
+              <Icon className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
+              <input
+                id={id}
+                type={type}
+                required
+                minLength={id === 'password' && mode === 'register' ? 12 : undefined}
+                className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-3 text-slate-900"
+                placeholder={placeholder}
+                value={value}
+                onChange={(event) => set(event.target.value)}
+              />
+            </label>
+          ))}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-amber-600 py-3 font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+          >
+            {loading
+              ? 'Please wait…'
+              : mode === 'login'
+                ? 'Sign in'
+                : mode === 'register'
+                  ? 'Create account'
+                  : 'Accept invitation'}
+          </button>
         </form>
+
+        {googleClientId && Capacitor.getPlatform() === 'android' && (
+          <button
+            type="button"
+            disabled={loading
+              || (mode === 'register' && !shopName)
+              || (mode === 'staff' && !invitationToken)}
+            onClick={() => void handleGoogle()}
+            className="w-full rounded-xl border border-slate-300 py-3 font-medium text-slate-700 disabled:opacity-60"
+          >
+            Continue with Google
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="w-full text-sm text-amber-700"
+          onClick={() => {
+            setMode((current) => current === 'login' ? 'register' : 'login');
+            setError('');
+          }}
+        >
+          {mode === 'login' ? 'New owner? Create a shop' : 'Already registered? Sign in'}
+        </button>
+        {mode === 'login' && (
+          <a
+            className="block text-center text-sm text-slate-600"
+            href="https://aurumpos.net/reset-password.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Forgot your password?
+          </a>
+        )}
+        {mode !== 'staff' && (
+          <button
+            type="button"
+            className="w-full text-sm text-slate-600"
+            onClick={() => {
+              setMode('staff');
+              setError('');
+            }}
+          >
+            Accept a staff invitation
+          </button>
+        )}
       </div>
     </div>
   );

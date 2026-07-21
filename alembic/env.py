@@ -1,8 +1,11 @@
 from app.modules.items.models import Item  # noqa
-from app.modules.sales.models import Sale, SaleItem  # noqa
+from app.modules.sales.models import Sale, SaleIdempotency, SaleItem  # noqa
 from app.core.changelog.models import ChangeLog  # noqa
 from app.modules.metal_rates.models import MetalRate  # noqa
-from app.modules.auth.models import User, Device # noqa
+from app.modules.auth.models import AccountDeletionRequest, AuthSession, AuthToken, Device, GoogleNonce, User, UserIdentity  # noqa
+from app.modules.notifications.models import EmailOutbox  # noqa
+from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, ShopMembership  # noqa
+from app.modules.subscriptions.models import BillingEvent, PlaySubscription, Subscription  # noqa
 
 
 from logging.config import fileConfig

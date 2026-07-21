@@ -3,8 +3,8 @@ name = "app"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
-license = ""
-repository = ""
+license = "AGPL-3.0-only"
+repository = "https://github.com/duelistraj/aurum-pos"
 edition = "2021"
 rust-version = "1.77.2"
 
