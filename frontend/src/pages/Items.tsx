@@ -122,6 +122,8 @@ export const Items: React.FC = () => {
   const formCategoryDropdownRef = React.useRef<HTMLDivElement>(null);
   const formMetalDropdownRef = React.useRef<HTMLDivElement>(null);
   const formPurityDropdownRef = React.useRef<HTMLDivElement>(null);
+  const [showDownloadDropdown, setShowDownloadDropdown] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
   
   const purityOptions = [
     { value: '99.9', label: '99.9%' },
@@ -196,6 +198,9 @@ export const Items: React.FC = () => {
       }
       if (formPurityDropdownRef.current && !formPurityDropdownRef.current.contains(target)) {
         setShowFormPurityDropdown(false);
+      }
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setShowDownloadDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -285,15 +290,13 @@ export const Items: React.FC = () => {
     try {
       const item = await apiClient.getLatestItem();
       setLatestItem(item);
-    } catch (err) {
+    } catch {
       setLatestItem(null);
     }
   }, []);
 
   const refreshItems = async () => {
-    await loadItems();
-    await loadSummary();
-    await loadLatestItem();
+    await Promise.all([loadItems(), loadSummary(), loadLatestItem()]);
   };
 
   const resetForm = () => {
@@ -557,27 +560,6 @@ export const Items: React.FC = () => {
     }
     return pages;
   };
-
-  const [showDownloadDropdown, setShowDownloadDropdown] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDownloadDropdown(false);
-      }
-      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
-        setShowCategoryDropdown(false);
-      }
-      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
-        setShowStatusDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
   return (
     <div className="min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">

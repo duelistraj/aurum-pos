@@ -48,8 +48,8 @@ export const Login: React.FC = () => {
 
       // Redirect back or to dashboard
       navigate(location.state?.from?.pathname || '/', { replace: true });
-    } catch (err: any) {
-      setError(err.message || 'Failed to login');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to login');
     } finally {
       setLoading(false);
     }

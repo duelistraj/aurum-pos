@@ -1,4 +1,5 @@
 import React from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, AlertCircle } from 'lucide-react';
 import {
   Card,
@@ -10,15 +11,18 @@ import {
   Badge,
 } from '../components/UI';
 import { apiClient } from '../api/client';
+import { queryKeys } from '../api/queryKeys';
 import { MetalRate } from '../types';
+import { removeLocalValue } from '../utils/storage';
 
 interface RateWithId extends MetalRate {
   id?: string;
 }
 
+const EMPTY_METALS: Record<string, number[]> = {};
+
 export const MetalRates: React.FC = () => {
-  const [rates, setRates] = React.useState<RateWithId[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const queryClient = useQueryClient();
   const [error, setError] = React.useState<string>('');
   const [success, setSuccess] = React.useState<string>('');
   const [showModal, setShowModal] = React.useState(false);
@@ -26,61 +30,34 @@ export const MetalRates: React.FC = () => {
   const [passwordInput, setPasswordInput] = React.useState('');
   const [passwordError, setPasswordError] = React.useState('');
   const [pendingUpdateRate, setPendingUpdateRate] = React.useState<RateWithId | null>(null);
-  const [availableMetals, setAvailableMetals] = React.useState<Record<string, number[]>>({});
   const [formData, setFormData] = React.useState({
     metal: '',
     rate_per_gram: '',
   });
 
-  const loadMetals = React.useCallback(async () => {
-    try {
-      const metals = await apiClient.getAvailableMetals();
-      setAvailableMetals(metals);
-      
-      // Set default values from first available metal
-      const metalKeys = Object.keys(metals);
-      if (metalKeys.length > 0) {
-        const defaultMetal = metalKeys[0];
-        setFormData((prev) => ({
-          ...prev,
-          metal: defaultMetal,
-        }));
-      } else {
-        // Reset form if no metals available
-        setFormData({
-          metal: '',
-          rate_per_gram: '',
-        });
-      }
-    } catch (err) {
-      console.error('Failed to load available metals:', err);
-    }
-  }, []);
-
-  const loadRates = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiClient.getAllMetalRates();
-      setRates(data);
-      setError('');
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load metal rates'
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const ratesQuery = useQuery<RateWithId[]>({
+    queryKey: queryKeys.metalRates,
+    queryFn: () => apiClient.getAllMetalRates(),
+  });
+  const metalsQuery = useQuery<Record<string, number[]>>({
+    queryKey: queryKeys.availableMetals,
+    queryFn: () => apiClient.getAvailableMetals(),
+  });
+  const updateRate = useMutation({
+    mutationFn: (rate: MetalRate) => apiClient.addMetalRate(rate),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.metalRates }),
+  });
+  const rates = ratesQuery.data ?? [];
+  const availableMetals = metalsQuery.data ?? EMPTY_METALS;
+  const loading = ratesQuery.isPending || metalsQuery.isPending || updateRate.isPending;
+  const queryError = ratesQuery.error ?? metalsQuery.error;
+  const visibleError = error || (queryError instanceof Error ? queryError.message : '');
 
   React.useEffect(() => {
-    // Clear old localStorage data
-    localStorage.removeItem('metal_rates');
-    
-    loadMetals();
-    loadRates();
-  }, [loadMetals, loadRates]);
+    removeLocalValue('metal_rates');
+    const defaultMetal = Object.keys(availableMetals)[0] ?? '';
+    setFormData((previous) => previous.metal ? previous : { ...previous, metal: defaultMetal });
+  }, [availableMetals]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +66,6 @@ export const MetalRates: React.FC = () => {
       return;
     }
 
-    setLoading(true);
     try {
       const rateData = {
         metal: formData.metal,
@@ -97,14 +73,11 @@ export const MetalRates: React.FC = () => {
         rate_per_gram: parseFloat(formData.rate_per_gram),
       };
 
-      await apiClient.addMetalRate(rateData);
+      await updateRate.mutateAsync(rateData);
 
       setSuccess('Metal rate updated successfully');
       setTimeout(() => setSuccess(''), 3000);
       setShowModal(false);
-      
-      // Reload rates from API
-      await loadRates();
       
       // Reset form to first available metal
       const metalKeys = Object.keys(availableMetals);
@@ -118,8 +91,6 @@ export const MetalRates: React.FC = () => {
       setError(
         err instanceof Error ? err.message : 'Failed to update rate'
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -192,11 +163,11 @@ export const MetalRates: React.FC = () => {
         </div>
 
         {/* Alerts */}
-        {error && (
+        {visibleError && (
           <Alert
             type="error"
             title="Error"
-            message={error}
+            message={visibleError}
             onClose={() => setError('')}
           />
         )}

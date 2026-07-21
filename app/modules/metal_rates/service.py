@@ -1,13 +1,14 @@
+from types import MappingProxyType
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, distinct
+
+from app.core.changelog.service import log_change
 from app.modules.metal_rates.models import MetalRate
 from app.modules.metal_rates.schemas import MetalRateCreate
-from app.core.changelog.service import log_change
 
 # Supported metals and their purities in the system
-SUPPORTED_METALS = {
-    "Silver": [100.0],
-}
+SUPPORTED_METALS = MappingProxyType({"Silver": (100.0,)})
 
 
 async def add_metal_rate(
@@ -16,7 +17,7 @@ async def add_metal_rate(
 ) -> MetalRate:
     """Add or update a metal rate. If a rate for this metal/purity exists, it will be updated."""
     metal_lower = data.metal.lower()
-    
+
     # Check if rate already exists
     stmt = select(MetalRate).where(
         MetalRate.metal == metal_lower,
@@ -24,14 +25,14 @@ async def add_metal_rate(
     )
     result = await db.execute(stmt)
     existing_rate = result.scalar_one_or_none()
-    
+
     if existing_rate:
         # Update existing rate
         old_rate = existing_rate.rate_per_gram
         existing_rate.rate_per_gram = data.rate_per_gram
-        await db.commit()
+        await db.flush()
         await db.refresh(existing_rate)
-        
+
         # Log the update
         await log_change(
             db,
@@ -45,8 +46,6 @@ async def add_metal_rate(
                 "after": float(existing_rate.rate_per_gram),
             },
         )
-        await db.commit()
-        
         return existing_rate
     else:
         # Create new rate
@@ -56,9 +55,9 @@ async def add_metal_rate(
             rate_per_gram=data.rate_per_gram,
         )
         db.add(rate)
-        await db.commit()
+        await db.flush()
         await db.refresh(rate)
-        
+
         # Log the creation
         await log_change(
             db,
@@ -71,14 +70,12 @@ async def add_metal_rate(
                 "rate_per_gram": float(rate.rate_per_gram),
             },
         )
-        await db.commit()
-        
         return rate
 
 
 async def get_available_metals(db: AsyncSession) -> dict[str, list[float]]:
     """Get supported metals and their purities
-    
+
     Returns supported metals from configuration, which can be customized
     by modifying SUPPORTED_METALS.
     """
@@ -89,7 +86,8 @@ async def get_all_metal_rates(db: AsyncSession) -> list[MetalRate]:
     """Get all metal rates from the database"""
     stmt = select(MetalRate).order_by(MetalRate.metal, MetalRate.purity)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return list(result.scalars().all())
+
 
 async def get_latest_metal_rate(
     db,

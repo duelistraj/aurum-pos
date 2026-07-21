@@ -41,7 +41,7 @@ export interface SaleItem {
   item_id: string;
   quantity: number;
   item?: Item;
-  pricing?: any;
+  pricing?: Record<string, string | number | null>;
 }
 
 export interface Sale {
@@ -58,7 +58,7 @@ export interface ChangeLogEntry {
   id: string;
   entity: string;
   action: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   created_at: string | null;
 }
 
@@ -122,4 +122,3 @@ export interface AnalyticsDashboardResponse {
   inventory_summary: InventoryRatio;
   sales_trend: SalesTrendCompare;
 }
-

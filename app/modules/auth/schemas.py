@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
 import uuid
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -11,6 +12,7 @@ class LoginRequest(BaseModel):
     platform: str
     app_version: str
 
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -19,8 +21,10 @@ class TokenResponse(BaseModel):
     full_name: str
     user_id: uuid.UUID
 
+
 class RefreshRequest(BaseModel):
     refresh_token: str
+
 
 class UserResponse(BaseModel):
     id: uuid.UUID
@@ -32,6 +36,7 @@ class UserResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
 
 class DeviceResponse(BaseModel):
     id: uuid.UUID
@@ -46,10 +51,10 @@ class DeviceResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 class DeviceUpdate(BaseModel):
     is_active: bool
 
 
 class VerifyManagerPasswordRequest(BaseModel):
     password: str
-

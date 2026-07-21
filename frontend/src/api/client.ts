@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { Item, MetalRate, Sale, ItemPOSWithPrice, DashboardSummary, ChangeLogEntry, AnalyticsDashboardResponse } from '../types';
 import { getAccessToken, getRefreshToken, setAuthData, clearAuthData } from '../utils/auth';
 import { getDeviceUUID } from '../utils/device';
@@ -25,9 +25,12 @@ const ERROR_MESSAGES: Record<number, string> = {
 
 client.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    config.baseURL = await getApiBaseUrl();
-    const token = await getAccessToken();
-    const deviceUuid = await getDeviceUUID();
+    const [apiBaseUrl, token, deviceUuid] = await Promise.all([
+      getApiBaseUrl(),
+      getAccessToken(),
+      getDeviceUUID(),
+    ]);
+    config.baseURL = apiBaseUrl;
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -40,15 +43,50 @@ client.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-let isRefreshing = false;
-let failedQueue: any[] = [];
+interface RetriableRequest extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach(prom => {
+interface RefreshQueueEntry {
+  resolve: (token: string) => void;
+  reject: (reason: unknown) => void;
+}
+
+interface ValidationIssue {
+  loc?: Array<string | number>;
+  msg?: string;
+}
+
+interface ApiErrorBody {
+  detail?: string | ValidationIssue[];
+}
+
+interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  role: string;
+  full_name: string;
+  user_id: string;
+}
+
+interface LoginPayload {
+  username: string;
+  password: string;
+  device_uuid: string;
+  device_name: string;
+  platform: string;
+  app_version: string;
+}
+
+let isRefreshing = false;
+let failedQueue: RefreshQueueEntry[] = [];
+
+const processQueue = (error: unknown, token?: string) => {
+  failedQueue.forEach((pendingRequest) => {
     if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
+      pendingRequest.reject(error);
+    } else if (token) {
+      pendingRequest.resolve(token);
     }
   });
   failedQueue = [];
@@ -64,18 +102,16 @@ client.interceptors.response.use(
     }
     return response;
   },
-  (error: AxiosError) => {
-    const originalRequest = error.config as any;
+  (error: AxiosError<ApiErrorBody>) => {
+    const originalRequest = error.config as RetriableRequest | undefined;
 
-    if (error.response?.status === 401 && !originalRequest._retry && originalRequest.url !== '/auth/login') {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && originalRequest.url !== '/auth/login') {
       if (isRefreshing) {
-        return new Promise(function(resolve, reject) {
+        return new Promise<string>((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then(token => {
-          originalRequest.headers['Authorization'] = 'Bearer ' + token;
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
           return client(originalRequest);
-        }).catch(err => {
-          return Promise.reject(err);
         });
       }
 
@@ -89,18 +125,20 @@ client.interceptors.response.use(
             throw new Error('No refresh token available');
           }
           const apiBaseUrl = await getApiBaseUrl();
-          const { data } = await axios.post(`${apiBaseUrl}/auth/refresh`, { refresh_token: refreshToken });
+          const { data } = await axios.post<TokenResponse>(`${apiBaseUrl}/auth/refresh`, {
+            refresh_token: refreshToken,
+          });
           await setAuthData(data.access_token, data.refresh_token, {
             role: data.role,
             full_name: data.full_name,
             user_id: data.user_id,
           });
-          client.defaults.headers.common['Authorization'] = 'Bearer ' + data.access_token;
-          originalRequest.headers['Authorization'] = 'Bearer ' + data.access_token;
-          processQueue(null, data.access_token);
+          client.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
+          originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
+          processQueue(undefined, data.access_token);
           return client(originalRequest);
         } catch (err) {
-          processQueue(err, null);
+          processQueue(err);
           await clearAuthData();
           window.location.href = '/';
           return Promise.reject(err);
@@ -114,23 +152,18 @@ client.interceptors.response.use(
 
     if (error.response) {
       const status = error.response.status;
-      const data = error.response.data as any;
+      const data = error.response.data;
 
-      // Try to use the backend's detail message first
-      if (data?.detail) {
-        errorMessage = data.detail;
-      }
-      // For validation errors, construct a message from validation details
-      else if (status === 422 && data?.detail && Array.isArray(data.detail)) {
-        const validationErrors = data.detail.map((err: any) => {
-          const field = err.loc?.[1] || 'field';
-          const msg = err.msg || 'Invalid value';
+      if (status === 422 && Array.isArray(data?.detail)) {
+        const validationErrors = data.detail.map((issue) => {
+          const field = issue.loc?.[1] || 'field';
+          const msg = issue.msg || 'Invalid value';
           return `${field}: ${msg}`;
         }).join(', ');
         errorMessage = validationErrors || ERROR_MESSAGES[422];
-      }
-      // Use predefined message for known status codes
-      else if (ERROR_MESSAGES[status]) {
+      } else if (typeof data?.detail === 'string') {
+        errorMessage = data.detail;
+      } else if (ERROR_MESSAGES[status]) {
         errorMessage = ERROR_MESSAGES[status];
       }
     } else if (error.request) {
@@ -148,8 +181,8 @@ type SaleCreatePayload = Omit<Sale, 'id'> & {
 
 export const apiClient = {
   // Auth
-  async login(payload: any) {
-    const { data } = await client.post('/auth/login', payload);
+  async login(payload: LoginPayload) {
+    const { data } = await client.post<TokenResponse>('/auth/login', payload);
     return data;
   },
   
@@ -168,7 +201,7 @@ export const apiClient = {
 
   // Health check
   async health() {
-    const { data } = await client.get('/');
+    const { data } = await client.get<{ status: string; app: string; env: string }>('/');
     return data;
   },
 
@@ -250,12 +283,12 @@ export const apiClient = {
   },
 
   async getAllMetalRates() {
-    const { data } = await client.get('/metal-rates');
+    const { data } = await client.get<MetalRate[]>('/metal-rates');
     return data;
   },
 
   async addMetalRate(rate: MetalRate) {
-    const { data } = await client.post('/metal-rates/', rate);
+    const { data } = await client.post<MetalRate>('/metal-rates/', rate);
     return data;
   },
 

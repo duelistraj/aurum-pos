@@ -1,0 +1,28 @@
+# General React Best Practices
+
+- Waterfalls (API & Data): Check cheap synchronous guards before invoking async flags. Defer `await` calls to the specific branches that consume the data. Use `Promise.all()` to parallelize independent fetches, and chain dependent promises inside map blocks so one slow item doesn't block the rest of the batch.
+- Suspense Boundaries: Wrap heavy data-fetching components in `<Suspense>` to avoid blocking parent component layout rendering and improve initial paint times.
+- Bundle Size: Avoid barrel imports (e.g., from `lucide-react`) by importing directly from source modules. Lazy-load heavy widgets, non-critical third-party libraries, and off-screen components using `next/dynamic` or dynamic `import()`. Ensure import paths are statically analyzable and avoid dynamic strings.
+- Server Actions: Treat Server Actions (`"use server"`) as public API endpoints and always verify authentication and authorization internally.
+- RSC Props: Avoid mapping, filtering, or sorting arrays into new object references across RSC boundaries to prevent duplicate client-side serialization. Pass raw data and handle transformations inside the Client Component.
+- Shared Server State: Never store request-scoped data in process-wide global or module-level variables. Hoist static assets, configs, or templates to the module level so they are loaded once at startup.
+- RSC Boundaries: Minimize data serialization across the server-client boundary by passing only the specific fields needed by the client.
+- React.cache: Wrap custom DB or file-system queries in `React.cache()` to share responses across Server Components within the same request. Use `next/server` `after()` for non-blocking post-response tasks.
+- Global Listeners: Share global window/document event listeners using a pub/sub or SWR subscription instead of adding redundant listeners per component.
+- Event Performance: Use passive event listeners (`{ passive: true }`) for touch/wheel handlers that do not block scrolling. Use SWR/React Query for automatic data deduplication and caching.
+- localStorage: Wrap storage calls in try-catch to prevent crashes in Private Mode/Quota errors, and prefix keys with version namespaces.
+- Derived State: Compute derived values directly in the render body instead of syncing them using state and effects.
+- Component Nesting: Never declare components inside other components, as they will be recreated on every render, causing full DOM remounts and state loss.
+- Prop Stability: Declare default non-primitive values (arrays, objects, empty functions) as module-level constants to maintain prop identity stability for memoized components.
+- Hooks & Memoization: Narrow effect dependencies to primitive properties. Separate unrelated states and computations into independent hooks to isolate recalculations. Wrap slow state updates in `startTransition` and lag heavy updates with `useDeferredValue`.
+- Event Handlers: Put user-initiated side effects (e.g., submit/toast alerts) directly in event handler callbacks instead of syncing via effects.
+- Functional State: Use the updater form (`setCount(c => c + 1)`) to avoid hooks depending on the state variable itself.
+- State Initialization: Use lazy initialization (`useState(() => init())`) for expensive calculations like reading local storage or parsing configs.
+- Refs for Transient Values: Store transient values (e.g., mouse positions, timer IDs) in `useRef` to modify them without triggering component re-renders.
+- SVG Performance: Apply animations and transforms to SVG container elements (`<div>`) rather than the raw `<svg>` elements to enable GPU hardware acceleration. Hoist static SVG/JSX nodes outside components.
+- List Rendering: Use `content-visibility: auto` with `contain-intrinsic-size` on long lists to skip off-screen layout and paint. Use explicit conditionals (e.g., ternary operators) instead of `&&` to prevent rendering falsy values like `0` or `NaN`.
+- Hydration Mismatches: Use synchronous script injection to modify DOM classnames (e.g., themes) before hydration to prevent visual flicker. Use `suppressHydrationWarning` exclusively on expected server-client differences (e.g., system dates).
+- Resource Hints: Leverage prefetching, preconnecting, and preloading resource hints (`prefetchDNS`, `preconnect`, `preload`) in server components to load critical files early.
+- JavaScript & Loops: Batch DOM reads and style writes together to avoid layout thrashing. Build lookup Maps for repetitive nested searches, cache loop lengths, hoist RegExps, and use `.flatMap()` to map and filter arrays in one pass.
+- Array Immutability: Use non-mutating copy methods like `.toSorted()`, `.toReversed()`, or `.toSpliced()` (or copies) when updating React state arrays.
+- Effect Events: Use `useEffectEvent` to read reactive props/state inside callbacks from within effects without adding those values to the dependency array.

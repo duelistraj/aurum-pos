@@ -1,30 +1,13 @@
 import axios from 'axios';
-import { Preferences } from '@capacitor/preferences';
+import { getPreference, setPreference } from './storage';
 
 const API_URL_KEY = 'api_base_url';
 const BUILD_DEFAULT_API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '';
 
 const normalizeApiUrl = (url: string): string => url.trim().replace(/\/+$/, '');
 
-const getStoredValue = async (): Promise<string | null> => {
-  try {
-    const { value } = await Preferences.get({ key: API_URL_KEY });
-    return value;
-  } catch {
-    return localStorage.getItem(API_URL_KEY);
-  }
-};
-
-const setStoredValue = async (value: string): Promise<void> => {
-  try {
-    await Preferences.set({ key: API_URL_KEY, value });
-  } catch {
-    localStorage.setItem(API_URL_KEY, value);
-  }
-};
-
 export const getSavedApiUrl = async (): Promise<string | null> => {
-  const value = await getStoredValue();
+  const value = await getPreference(API_URL_KEY);
   return value ? normalizeApiUrl(value) : null;
 };
 
@@ -35,7 +18,7 @@ export const getApiBaseUrl = async (): Promise<string> => {
 
 export const saveApiBaseUrl = async (url: string): Promise<string> => {
   const normalizedUrl = normalizeApiUrl(url);
-  await setStoredValue(normalizedUrl);
+  await setPreference(API_URL_KEY, normalizedUrl);
   window.dispatchEvent(new CustomEvent('api-url-changed', { detail: normalizedUrl }));
   return normalizedUrl;
 };

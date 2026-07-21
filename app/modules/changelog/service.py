@@ -1,7 +1,6 @@
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import select, String, cast
+from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
@@ -10,11 +9,11 @@ from app.core.changelog.models import ChangeLog
 async def get_change_log_history(
     db: AsyncSession,
     *,
-    from_date: Optional[datetime] = None,
-    to_date: Optional[datetime] = None,
-    barcode: Optional[str] = None,
-    invoice_no: Optional[str] = None,
-    action: Optional[str] = None,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    barcode: str | None = None,
+    invoice_no: str | None = None,
+    action: str | None = None,
 ):
     stmt = select(ChangeLog)
     filters = []
@@ -26,13 +25,9 @@ async def get_change_log_history(
     if action:
         filters.append(ChangeLog.action == action)
     if barcode:
-        filters.append(
-            cast(ChangeLog.payload["barcode"], String).ilike(f"%{barcode}%")
-        )
+        filters.append(cast(ChangeLog.payload["barcode"], String).ilike(f"%{barcode}%"))
     if invoice_no:
-        filters.append(
-            cast(ChangeLog.payload["invoice_no"], String).ilike(f"%{invoice_no}%")
-        )
+        filters.append(cast(ChangeLog.payload["invoice_no"], String).ilike(f"%{invoice_no}%"))
 
     if filters:
         stmt = stmt.where(*filters)

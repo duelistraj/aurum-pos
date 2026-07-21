@@ -1,10 +1,11 @@
 from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.dashboard.service import get_dashboard_summary, get_dashboard_analytics
 from app.modules.dashboard.schemas import AnalyticsDashboardResponse
+from app.modules.dashboard.service import get_dashboard_analytics, get_dashboard_summary
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -24,4 +25,3 @@ async def dashboard_analytics(
     db: AsyncSession = Depends(get_db),
 ):
     return await get_dashboard_analytics(db, from_date, to_date, metal)
-

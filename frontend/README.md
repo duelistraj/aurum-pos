@@ -35,7 +35,8 @@ React + TypeScript frontend for Aurum POS with:
 ### Installation
 
 ```bash
-npm install
+cp .env.example .env
+npm ci
 ```
 
 ### Development
@@ -54,11 +55,11 @@ npm run build
 
 ### Environment Variables
 
-`VITE_API_URL` is optional. Leave it blank for generic Android/web builds; users
-can enter the backend URL on first launch.
+For local development, `VITE_API_URL` should point to the backend. It can be left
+blank for generic Android/web builds, where users enter the URL on first launch.
 
 ```env
-VITE_API_URL=
+VITE_API_URL=http://localhost:8000
 ```
 
 ## Project Structure
@@ -108,19 +109,8 @@ The frontend integrates with the following backend endpoints:
 
 - Code splitting via React Router
 - Lazy loading of routes
-- Image optimization
-- Efficient state management with React hooks
-- Memoization where needed
-- CSS-in-JS for optimal loading
-
-## Accessibility
-
-- WCAG 2.1 AA compliant
-- Keyboard navigation support
-- Screen reader friendly
-- Proper color contrast
-- Focus indicators
-- Semantic HTML
+- Cached server state and request deduplication with TanStack Query
+- Versioned, failure-tolerant local configuration storage
 
 ## License
 

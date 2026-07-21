@@ -6,35 +6,23 @@ FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    POETRY_HOME=/opt/poetry \
-    POETRY_VERSION=2.1.4 \
-    PATH="/opt/poetry/bin:$PATH"
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Install build dependencies used by packages without compatible wheels.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 - --version ${POETRY_VERSION}
+# Keep the uv version aligned with pyproject.toml and CI.
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /bin/
 
-# Verify Poetry installation
-RUN poetry --version
-
-# Copy dependency files first (Docker layer caching)
-COPY pyproject.toml poetry.lock ./
-
-# Create virtual environment inside the project
-RUN poetry config virtualenvs.in-project true
-
-# Install production dependencies
-RUN poetry install \
-    --only main \
-    --no-interaction \
-    --no-root
+# Install production dependencies in a cacheable layer.
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-install-project
 
 # Copy application
 COPY app ./app
@@ -54,7 +42,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # curl is required for the Docker healthcheck
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

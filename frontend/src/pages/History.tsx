@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Search, 
   RotateCcw, 
@@ -13,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { queryKeys } from '../api/queryKeys';
 import { ChangeLogEntry } from '../types';
 import { Card, Input, Button, Loader } from '../components/UI';
 import { formatDate } from '../utils';
@@ -39,6 +41,11 @@ const getDetailValue = (value: unknown) => {
 
   return String(value);
 };
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 
 const flattenPayload = (
   payload: unknown,
@@ -103,14 +110,15 @@ const getHistorySummary = (entry: ChangeLogEntry) => {
   }
 
   if (entry.entity === 'item' && entry.action === 'update') {
+    const changes = asRecord(payload.changes);
+    const barcodeChange = asRecord(changes.barcode);
     const barcode =
-      payload.barcode ?? payload.changes?.barcode?.before ?? 'Unknown item';
-    const changes = payload.changes ?? {};
+      payload.barcode ?? barcodeChange.before ?? 'Unknown item';
     const changeEntries = Object.entries(changes).map(([key, value]) => {
       if (typeof value === 'object' && value !== null) {
         return [
           humanizeKey(key),
-          `${getDetailValue((value as any).before)} → ${getDetailValue((value as any).after)}`,
+          `${getDetailValue(asRecord(value).before)} → ${getDetailValue(asRecord(value).after)}`,
         ];
       }
 
@@ -148,9 +156,6 @@ const getHistorySummary = (entry: ChangeLogEntry) => {
 };
 
 export const History: React.FC = () => {
-  const [entries, setEntries] = React.useState<ChangeLogEntry[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
   const [filters, setFilters] = React.useState({
     barcode: '',
     invoiceNo: '',
@@ -158,6 +163,7 @@ export const History: React.FC = () => {
     fromDate: '',
     toDate: '',
   });
+  const [appliedFilters, setAppliedFilters] = React.useState(filters);
   const [expandedId, setExpandedId] = React.useState<number | string | null>(null);
   const [showActionDropdown, setShowActionDropdown] = React.useState(false);
   
@@ -175,30 +181,19 @@ export const History: React.FC = () => {
     };
   }, []);
 
-  const loadHistory = React.useCallback(async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const data = await apiClient.getChangeLogHistory({
-        barcode: filters.barcode || undefined,
-        invoice_no: filters.invoiceNo || undefined,
-        action: filters.action || undefined,
-        from_date: filters.fromDate || undefined,
-        to_date: filters.toDate || undefined,
-      });
-      setEntries(data);
-    } catch (err) {
-      setError((err as Error)?.message || 'Unable to load history.');
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
-
-  React.useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+  const historyQuery = useQuery<ChangeLogEntry[]>({
+    queryKey: queryKeys.history(appliedFilters),
+    queryFn: () => apiClient.getChangeLogHistory({
+      barcode: appliedFilters.barcode || undefined,
+      invoice_no: appliedFilters.invoiceNo || undefined,
+      action: appliedFilters.action || undefined,
+      from_date: appliedFilters.fromDate || undefined,
+      to_date: appliedFilters.toDate || undefined,
+    }),
+  });
+  const entries = historyQuery.data ?? [];
+  const loading = historyQuery.isPending;
+  const error = historyQuery.error instanceof Error ? historyQuery.error.message : '';
 
   const handleChange = (
     key: keyof typeof filters,
@@ -209,18 +204,19 @@ export const History: React.FC = () => {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void loadHistory();
+    setAppliedFilters({ ...filters });
   };
 
   const handleReset = () => {
-    setFilters({
+    const emptyFilters = {
       barcode: '',
       invoiceNo: '',
       action: '',
       fromDate: '',
       toDate: '',
-    });
-    void loadHistory();
+    };
+    setFilters(emptyFilters);
+    setAppliedFilters(emptyFilters);
   };
 
   const toggleExpand = (id: number | string) => {
@@ -383,8 +379,8 @@ export const History: React.FC = () => {
                 const isExpanded = expandedId === entry.id;
 
                 // Determine icon
-                let iconNode = <Plus className="w-5 h-5" />;
-                let iconBg = "bg-emerald-50 text-emerald-500 dark:bg-emerald-950/20 dark:text-emerald-400";
+                let iconNode: React.ReactNode;
+                let iconBg: string;
 
                 if (entry.entity === 'sale' || entry.action === 'sold') {
                   iconNode = <IndianRupee className="w-5 h-5" />;
@@ -406,7 +402,7 @@ export const History: React.FC = () => {
 
 
                 return (
-                  <div key={entry.id} className="border border-slate-100 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-300">
+                  <div key={entry.id} className="deferred-list-item border border-slate-100 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-300">
                     <div
                       onClick={() => toggleExpand(entry.id)}
                       className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 hover:bg-slate-50/40 dark:hover:bg-slate-800/20 transition-colors cursor-pointer gap-4"

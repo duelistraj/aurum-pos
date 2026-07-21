@@ -11,7 +11,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - "pyproject.toml"
-      - "poetry.lock"
+      - "uv.lock"
       - ".github/workflows/docker-publish.yml"
 
   workflow_dispatch:

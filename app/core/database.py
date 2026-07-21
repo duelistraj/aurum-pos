@@ -1,8 +1,8 @@
-from sqlalchemy.ext.asyncio import (
-    create_async_engine,
-    AsyncSession,
-)
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from collections.abc import AsyncIterator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+
 from app.core.config import settings
 
 engine = create_async_engine(
@@ -11,7 +11,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
 )
 
-AsyncSessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
@@ -22,6 +22,7 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
+async def get_db() -> AsyncIterator[AsyncSession]:
+    """Provide one atomic transaction for all database work in a request."""
+    async with AsyncSessionLocal.begin() as session:
         yield session

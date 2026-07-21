@@ -1,11 +1,11 @@
 from collections.abc import Sequence
 from io import BytesIO
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from reportlab.graphics.barcode import code128
 from reportlab.lib.pagesizes import mm
 from reportlab.pdfgen import canvas
-from reportlab.graphics.barcode import code128
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
-
 
 LABEL_WIDTH = 64 * mm
 LABEL_HEIGHT = 15 * mm
@@ -142,8 +142,8 @@ def generate_batch_labels_pdf(items: Sequence) -> bytes:
     - barcode graphic on the third line with barcode text below
     """
 
-    PAGE_WIDTH = PDF_LABEL_WIDTH          # 50mm
-    PAGE_HEIGHT = PDF_LABEL_HEIGHT        # 25mm
+    PAGE_WIDTH = PDF_LABEL_WIDTH  # 50mm
+    PAGE_HEIGHT = PDF_LABEL_HEIGHT  # 25mm
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
@@ -168,21 +168,31 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Labels"
-    
+
     # Set column widths
     for col in range(1, 16):
         ws.column_dimensions[chr(64 + col)].width = 15
-    
+
     # Add header row
     headers = [
-        "Name 1", "Name 2", "Name 3",
-        "Purity 1", "Purity 2", "Purity 3",
-        "MC 1", "MC 2", "MC 3",
-        "Wt. 1", "Wt. 2", "Wt. 3",
-        "Barcode 1", "Barcode 2", "Barcode 3",
+        "Name 1",
+        "Name 2",
+        "Name 3",
+        "Purity 1",
+        "Purity 2",
+        "Purity 3",
+        "MC 1",
+        "MC 2",
+        "MC 3",
+        "Wt. 1",
+        "Wt. 2",
+        "Wt. 3",
+        "Barcode 1",
+        "Barcode 2",
+        "Barcode 3",
     ]
     ws.append(headers)
-    
+
     # Style header
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
@@ -190,7 +200,7 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
-    
+
     items_list = list(items)
 
     # Add data rows (3 items per row)
@@ -208,7 +218,9 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         for j in range(3):
             if i + j < len(items_list):
                 item = items_list[i + j]
-                purity_text = f"{item.purity}%" if getattr(item, "purity", None) in (92.5, 99.9) else ""
+                purity_text = (
+                    f"{item.purity}%" if getattr(item, "purity", None) in (92.5, 99.9) else ""
+                )
                 row_data.append(purity_text)
             else:
                 row_data.append("")
@@ -217,7 +229,11 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         for j in range(3):
             if i + j < len(items_list):
                 item = items_list[i + j]
-                mc_text = f"{item.making_charge}" if getattr(item, "making_charge", None) is not None else ""
+                mc_text = (
+                    f"{item.making_charge}"
+                    if getattr(item, "making_charge", None) is not None
+                    else ""
+                )
                 row_data.append(mc_text)
             else:
                 row_data.append("")
@@ -244,12 +260,12 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
                 row_data.append("")
 
         ws.append(row_data)
-    
+
     # Center align all data cells
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=15):
         for cell in row:
             cell.alignment = Alignment(horizontal="center", vertical="center")
-    
+
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
 import { getApiBaseUrl } from '../utils/apiConfig';
+import { getLocalValue, setLocalValue } from '../utils/storage';
 
 interface ConfigContextType {
   appName: string;
@@ -16,12 +17,13 @@ const ConfigContext = createContext<ConfigContextType>({
 
 export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [appName, setAppName] = useState<string>(() => {
-    return localStorage.getItem('app_name') || 'Aurum POS';
+    return getLocalValue('app_name') || 'Aurum POS';
   });
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('theme') === 'dark' || 
-      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const storedTheme = getLocalValue('theme');
+    return storedTheme === 'dark' ||
+      (storedTheme === null && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const data = await apiClient.health();
         if (data && data.app) {
           setAppName(data.app);
-          localStorage.setItem('app_name', data.app);
+          setLocalValue('app_name', data.app);
           document.title = `${data.app} - Inventory & Sales Management`;
         }
       } catch (err) {
@@ -48,10 +50,10 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      setLocalValue('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      setLocalValue('theme', 'light');
     }
   }, [isDarkMode]);
 
@@ -64,4 +66,5 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useConfig = () => useContext(ConfigContext);

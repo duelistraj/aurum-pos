@@ -1,24 +1,23 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import engine
-from app.modules.items.routes import router as item_router
-from app.modules.sales.routes import router as sales_router
-from app.modules.metal_rates.routes import router as metal_rate_router
-from app.modules.invoices.routes import router as invoice_router
-from app.modules.dashboard.routes import router as dashboard_router
-from app.modules.changelog.routes import router as changelog_router
-from app.modules.auth.routes import router as auth_router
 from app.modules.auth.dependencies import RequireAuth
+from app.modules.auth.routes import router as auth_router
+from app.modules.changelog.routes import router as changelog_router
+from app.modules.dashboard.routes import router as dashboard_router
+from app.modules.items.routes import router as item_router
+from app.modules.metal_rates.routes import router as metal_rate_router
+from app.modules.sales.routes import router as sales_router
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
-    # Shutdown
     await engine.dispose()
 
 
@@ -46,11 +45,10 @@ app.include_router(sales_router, dependencies=protected_dependencies)
 app.include_router(metal_rate_router, dependencies=protected_dependencies)
 app.include_router(dashboard_router, dependencies=protected_dependencies)
 app.include_router(changelog_router, dependencies=protected_dependencies)
-app.include_router(invoice_router, dependencies=protected_dependencies)
 
 
 @app.get("/", tags=["Health"])
-async def health():
+async def health() -> dict[str, str]:
     return {
         "status": "ok",
         "app": settings.app_name,

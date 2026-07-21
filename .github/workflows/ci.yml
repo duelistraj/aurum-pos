@@ -10,27 +10,60 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aurum_pos_test
+          POSTGRES_USER: aurum
+          POSTGRES_PASSWORD: change-me
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aurum -d aurum_pos_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://aurum:change-me@localhost:5432/aurum_pos_test
+      APP_NAME: Aurum POS Test
+      ENV: test
+      JWT_SECRET_KEY: test-secret-key-that-is-long-enough-for-ci
+      MANAGER_PASSWORD: manager-test-password
+      CORS_ORIGINS: '["http://localhost:5173"]'
+      RUN_INTEGRATION: "1"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
+          version: "0.11.28"
           python-version: "3.12"
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+          enable-cache: true
 
       - name: Install dependencies
-        run: poetry install
+        run: uv sync --locked
+
+      - name: Validate lockfile
+        run: uv lock --check
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
 
       - name: Lint backend
-        run: poetry run ruff check app/core app/main.py
+        run: uv run ruff check app tests
 
-      - name: Compile backend
-        run: poetry run python -m compileall app
+      - name: Check backend formatting
+        run: uv run ruff format --check app tests
+
+      - name: Type-check backend
+        run: uv run mypy app
+
+      - name: Test backend
+        run: uv run pytest --cov=app --cov-report=term-missing
 
   frontend:
     runs-on: ubuntu-latest
@@ -49,6 +82,18 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test
 
       - name: Build frontend
         working-directory: frontend

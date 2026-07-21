@@ -26,6 +26,10 @@ const formatMetalLabel = (metal: string, purity: number) => {
   return purity > 0 ? `${metal} ${purity}%` : `${metal} (unspecified)`;
 };
 
+const focusBarcodeInput = () => {
+  document.getElementById('barcodeInput')?.focus();
+};
+
 type CartItem = ItemPOSWithPrice & {
   cartQuantity: number;
 };
@@ -64,19 +68,14 @@ export const POS: React.FC = () => {
     }
   }, [location.search]);
 
-  const focusBarcodeInput = () => {
-    const input = document.getElementById('barcodeInput') as HTMLInputElement | null;
-    input?.focus();
-  };
-
-  const stopCamera = () => {
+  const stopCamera = React.useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-  };
+  }, []);
 
-  const scanBarcode = async (barcodeValue: string) => {
+  const scanBarcode = React.useCallback(async (barcodeValue: string) => {
     const trimmedValue = barcodeValue.trim();
     if (!trimmedValue) return;
 
@@ -123,7 +122,7 @@ export const POS: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleScanBarcode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +145,8 @@ export const POS: React.FC = () => {
       setCameraError('');
 
       // Check support for BarcodeDetector API (native in modern Android/Chromium)
-      if (!('BarcodeDetector' in window)) {
+      const BarcodeDetector = window.BarcodeDetector;
+      if (!BarcodeDetector) {
         setCameraError(
           'Barcode Detection API is not supported in this browser. Please use a Chromium-based browser or mobile WebView.'
         );
@@ -173,7 +173,7 @@ export const POS: React.FC = () => {
           video.srcObject = stream;
           await video.play();
 
-          const barcodeDetector = new (window as any).BarcodeDetector({
+          const barcodeDetector = new BarcodeDetector({
             formats: ['code_128', 'ean_13', 'ean_8', 'qr_code', 'upc_a', 'upc_e'],
           });
 
@@ -223,7 +223,7 @@ export const POS: React.FC = () => {
       active = false;
       stopCamera();
     };
-  }, [showCameraScanner]);
+  }, [scanBarcode, showCameraScanner, stopCamera]);
 
   const decrementCartItem = (index: number) => {
     setCart((prev) => {

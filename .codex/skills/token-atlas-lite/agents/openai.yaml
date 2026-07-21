@@ -1,0 +1,7 @@
+interface:
+  display_name: "Token Atlas Lite"
+  short_description: "Lean repository memory without PKF routing"
+  default_prompt: "Use $token-atlas-lite to initialize or refresh the lean repository knowledge base."
+
+policy:
+  allow_implicit_invocation: false

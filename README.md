@@ -23,11 +23,12 @@ and a generic Capacitor Android app.
 ## Backend Setup
 
 ```bash
-poetry install
+uv sync --locked
 cp .env.example .env
-poetry run alembic upgrade head
-poetry run python -m app.cli admin strong-password "Admin User"
-poetry run uvicorn app.main:app --reload
+docker compose -f compose.dev.yml up -d --wait postgres
+uv run alembic upgrade head
+uv run python -m app.cli admin strong-password "Admin User"
+uv run uvicorn app.main:app --reload
 ```
 
 Edit `.env` before running in production. At minimum set `DATABASE_URL`,
@@ -40,7 +41,8 @@ The backend runs at `http://localhost:8000` by default. Swagger docs are at
 
 ```bash
 cd frontend
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 

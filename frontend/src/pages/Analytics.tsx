@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
   PieChart,
@@ -22,11 +23,13 @@ import {
   Tooltip as ChartTooltip,
   Legend as ChartLegend,
   ArcElement,
-  Filler
+  Filler,
+  TooltipItem,
 } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
 import { Card, Loader } from '../components/UI';
 import { apiClient } from '../api/client';
+import { queryKeys } from '../api/queryKeys';
 import { AnalyticsDashboardResponse } from '../types';
 import { formatCurrency } from '../utils';
 
@@ -67,9 +70,6 @@ export const Analytics: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [selectedJewellery, setSelectedJewellery] = useState<string>('all');
   const [showMetalDropdown, setShowMetalDropdown] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<AnalyticsDashboardResponse | null>(null);
 
   // Set dates based on preset selection
   const applyPreset = (presetId: string) => {
@@ -109,28 +109,16 @@ export const Analytics: React.FC = () => {
     applyPreset('7d');
   }, []);
 
-  // Fetch analytics data on date and jewellery filter change
-  useEffect(() => {
-    if (!startDate || !endDate) return;
-
-    const fetchAnalytics = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        // Send range start at 00:00:00 and end at 23:59:59
-        const isoStart = `${startDate}T00:00:00Z`;
-        const isoEnd = `${endDate}T23:59:59Z`;
-        const res = await apiClient.getDashboardAnalytics(isoStart, isoEnd, selectedJewellery);
-        setData(res);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch analytics data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAnalytics();
-  }, [startDate, endDate, selectedJewellery]);
+  const isoStart = startDate ? `${startDate}T00:00:00Z` : '';
+  const isoEnd = endDate ? `${endDate}T23:59:59Z` : '';
+  const analyticsQuery = useQuery<AnalyticsDashboardResponse>({
+    queryKey: queryKeys.analytics(isoStart, isoEnd, selectedJewellery),
+    queryFn: () => apiClient.getDashboardAnalytics(isoStart, isoEnd, selectedJewellery),
+    enabled: Boolean(isoStart && isoEnd),
+  });
+  const data = analyticsQuery.data ?? null;
+  const loading = analyticsQuery.isPending;
+  const error = analyticsQuery.error instanceof Error ? analyticsQuery.error.message : null;
 
   // Format date range display label
   const getRangeLabel = () => {
@@ -187,8 +175,8 @@ export const Analytics: React.FC = () => {
         padding: 10,
         displayColors: false,
         callbacks: {
-          label: function(context: any) {
-            return formatCurrency(context.raw);
+          label: function(context: TooltipItem<'line'>) {
+            return formatCurrency(Number(context.raw));
           }
         }
       }
@@ -210,7 +198,7 @@ export const Analytics: React.FC = () => {
         ticks: {
           color: '#94a3b8',
           font: { size: 9, weight: 'bold' as const },
-          callback: function(value: any) {
+          callback: function(value: string | number) {
             return formatK(Number(value));
           }
         }
@@ -246,9 +234,9 @@ export const Analytics: React.FC = () => {
         borderWidth: 1,
         padding: 10,
         callbacks: {
-          label: function(context: any) {
-            const value = context.raw;
-            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+          label: function(context: TooltipItem<'doughnut'>) {
+            const value = Number(context.raw);
+            const total = context.dataset.data.reduce((sum, item) => sum + Number(item), 0);
             const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
             return ` ${context.label}: ${formatCurrency(value)} (${percentage}%)`;
           }
@@ -283,9 +271,9 @@ export const Analytics: React.FC = () => {
         borderWidth: 1,
         padding: 10,
         callbacks: {
-          label: function(context: any) {
-            const value = context.raw;
-            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+          label: function(context: TooltipItem<'doughnut'>) {
+            const value = Number(context.raw);
+            const total = context.dataset.data.reduce((sum, item) => sum + Number(item), 0);
             const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
             return ` ${context.label}: ${value} (${percentage}%)`;
           }

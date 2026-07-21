@@ -1,7 +1,9 @@
+from decimal import Decimal
+
 from pydantic import BaseModel
 
 
 class MetalRateCreate(BaseModel):
     metal: str
-    purity: float
-    rate_per_gram: float
+    purity: Decimal
+    rate_per_gram: Decimal

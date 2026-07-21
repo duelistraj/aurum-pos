@@ -1,11 +1,14 @@
 import uuid
+from datetime import datetime
+from decimal import Decimal
+
 from sqlalchemy import (
-    String,
-    DateTime,
-    Numeric,
-    ForeignKey,
     JSON,
+    DateTime,
+    ForeignKey,
     Integer,
+    Numeric,
+    String,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,12 +32,12 @@ class Sale(Base):
         nullable=False,
     )
 
-    total_amount: Mapped[float] = mapped_column(
+    total_amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),
         nullable=False,
     )
 
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
@@ -101,7 +104,7 @@ class SaleItem(Base):
         server_default="1",
     )
 
-    price: Mapped[float] = mapped_column(
+    price: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),
         nullable=False,
     )

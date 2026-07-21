@@ -1,5 +1,8 @@
 import uuid
-from sqlalchemy import String, Integer, Numeric, DateTime, Text
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import DateTime, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -45,17 +48,17 @@ class Item(Base):
         nullable=False,  # gold / Silver / platinum
     )
 
-    purity: Mapped[float] = mapped_column(
+    purity: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,
     )
 
-    net_weight: Mapped[float] = mapped_column(
+    net_weight: Mapped[Decimal] = mapped_column(
         Numeric(10, 3),
         nullable=False,
     )
 
-    making_charge: Mapped[float] = mapped_column(
+    making_charge: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,
     )
@@ -78,12 +81,12 @@ class Item(Base):
         nullable=True,
     )
 
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
-    updated_at: Mapped[str] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),

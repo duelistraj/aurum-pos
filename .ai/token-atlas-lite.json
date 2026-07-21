@@ -1,0 +1,5 @@
+{
+  "edition": "lite",
+  "schema_version": 1,
+  "entrypoint": ".ai/INDEX.md"
+}

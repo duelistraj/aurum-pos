@@ -6,7 +6,6 @@ __pycache__/
 *.pyd
 *.egg-info/
 *.dist-info/
-.python-version
 .venv/
 .temp/
 

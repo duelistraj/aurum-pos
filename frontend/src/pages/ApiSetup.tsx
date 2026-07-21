@@ -25,8 +25,8 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
       await validateApiBaseUrl(apiUrl);
       await saveApiBaseUrl(apiUrl);
       onConfigured();
-    } catch (err: any) {
-      setError(err.message || 'Could not connect to the backend API.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not connect to the backend API.');
     } finally {
       setLoading(false);
     }

@@ -1,40 +1,40 @@
----
-type: memory
-title: Repository Memory
-description: Stable repository-wide facts for aurum-pos.
-resource: .ai/MEMORY.md
-tags: [aurum-pos, memory, shared]
-timestamp: 2026-07-06
+# Memory
 
-pkf:
-  loads: []
-  related: [.ai/ARCHITECTURE.md, .ai/knowledge/dependencies.md]
----
+### Local bootstrap
 
-# Repository Memory
+From the repository root, copy `.env.example` to `.env`, run
+`uv sync --locked`, start PostgreSQL with
+`docker compose -f compose.dev.yml up -d --wait postgres`, apply migrations with
+`uv run alembic upgrade head`, and start the API with
+`uv run uvicorn app.main:app --reload`. The API defaults to port 8000. In
+`frontend/`, run `npm ci`, copy `.env.example` to `.env.local`, and run
+`npm run dev`; Vite uses port 5173.
 
-## Stable Facts
+Evidence:
+- `README.md::Backend Setup`
+- `README.md::Frontend Setup`
+- `frontend/vite.config.ts::server.port`
 
-| Fact | Evidence |
-|---|---|
-| Project package name is `aurum-pos`; Python package version is `0.0.2`. | `pyproject.toml` |
-| Backend is FastAPI using async SQLAlchemy and PostgreSQL via `asyncpg`. | `pyproject.toml`; `app/core/database.py` |
-| Frontend is React 18 + TypeScript + Vite with Capacitor Android support and a Tauri shell present. | `frontend/package.json`; `frontend/capacitor.config.ts`; `frontend/src-tauri/Cargo.toml` |
-| Domain backend modules live under `app/modules/`. | `app/modules/*` |
-| Protected API routers use `RequireAuth`; `/auth/*` and `/` health are public in `app/main.py`. | `app/main.py` |
-| Database migrations are Alembic revisions under `alembic/versions/`. | `alembic/versions/*` |
+### Required configuration and secret hygiene
 
-## Common Commands
+The backend cannot initialize without `DATABASE_URL` and `JWT_SECRET_KEY`.
+Production also needs a strong manager password and appropriate CORS origins.
+Never commit `.env`, signing keys, access tokens, customer records, database
+dumps, or generated invoices.
 
-| Task | Command | Evidence |
-|---|---|---|
-| Install backend dependencies | `poetry install` | `README.md`; `pyproject.toml` |
-| Run migrations | `poetry run alembic upgrade head` | `README.md`; `alembic.ini` |
-| Run backend dev server | `poetry run uvicorn app.main:app --reload` | `README.md`; `app/main.py` |
-| Install frontend dependencies | `npm install` in `frontend/` | `README.md`; `frontend/package.json` |
-| Run frontend dev server | `npm run dev` in `frontend/` | `frontend/package.json` |
-| Build frontend | `npm run build` in `frontend/` | `frontend/package.json` |
+Evidence:
+- `app/core/config.py::Settings`
+- `.env.example::JWT_SECRET_KEY`
+- `SECURITY.md::Secrets`
 
-## Caution
+### Verification commands
 
-- `.env` exists locally and may contain secrets; use `.env.example` for documented keys.
+Backend gates are `uv lock --check`, Ruff check and format check over `app tests`,
+`uv run mypy app`, and `uv run pytest`. Frontend gates are `npm run lint`,
+`npm run typecheck`, `npm test`, and `npm run build`. The PostgreSQL integration
+test runs only when `RUN_INTEGRATION=1` against a migrated database.
+
+Evidence:
+- `.github/workflows/ci.yml::jobs.backend`
+- `.github/workflows/ci.yml::jobs.frontend`
+- `tests/test_integration_flow.py::pytestmark`

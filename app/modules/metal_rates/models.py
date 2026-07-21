@@ -1,5 +1,8 @@
 import uuid
-from sqlalchemy import String, Numeric, DateTime
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import DateTime, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -22,24 +25,24 @@ class MetalRate(Base):
         index=True,
     )
 
-    purity: Mapped[float] = mapped_column(
+    purity: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,  # 24.0, 22.0, 92.5
         index=True,
     )
 
-    rate_per_gram: Mapped[float] = mapped_column(
+    rate_per_gram: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,
     )
 
-    effective_from: Mapped[str] = mapped_column(
+    effective_from: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         index=True,
     )
 
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )

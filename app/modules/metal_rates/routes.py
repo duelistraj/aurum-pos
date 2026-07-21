@@ -3,7 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.modules.metal_rates.schemas import MetalRateCreate
-from app.modules.metal_rates.service import add_metal_rate, get_available_metals, get_all_metal_rates
+from app.modules.metal_rates.service import (
+    add_metal_rate,
+    get_all_metal_rates,
+    get_available_metals,
+)
 
 router = APIRouter(prefix="/metal-rates", tags=["Metal Rates"])
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { 
   IndianRupee, 
@@ -13,8 +14,14 @@ import {
 } from 'lucide-react';
 import { Card, Loader } from '../components/UI';
 import { apiClient } from '../api/client';
+import { queryKeys } from '../api/queryKeys';
 import { DashboardSummary, ChangeLogEntry } from '../types';
 import { formatCurrency } from '../utils';
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -64,26 +71,13 @@ const IngotIcon: React.FC = () => (
 );
 
 export const Dashboard: React.FC = () => {
-  const [isHealthy, setIsHealthy] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
-  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
-
-  React.useEffect(() => {
-    const loadDashboard = async () => {
-      setLoading(true);
-      try {
-        const data = await apiClient.getDashboardSummary();
-        setSummary(data);
-        setIsHealthy(true);
-      } catch {
-        setIsHealthy(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadDashboard();
-  }, []);
+  const dashboardQuery = useQuery<DashboardSummary>({
+    queryKey: queryKeys.dashboard,
+    queryFn: () => apiClient.getDashboardSummary(),
+  });
+  const summary = dashboardQuery.data ?? null;
+  const loading = dashboardQuery.isPending;
+  const isHealthy = dashboardQuery.isSuccess;
 
   const safeFormatCurrency = (val: number | null | undefined) => {
     if (val === null || val === undefined || isNaN(val)) {
@@ -150,19 +144,17 @@ export const Dashboard: React.FC = () => {
     }
 
     if (activity.entity === 'item' && activity.action === 'update') {
-      const barcode = payload.barcode ?? payload.changes?.barcode?.before ?? 'Unknown item';
-      const changes = (payload.changes ?? {}) as Record<
-        string,
-        { before: unknown; after: unknown }
-      >;
+      const changes = asRecord(payload.changes);
+      const barcode = payload.barcode ?? asRecord(changes.barcode).before ?? 'Unknown item';
       const details: [string, string][] = [
-        barcode && ['Barcode', String(barcode)],
+        ['Barcode', String(barcode)],
         ...Object.entries(changes).map(([key, value]) => {
-          const beforeValue = describeValue(key, value.before);
-          const afterValue = describeValue(key, value.after);
+          const change = asRecord(value);
+          const beforeValue = describeValue(key, change.before);
+          const afterValue = describeValue(key, change.after);
           return [humanizeKey(key), `${beforeValue} → ${afterValue}`] as [string, string];
         }),
-      ].filter(([_, value]) => value !== undefined && value !== null);
+      ];
 
       return {
         title: `Item updated: ${barcode}`,
@@ -317,7 +309,8 @@ export const Dashboard: React.FC = () => {
                 const barcodeDetail = activitySummary.details.find(([label]) => label === 'Barcode');
                 const barcodeText = barcodeDetail ? barcodeDetail[1] : '';
 
-                const barcodeToShow = barcodeText || activity.payload?.barcode || '';
+                const rawBarcode = barcodeText || activity.payload?.barcode;
+                const barcodeToShow = rawBarcode ? String(rawBarcode) : '';
 
                 return (
                   <div

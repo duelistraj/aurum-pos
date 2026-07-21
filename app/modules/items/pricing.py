@@ -1,87 +1,107 @@
+from decimal import ROUND_HALF_UP, Decimal
+
 from app.modules.items.tax import get_tax_profile
 
-FIXED_MAKING_CATEGORIES = {"unique", "ring", "other", "pendant"}
+type DecimalLike = Decimal | int | float | str
+MONEY_QUANTUM = Decimal("0.01")
+HUNDRED = Decimal("100")
+FIXED_MAKING_CATEGORIES = frozenset({"unique", "ring", "other", "pendant"})
+
+
+def as_decimal(value: DecimalLike) -> Decimal:
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+def quantize_money(value: DecimalLike) -> Decimal:
+    return as_decimal(value).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+
 
 def is_fixed_making_category(category: str) -> bool:
-    return str(category).strip().lower() in FIXED_MAKING_CATEGORIES
+    return category.strip().lower() in FIXED_MAKING_CATEGORIES
+
 
 def calculate_suggested_price(
     *,
     category: str,
-    net_weight: float,
-    rate_per_gram: float,
-    making_charge: float,
-):
-    if category == "unique":
-        metal_value = 0
-        making = making_charge
-        suggested_price = making_charge
+    net_weight: DecimalLike,
+    rate_per_gram: DecimalLike,
+    making_charge: DecimalLike,
+) -> dict[str, str | Decimal]:
+    normalized_category = category.strip().lower()
+    weight = as_decimal(net_weight)
+    rate = as_decimal(rate_per_gram)
+    configured_making_charge = as_decimal(making_charge)
+
+    if normalized_category == "unique":
+        metal_value = Decimal(0)
+        making = configured_making_charge
     else:
-        metal_value = net_weight * rate_per_gram
-        if is_fixed_making_category(category):
-            making = making_charge
-        else:
-            # Treat making_charge as a per-gram charge; total making = making_charge * net_weight
-            making = making_charge * net_weight
-        suggested_price = metal_value + making
+        metal_value = weight * rate
+        making = (
+            configured_making_charge
+            if is_fixed_making_category(normalized_category)
+            else configured_making_charge * weight
+        )
 
     return {
         "category": category,
-        "rate_per_gram": rate_per_gram,
-        "net_weight": net_weight,
-        "metal_value": round(metal_value, 2),
-        "making_charge": making,
-        "suggested_price": round(suggested_price, 2),
+        "rate_per_gram": rate,
+        "net_weight": weight,
+        "metal_value": quantize_money(metal_value),
+        "making_charge": quantize_money(making),
+        "suggested_price": quantize_money(metal_value + making),
     }
+
 
 def lock_price_at_sale(
     *,
     metal: str,
     category: str,
-    purity: float,
-    net_weight: float,
-    rate_per_gram: float,
-    making_charge: float,
-):
-    effective_purity = 100.0 if str(metal).lower() == "silver" else purity
+    purity: DecimalLike,
+    net_weight: DecimalLike,
+    rate_per_gram: DecimalLike,
+    making_charge: DecimalLike,
+) -> dict[str, str | Decimal | None]:
+    normalized_category = category.strip().lower()
+    normalized_metal = metal.strip().lower()
+    item_purity = as_decimal(purity)
+    effective_purity = Decimal("100") if normalized_metal == "silver" else item_purity
+    weight = as_decimal(net_weight)
+    rate = as_decimal(rate_per_gram)
+    configured_making_charge = as_decimal(making_charge)
 
-    if category == "unique":
-        metal_value = 0
-        making = making_charge
+    if normalized_category == "unique":
+        metal_value = Decimal(0)
+        making = configured_making_charge
         subtotal = making
-        gst_rate = 0
-        gst_amount = 0
-        final_price = round(making, 2)
+        gst_rate = Decimal(0)
+        gst_amount = Decimal(0)
+        hsn = None
     else:
-        metal_value = net_weight * rate_per_gram
-        if is_fixed_making_category(category):
-            making = making_charge
-        else:
-            # Treat making_charge as a per-gram charge; total making = making_charge * net_weight
-            making = making_charge * net_weight
+        metal_value = weight * rate
+        making = (
+            configured_making_charge
+            if is_fixed_making_category(normalized_category)
+            else configured_making_charge * weight
+        )
         subtotal = metal_value + making
-
         tax = get_tax_profile(metal=metal, category=category)
         gst_rate = tax["gst_rate_percent"]
-        gst_amount = round(subtotal * gst_rate / 100, 2)
-        final_price = round(subtotal + gst_amount, 2)
+        gst_amount = quantize_money(subtotal * gst_rate / HUNDRED)
+        hsn = tax["hsn"]
 
     return {
         "category": category,
         "metal": metal,
-        "hsn": tax["hsn"] if category != "unique" else None,
-
-        "item_purity": purity,
+        "hsn": hsn,
+        "item_purity": item_purity,
         "effective_purity": effective_purity,
-        "rate_per_gram": rate_per_gram,
-        "net_weight": net_weight,
-
-        "metal_value": round(metal_value, 2),
-        "making_charge": making,
-        "subtotal": round(subtotal, 2),
-
+        "rate_per_gram": rate,
+        "net_weight": weight,
+        "metal_value": quantize_money(metal_value),
+        "making_charge": quantize_money(making),
+        "subtotal": quantize_money(subtotal),
         "gst_rate_percent": gst_rate,
-        "gst_amount": gst_amount,
-
-        "final_price": final_price,
+        "gst_amount": quantize_money(gst_amount),
+        "final_price": quantize_money(subtotal + gst_amount),
     }

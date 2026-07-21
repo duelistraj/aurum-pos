@@ -1,17 +1,17 @@
-import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
+import { getPreference, setPreference } from './storage';
 
 export const DEVICE_UUID_KEY = 'device_uuid';
 
 export const getDeviceUUID = async (): Promise<string> => {
-  const { value } = await Preferences.get({ key: DEVICE_UUID_KEY });
+  const value = await getPreference(DEVICE_UUID_KEY);
   if (value) {
     return value;
   }
   
   // Generate a random UUID
   const newUuid = crypto.randomUUID();
-  await Preferences.set({ key: DEVICE_UUID_KEY, value: newUuid });
+  await setPreference(DEVICE_UUID_KEY, newUuid);
   return newUuid;
 };
 
