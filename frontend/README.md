@@ -45,7 +45,8 @@ npm ci
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173`
+The app will be available at `http://localhost:5174`. Development uses this
+port strictly and will fail if it is unavailable.
 
 ### Build
 
@@ -59,7 +60,7 @@ For local development, `VITE_API_URL` should point to the backend. It can be lef
 blank for generic Android/web builds, where users enter the URL on first launch.
 
 ```env
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8080
 ```
 
 ## Project Structure

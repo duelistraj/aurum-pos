@@ -13,6 +13,16 @@ async def test_health_and_manager_verification() -> None:
         assert health.status_code == 200
         assert health.json()["status"] == "ok"
 
+        preflight = await client.options(
+            "/",
+            headers={
+                "Origin": "http://localhost:5174",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == "http://localhost:5174"
+
         valid = await client.post(
             "/auth/verify-manager-password",
             json={"password": "manager-test-password"},

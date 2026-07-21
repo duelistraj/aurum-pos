@@ -6,9 +6,11 @@ From the repository root, copy `.env.example` to `.env`, run
 `uv sync --locked`, start PostgreSQL with
 `docker compose -f compose.dev.yml up -d --wait postgres`, apply migrations with
 `uv run alembic upgrade head`, and start the API with
-`uv run uvicorn app.main:app --reload`. The API defaults to port 8000. In
+`uv run uvicorn app.main:app --reload --port 8080`. Local API development always
+uses port 8080. In
 `frontend/`, run `npm ci`, copy `.env.example` to `.env.local`, and run
-`npm run dev`; Vite uses port 5173.
+`npm run dev`; Vite strictly uses port 5174 and does not fall back to another
+port.
 
 Evidence:
 - `README.md::Backend Setup`

@@ -28,14 +28,14 @@ cp .env.example .env
 docker compose -f compose.dev.yml up -d --wait postgres
 uv run alembic upgrade head
 uv run python -m app.cli admin strong-password "Admin User"
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --port 8080
 ```
 
 Edit `.env` before running in production. At minimum set `DATABASE_URL`,
 `JWT_SECRET_KEY`, `MANAGER_PASSWORD`, `APP_NAME`, and `CORS_ORIGINS`.
 
-The backend runs at `http://localhost:8000` by default. Swagger docs are at
-`http://localhost:8000/docs`.
+The backend runs at `http://localhost:8080` in local development. Swagger docs
+are at `http://localhost:8080/docs`.
 
 ## Frontend Setup
 
@@ -45,6 +45,9 @@ npm ci
 cp .env.example .env.local
 npm run dev
 ```
+
+The frontend runs at `http://localhost:5174`. Vite uses a strict port setting,
+so it fails instead of silently selecting another port when 5174 is occupied.
 
 `VITE_API_URL` is optional. Leave it blank for generic builds; the app will ask
 for the backend API URL on first launch and store it on the device.

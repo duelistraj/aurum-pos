@@ -6,4 +6,4 @@ os.environ.setdefault(
 )
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-that-is-long-enough")
 os.environ.setdefault("MANAGER_PASSWORD", "manager-test-password")
-os.environ.setdefault("CORS_ORIGINS", '["http://localhost:5173"]')
+os.environ.setdefault("CORS_ORIGINS", '["http://localhost:5174"]')

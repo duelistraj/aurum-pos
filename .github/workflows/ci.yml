@@ -30,7 +30,7 @@ jobs:
       ENV: test
       JWT_SECRET_KEY: test-secret-key-that-is-long-enough-for-ci
       MANAGER_PASSWORD: manager-test-password
-      CORS_ORIGINS: '["http://localhost:5173"]'
+      CORS_ORIGINS: '["http://localhost:5174"]'
       RUN_INTEGRATION: "1"
 
     steps:
