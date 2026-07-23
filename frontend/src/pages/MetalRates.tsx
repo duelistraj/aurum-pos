@@ -149,31 +149,33 @@ export const MetalRates: React.FC = () => {
         </div>
 
         {/* Alerts */}
-        {visibleError && (
-          <Alert
-            type="error"
-            title="Error"
-            message={visibleError}
-            onClose={() => setError('')}
-          />
-        )}
-        {success && (
-          <Alert
-            type="success"
-            title="Success"
-            message={success}
-            onClose={() => setSuccess('')}
-          />
-        )}
-
-        {/* No Metals Warning */}
-        {Object.keys(availableMetals).length === 0 && !loading && (
-          <Alert
-            type="warning"
-            title="No Metals Available"
-            message="Please add metal types and their purities through system settings before adding rates."
-            onClose={() => {}}
-          />
+        {(visibleError || success || (Object.keys(availableMetals).length === 0 && !loading)) && (
+          <div className="mb-6 space-y-3">
+            {visibleError && (
+              <Alert
+                type="error"
+                title="Error"
+                message={visibleError}
+                onClose={() => setError('')}
+              />
+            )}
+            {success && (
+              <Alert
+                type="success"
+                title="Success"
+                message={success}
+                onClose={() => setSuccess('')}
+              />
+            )}
+            {Object.keys(availableMetals).length === 0 && !loading && (
+              <Alert
+                type="warning"
+                title="No Metals Available"
+                message="Please add metal types and their purities through system settings before adding rates."
+                onClose={() => {}}
+              />
+            )}
+          </div>
         )}
 
         {/* Rate Cards Grid */}
@@ -198,7 +200,7 @@ export const MetalRates: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-slate-800 dark:to-slate-800/80 p-4 rounded-lg">
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-slate-800 dark:to-slate-800/80 p-4 rounded-app-inset">
                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Rate per gram</p>
                     <p className="text-3xl font-bold text-amber-600 dark:text-amber-500">
                       ₹{rate.rate_per_gram.toFixed(2)}
@@ -224,7 +226,7 @@ export const MetalRates: React.FC = () => {
                     variant="secondary"
                     size="md"
                     onClick={() => handleUpdateClick(rate)}
-                    className="w-full py-2.5 rounded-xl font-semibold shadow-xs"
+                    className="w-full py-2.5 rounded-app-control font-semibold shadow-xs"
                   >
                     Update
                   </Button>
@@ -237,7 +239,7 @@ export const MetalRates: React.FC = () => {
         {rates.length === 0 && !loading && (
           <Card className="p-12 text-center animate-slide-up">
             <AlertCircle className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-            <p className="text-slate-600 text-lg">
+            <p className="text-lg text-slate-600 dark:text-slate-400">
               No metal rates found. Add your first rate to get started.
             </p>
           </Card>
@@ -253,14 +255,14 @@ export const MetalRates: React.FC = () => {
               <Button
                 variant="secondary"
                 onClick={() => setShowModal(false)}
-                className="rounded-xl px-5"
+                className="rounded-app-control px-5"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
                 isLoading={loading}
-                className="rounded-xl px-5"
+                className="rounded-app-control px-5"
               >
                 {formData.rate_per_gram ? 'Update Rate' : 'Add Rate'}
               </Button>
@@ -281,7 +283,7 @@ export const MetalRates: React.FC = () => {
                     metal: selectedMetal,
                   });
                 }}
-                className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all duration-200"
+                className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all duration-200"
               >
                 {metals.map((metal) => (
                   <option key={metal.value} value={metal.value}>
@@ -291,7 +293,7 @@ export const MetalRates: React.FC = () => {
               </select>
             </div>
 
-            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-4">
+            <div className="rounded-app-inset border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-4">
               <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Purity</p>
               <p className="text-slate-900 dark:text-white font-semibold">100%</p>
             </div>
@@ -299,6 +301,7 @@ export const MetalRates: React.FC = () => {
             <Input
               label="Rate per Gram (₹) *"
               type="number"
+              inputMode="decimal"
               step="0.01"
               placeholder="0.00"
               value={formData.rate_per_gram}
@@ -306,7 +309,7 @@ export const MetalRates: React.FC = () => {
                 setFormData({ ...formData, rate_per_gram: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
 
             {formData.rate_per_gram && (

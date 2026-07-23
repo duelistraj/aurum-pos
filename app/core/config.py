@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     cloud_api_url: str = "https://api.aurumpos.net"
     google_web_client_id: str | None = None
     google_play_package_name: str = "com.duelistraj.aurumpos"
-    google_play_product_id: str = "aurum_cloud_premium"
+    google_play_product_id: str = "aurum_cloud_pro"
     google_play_service_account_json: str | None = None
     google_play_pubsub_audience: str | None = None
     google_play_pubsub_service_account_email: str | None = None

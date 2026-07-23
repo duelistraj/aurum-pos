@@ -101,19 +101,23 @@ export const Subscription: React.FC = () => {
   if (!activeMembership) return <Alert type="error" message="Select a shop first." />;
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-5">
-      <h1 className="text-3xl font-bold">Aurum Cloud</h1>
+    <div className="mx-auto max-w-2xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
+      <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Aurum Cloud</h1>
       {error && <Alert type="error" message={error} />}
-      <Card>
+      <Card className="p-6">
         <div className="space-y-3">
           <p className="text-lg font-semibold">
-            Current plan: {entitlement.data?.plan === 'premium' ? 'Premium' : 'Free'}
+            Current plan: {entitlement.data?.plan === 'pro' ? 'Pro' : 'Free'}
           </p>
           {entitlement.data?.active_item_limit && (
-            <p>{entitlement.data.active_item_count} of {entitlement.data.active_item_limit} active items</p>
+            <p className="text-slate-600 dark:text-slate-300">
+              {entitlement.data.active_item_count} of {entitlement.data.active_item_limit} active items
+            </p>
           )}
           {entitlement.data?.expires_at && (
-            <p>Premium until {new Date(entitlement.data.expires_at).toLocaleDateString()}</p>
+            <p className="text-slate-600 dark:text-slate-300">
+              Pro until {new Date(entitlement.data.expires_at).toLocaleDateString()}
+            </p>
           )}
         </div>
       </Card>
@@ -121,7 +125,7 @@ export const Subscription: React.FC = () => {
       {activeMembership.role === 'OWNER' && isCloudDistribution && (
         <div className="grid gap-4 sm:grid-cols-2">
           {offers.map((offer) => (
-            <Card key={offer.basePlanId}>
+            <Card key={offer.basePlanId} className="p-6">
               <h2 className="font-semibold capitalize">{offer.basePlanId}</h2>
               <p className="my-3 text-2xl font-bold">{offer.formattedPrice ?? 'See Google Play'}</p>
               <Button onClick={() => void purchase(offer.basePlanId)} disabled={busy}>
@@ -137,20 +141,23 @@ export const Subscription: React.FC = () => {
       {!isCloudDistribution && (
         <Alert type="success" message="Self-hosted Aurum POS includes unlimited active inventory." />
       )}
-      <Card>
+      <Card className="p-6">
         <h2 className="font-semibold">Account</h2>
-        <label className="my-3 flex gap-2 text-sm">
+        <label className="my-3 flex gap-2 text-sm text-slate-700 dark:text-slate-300">
           <input
             type="checkbox"
             checked={deleteOwnedShops}
             onChange={(event) => setDeleteOwnedShops(event.target.checked)}
+            className="checkbox-round"
           />
           Delete shops for which I am the sole owner
         </label>
         <Button variant="danger" onClick={() => void requestDeletion()} disabled={busy}>
           Request account deletion
         </Button>
-        {deletionMessage && <p className="mt-3 text-sm">{deletionMessage}</p>}
+        {deletionMessage && (
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{deletionMessage}</p>
+        )}
       </Card>
     </div>
   );

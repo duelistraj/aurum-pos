@@ -324,7 +324,7 @@ export const Items: React.FC = () => {
 
   const openAddItemModal = () => {
     if (entitlementQuery.data && !entitlementQuery.data.can_add_item) {
-      setError('This shop has reached its active-item limit. Sell or remove an item, or activate Premium.');
+      setError('This shop has reached its active-item limit. Sell or remove an item, or activate Pro.');
       return;
     }
     if (latestItem) {
@@ -573,7 +573,7 @@ export const Items: React.FC = () => {
             <div className="flex space-x-3">
               <button
                 onClick={handleManageToggle}
-                className={`flex items-center space-x-2 border px-5 py-2.5 rounded-xl shadow-xs transition-all duration-200 font-bold focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                className={`flex items-center space-x-2 border px-5 py-2.5 rounded-app-control shadow-xs transition-all duration-200 font-bold focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   isManageMode 
                     ? 'bg-emerald-50 dark:bg-emerald-950/20 text-slate-950 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/30 focus:ring-emerald-500' 
                     : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 focus:ring-slate-500'
@@ -588,7 +588,7 @@ export const Items: React.FC = () => {
                     onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
                     variant="primary"
                     disabled={!isManageMode}
-                    className="flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold shadow-xs transition-all"
+                    className="flex items-center space-x-2 px-5 py-2.5 rounded-app-control font-bold shadow-xs transition-all"
                   >
                     <DownloadCloud className="w-5 h-5" />
                     <span>Download</span>
@@ -596,13 +596,13 @@ export const Items: React.FC = () => {
                   </Button>
                   
                   {showDownloadDropdown && (
-                    <div className="absolute right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-20 p-4 flex flex-col gap-3 w-80 animate-fade-in">
+                    <div className="absolute right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 p-4 flex flex-col gap-3 w-80 animate-fade-in">
                       <button
                         onClick={() => {
                           handleDownloadBatchLabels('xlsx');
                           setShowDownloadDropdown(false);
                         }}
-                        className="flex items-center text-left p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all duration-200"
+                        className="flex items-center text-left p-3.5 rounded-app-control border border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all duration-200"
                       >
                         <div className="mr-3.5 text-emerald-600 dark:text-emerald-500 flex-shrink-0">
                           <ExcelIcon />
@@ -618,7 +618,7 @@ export const Items: React.FC = () => {
                           handleDownloadBatchLabels('pdf');
                           setShowDownloadDropdown(false);
                         }}
-                        className="flex items-center text-left p-3.5 rounded-xl border border-red-200 dark:border-red-900 bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
+                        className="flex items-center text-left p-3.5 rounded-app-control border border-red-200 dark:border-red-900 bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
                       >
                         <div className="mr-3.5 text-red-500 dark:text-red-500 flex-shrink-0">
                           <PDFIcon />
@@ -635,7 +635,7 @@ export const Items: React.FC = () => {
               <Button
                 onClick={openAddItemModal}
                 disabled={!isManageMode}
-                className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl shadow-md font-semibold transition-all"
+                className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-app-control shadow-md font-semibold transition-all"
               >
                 <Plus className="w-5 h-5 font-bold" />
                 <span>Add Item</span>
@@ -647,8 +647,8 @@ export const Items: React.FC = () => {
         {/* Summary Metrics Cards (Responsive grid with 4 cards) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-slide-down">
           {/* In Stock */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-green-50 dark:bg-green-950/30 rounded-xl text-green-500 mr-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
+            <div className="p-3.5 bg-green-50 dark:bg-green-950/30 rounded-app-control text-green-500 mr-4">
               <CheckCircle className="w-6 h-6" />
             </div>
             <div>
@@ -658,8 +658,8 @@ export const Items: React.FC = () => {
           </div>
 
           {/* Unique Items */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-purple-50 dark:bg-purple-950/30 rounded-xl text-purple-500 mr-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
+            <div className="p-3.5 bg-purple-50 dark:bg-purple-950/30 rounded-app-control text-purple-500 mr-4">
               <Gem className="w-6 h-6" />
             </div>
             <div>
@@ -669,8 +669,8 @@ export const Items: React.FC = () => {
           </div>
 
           {/* Sold Items */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-xl text-blue-500 mr-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
+            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-app-control text-blue-500 mr-4">
               <ShoppingBag className="w-6 h-6" />
             </div>
             <div>
@@ -680,8 +680,8 @@ export const Items: React.FC = () => {
           </div>
 
           {/* 925 Items */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl text-indigo-500 mr-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
+            <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-app-control text-indigo-500 mr-4">
               <Tag className="w-6 h-6" />
             </div>
             <div>
@@ -695,12 +695,14 @@ export const Items: React.FC = () => {
 
         {/* Error Alert */}
         {error && (
-          <Alert
-            type="error"
-            title="Error"
-            message={error}
-            onClose={() => setError('')}
-          />
+          <div className="mb-6">
+            <Alert
+              type="error"
+              title="Error"
+              message={error}
+              onClose={() => setError('')}
+            />
+          </div>
         )}
 
         {/* Search Bar and Dropdown Filters */}
@@ -714,7 +716,7 @@ export const Items: React.FC = () => {
               placeholder="Search by SKU, name, or barcode..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 shadow-xs placeholder-slate-400 font-medium"
+              className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 shadow-xs placeholder-slate-400 font-medium"
             />
           </div>
           
@@ -725,7 +727,7 @@ export const Items: React.FC = () => {
                 setShowCategoryDropdown(!showCategoryDropdown);
                 setShowStatusDropdown(false);
               }}
-              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-2xl cursor-pointer select-none shadow-xs h-full transition-all ${
+              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${
                 showCategoryDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-200 dark:border-slate-800'
               }`}
             >
@@ -739,7 +741,7 @@ export const Items: React.FC = () => {
             </div>
 
             {showCategoryDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-80 overflow-y-auto animate-fade-in">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-80 overflow-y-auto animate-fade-in">
                 <div className="relative p-1">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   <input
@@ -748,7 +750,7 @@ export const Items: React.FC = () => {
                     value={categorySearch}
                     onChange={(e) => setCategorySearch(e.target.value)}
                     onClick={(e) => e.stopPropagation()} // Prevent close on click
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-sm placeholder-slate-400 font-medium"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-app-control focus:outline-none focus:ring-1 focus:ring-amber-500 text-sm placeholder-slate-400 font-medium"
                   />
                 </div>
 
@@ -761,14 +763,14 @@ export const Items: React.FC = () => {
                       <div
                         key={opt.value}
                         onClick={() => handleCategorySelect(opt.value)}
-                        className={`relative flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer select-none transition-all ${
+                        className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
                           isSelected 
                             ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
                             : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${opt.bg}`}>
+                          <div className={`w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
                             <Icon className="w-4 h-4" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -796,7 +798,7 @@ export const Items: React.FC = () => {
                 setShowStatusDropdown(!showStatusDropdown);
                 setShowCategoryDropdown(false);
               }}
-              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-2xl cursor-pointer select-none shadow-xs h-full transition-all ${
+              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${
                 showStatusDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-200 dark:border-slate-800'
               }`}
             >
@@ -810,7 +812,7 @@ export const Items: React.FC = () => {
             </div>
 
             {showStatusDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
                 {statusOptions.map((opt) => {
                   const isSelected = opt.value === selectedStatus;
                   const Icon = opt.icon;
@@ -818,14 +820,14 @@ export const Items: React.FC = () => {
                     <div
                       key={opt.value}
                       onClick={() => handleStatusSelect(opt.value)}
-                      className={`relative flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer select-none transition-all ${
+                      className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
                         isSelected 
                           ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
                           : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                       }`}
                     >
                       <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${opt.bg}`}>
+                        <div className={`w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
                           <Icon className="w-4 h-4" />
                         </div>
                         <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -853,7 +855,7 @@ export const Items: React.FC = () => {
             <Loader />
           </div>
         ) : (
-          <Card className="overflow-hidden animate-slide-up bg-white border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl">
+          <Card className="overflow-hidden animate-slide-up bg-white border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800">
@@ -864,7 +866,7 @@ export const Items: React.FC = () => {
                         checked={selectedItems.size === items.length && items.length > 0}
                         onChange={handleSelectAll}
                         disabled={!isManageMode}
-                        className="w-5 h-5 rounded border-slate-300 dark:border-slate-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-amber-500 focus:ring-amber-500"
+                        className="checkbox-round"
                       />
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -916,16 +918,16 @@ export const Items: React.FC = () => {
                             checked={selectedItems.has(item.id)}
                             onChange={() => handleSelectItem(item.id)}
                             disabled={!isManageMode}
-                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-amber-500 focus:ring-amber-500"
+                            className="checkbox-round"
                           />
                         </td>
                         <td className="px-6 py-5">
-                          <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-lg text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
+                          <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
                             {item.sku}
                           </span>
                         </td>
                         <td className="px-6 py-5">
-                          <span className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 font-bold px-3 py-1 rounded-lg text-xs font-mono tracking-wider border border-amber-100/50 dark:border-amber-900/30">
+                          <span className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-amber-100/50 dark:border-amber-900/30">
                             {item.barcode}
                           </span>
                         </td>
@@ -935,7 +937,7 @@ export const Items: React.FC = () => {
                           </p>
                         </td>
                         <td className="px-6 py-5">
-                          <span className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold px-3 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700">
+                          <span className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-slate-200 dark:border-slate-700">
                             {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
                           </span>
                         </td>
@@ -943,7 +945,7 @@ export const Items: React.FC = () => {
                           {item.quantity}
                         </td>
                         <td className="px-6 py-5">
-                          <span className="bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-semibold px-3 py-1.5 rounded-lg text-xs border border-indigo-100/50 dark:border-indigo-900/30">
+                          <span className="bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-indigo-100/50 dark:border-indigo-900/30">
                             {item.metal} {item.purity > 0 ? `${item.purity}%` : '(unspecified)'}
                           </span>
                         </td>
@@ -976,7 +978,7 @@ export const Items: React.FC = () => {
                                 <button
                                   onClick={() => openEditItem(item)}
                                   disabled={!isManageMode}
-                                  className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                                  className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                                   title="Edit item"
                                 >
                                   <Pencil className="w-4 h-4" />
@@ -984,7 +986,7 @@ export const Items: React.FC = () => {
                                 <button
                                   onClick={() => handleDeleteItem(item.id)}
                                   disabled={!isManageMode}
-                                  className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                                  className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                                   title="Delete item"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -1026,7 +1028,7 @@ export const Items: React.FC = () => {
                 <button
                   onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
-                  className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+                  className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
                 >
                   <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
                 </button>
@@ -1044,7 +1046,7 @@ export const Items: React.FC = () => {
                     <button
                       key={`page-${pageNum}`}
                       onClick={() => setCurrentPage(pageNum as number)}
-                      className={`w-10 h-10 font-bold rounded-xl flex items-center justify-center transition-all ${
+                      className={`w-10 h-10 font-bold rounded-app-control flex items-center justify-center transition-all ${
                         isActive
                           ? 'border-2 border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
                           : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
@@ -1058,7 +1060,7 @@ export const Items: React.FC = () => {
                 <button
                   onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
-                  className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+                  className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
                 >
                   <ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
                 </button>
@@ -1067,7 +1069,7 @@ export const Items: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span>Rows per page</span>
-              <div className="relative flex items-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl px-3 py-2 shadow-2xs">
+              <div className="relative flex items-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control px-3 py-2 shadow-2xs">
                 <select
                   value={rowsPerPage}
                   onChange={(e) => {
@@ -1098,14 +1100,14 @@ export const Items: React.FC = () => {
               <Button
                 variant="secondary"
                 onClick={closeModal}
-                className="rounded-xl px-5"
+                className="rounded-app-control px-5"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
                 isLoading={loading}
-                className="rounded-xl px-5"
+                className="rounded-app-control px-5"
               >
                 {editingItem ? 'Save Changes' : 'Add Item'}
               </Button>
@@ -1121,7 +1123,7 @@ export const Items: React.FC = () => {
                 setFormData({ ...formData, sku: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <Input
               label="Item Name *"
@@ -1131,11 +1133,12 @@ export const Items: React.FC = () => {
                 setFormData({ ...formData, name: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <Input
               label="Quantity *"
               type="number"
+              inputMode="numeric"
               min={1}
               step={1}
               placeholder="1"
@@ -1144,7 +1147,7 @@ export const Items: React.FC = () => {
                 setFormData({ ...formData, quantity: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
              <div className="relative" ref={formCategoryDropdownRef}>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -1156,7 +1159,7 @@ export const Items: React.FC = () => {
                   setShowFormMetalDropdown(false);
                   setShowFormPurityDropdown(false);
                 }}
-                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-lg focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
+                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
                   showFormCategoryDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-300 dark:border-slate-800'
                 }`}
               >
@@ -1167,7 +1170,7 @@ export const Items: React.FC = () => {
               </div>
 
               {showFormCategoryDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-60 overflow-y-auto animate-fade-in">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-60 overflow-y-auto animate-fade-in">
                   {categoryOptions.filter(o => o.value !== 'all').map((opt) => {
                     const isSelected = opt.value === formData.category;
                     const Icon = opt.icon;
@@ -1178,14 +1181,14 @@ export const Items: React.FC = () => {
                           setFormData({ ...formData, category: opt.value });
                           setShowFormCategoryDropdown(false);
                         }}
-                        className={`relative flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer select-none transition-all ${
+                        className={`relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${
                           isSelected 
                             ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
                             : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${opt.bg}`}>
+                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${opt.bg}`}>
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1216,7 +1219,7 @@ export const Items: React.FC = () => {
                   setShowFormCategoryDropdown(false);
                   setShowFormPurityDropdown(false);
                 }}
-                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-lg focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
+                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
                   showFormMetalDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-300 dark:border-slate-800'
                 }`}
               >
@@ -1227,7 +1230,7 @@ export const Items: React.FC = () => {
               </div>
 
               {showFormMetalDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
                   {Object.keys(availableMetals).map((metal) => {
                     const isSelected = metal === formData.metal;
                     const config = getMetalIconBg(metal);
@@ -1244,14 +1247,14 @@ export const Items: React.FC = () => {
                           });
                           setShowFormMetalDropdown(false);
                         }}
-                        className={`relative flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer select-none transition-all ${
+                        className={`relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${
                           isSelected 
                             ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
                             : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${config.bg}`}>
+                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1282,7 +1285,7 @@ export const Items: React.FC = () => {
                   setShowFormCategoryDropdown(false);
                   setShowFormMetalDropdown(false);
                 }}
-                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-lg focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
+                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
                   showFormPurityDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-300 dark:border-slate-800'
                 }`}
               >
@@ -1293,7 +1296,7 @@ export const Items: React.FC = () => {
               </div>
 
               {showFormPurityDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
                   {purityOptions.map((opt) => {
                     const isSelected = opt.value === formData.purity;
                     const config = getPurityIconBg(opt.value);
@@ -1305,14 +1308,14 @@ export const Items: React.FC = () => {
                           setFormData({ ...formData, purity: opt.value });
                           setShowFormPurityDropdown(false);
                         }}
-                        className={`relative flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer select-none transition-all ${
+                        className={`relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${
                           isSelected 
                             ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
                             : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-7 h-7 rounded-md flex items-center justify-center ${config.bg}`}>
+                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1335,6 +1338,7 @@ export const Items: React.FC = () => {
             <Input
               label="Net Weight (g) *"
               type="number"
+              inputMode="decimal"
               step="0.01"
               placeholder="0.00"
               value={formData.net_weight}
@@ -1342,11 +1346,12 @@ export const Items: React.FC = () => {
                 setFormData({ ...formData, net_weight: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <Input
               label="Making Charge *"
               type="number"
+              inputMode="decimal"
               step="0.01"
               placeholder="0.00"
               value={formData.making_charge}
@@ -1354,7 +1359,7 @@ export const Items: React.FC = () => {
                 setFormData({ ...formData, making_charge: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <div className="md:col-span-2">
               <Input
@@ -1364,10 +1369,10 @@ export const Items: React.FC = () => {
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
                 }
-                className="py-2.5 rounded-lg"
+                className="py-2.5 rounded-app-control"
               />
             </div>
-            <div className="bg-blue-50 border border-blue-150 rounded-xl p-3.5 md:col-span-2">
+            <div className="bg-blue-50 border border-blue-150 rounded-app-inset p-3.5 md:col-span-2">
               <p className="text-sm text-blue-700 font-medium">
                 <strong>Note:</strong> Barcode will be automatically generated as a unique 8-digit code.
               </p>

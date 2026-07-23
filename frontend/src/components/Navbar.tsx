@@ -30,7 +30,7 @@ export const Navbar: React.FC = () => {
       {/* Background with Notch */}
       <div className="absolute inset-0 flex">
         {/* Left Side Backdrop */}
-        <div className="flex-1 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-[0_-8px_30px_rgba(0,0,0,0.03)] rounded-tl-3xl" />
+        <div className="flex-1 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-[0_-8px_30px_rgba(0,0,0,0.03)] rounded-tl-[2rem]" />
         
         {/* Center Notch Backdrop */}
         <div className="relative w-32 h-20 flex-shrink-0 bg-transparent overflow-visible">
@@ -52,7 +52,7 @@ export const Navbar: React.FC = () => {
         </div>
 
         {/* Right Side Backdrop */}
-        <div className="flex-1 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-[0_-8px_30px_rgba(0,0,0,0.03)] rounded-tr-3xl" />
+        <div className="flex-1 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-[0_-8px_30px_rgba(0,0,0,0.03)] rounded-tr-[2rem]" />
       </div>
 
       {/* Interactive Content */}

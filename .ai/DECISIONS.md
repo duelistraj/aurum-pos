@@ -60,7 +60,7 @@ Evidence:
 Recorded: 2026-07-21
 Status: accepted
 Basis: user-confirmed
-Decision: Shops share PostgreSQL with tenant keys and forced RLS. Hosted free shops are capped at 50 active item rows; premium belongs to a shop and is sold through Google Play. Self-hosted mode is unlimited.
+Decision: Shops share PostgreSQL with tenant keys and forced RLS. Hosted free shops are capped at 50 active item rows; Pro belongs to a shop and is sold through Google Play. Self-hosted mode is unlimited.
 Rationale: The user explicitly rejected one database per shop and requested cloud-infrastructure billing with free self-hosting.
 Consequences: Every tenant request selects a shop; roles and subscriptions are database state; Play tokens are verified server-side.
 
@@ -68,6 +68,20 @@ Evidence:
 - `alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py::upgrade`
 - `app/modules/subscriptions/service.py::resolve_entitlement`
 - `app/modules/billing/service.py::verify_play_purchase`
+
+### Brand the paid entitlement as Pro end to end
+
+Recorded: 2026-07-22
+Status: accepted
+Basis: user-confirmed
+Decision: Use `pro` as the paid entitlement value and `aurum_cloud_pro` as the Google Play product identifier, and present the tier as Aurum Cloud Pro.
+Rationale: The user explicitly requested a full pre-launch rename and confirmed that no paid Premium purchases exist.
+Consequences: The database, API, CLI, Android client, public copy, and new Play listing use Pro without a legacy Premium compatibility path.
+
+Evidence:
+- `alembic/versions/e5f6a7b8c9d0_rename_premium_plan_to_pro.py::upgrade`
+- `app/modules/subscriptions/service.py::resolve_entitlement`
+- `frontend/src/constants/billing.ts::PLAY_PRODUCT_ID`
 
 ### Preserve only BMR inventory during SaaS cutover
 

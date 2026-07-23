@@ -14,7 +14,7 @@ Evidence:
 
 An **active item** is an inventory row with positive quantity and status
 `in_stock` or `reserved`. A shop **entitlement** is either hosted free (50
-active rows), current premium, or unlimited self-hosted access.
+active rows), current Pro, or unlimited self-hosted access.
 
 Evidence:
 - `app/modules/subscriptions/service.py::ACTIVE_ITEM_STATUSES`

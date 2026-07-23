@@ -7,6 +7,11 @@ export default {
   ],
   theme: {
     extend: {
+      borderRadius: {
+        'app-surface': '2rem',
+        'app-inset': '1.5rem',
+        'app-control': '9999px',
+      },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',
         'slide-up': 'slideUp 0.4s ease-out',

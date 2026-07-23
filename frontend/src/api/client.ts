@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { PLAY_PRODUCT_ID } from '../constants/billing';
 import { Item, MetalRate, Sale, ItemPOSWithPrice, DashboardSummary, ChangeLogEntry, AnalyticsDashboardResponse } from '../types';
 import {
   clearAuthData,
@@ -309,7 +310,7 @@ export const apiClient = {
 
   async getEntitlement() {
     const { data } = await client.get<{
-      plan: 'free' | 'premium';
+      plan: 'free' | 'pro';
       source: string;
       active_item_limit: number | null;
       active_item_count: number;
@@ -322,7 +323,7 @@ export const apiClient = {
   async submitPlayPurchase(purchaseToken: string) {
     const { data } = await client.post('/billing/google-play/purchases', {
       purchase_token: purchaseToken,
-      product_id: 'aurum_cloud_premium',
+      product_id: PLAY_PRODUCT_ID,
     });
     return data;
   },

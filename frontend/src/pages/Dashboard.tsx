@@ -53,7 +53,7 @@ const StatCard: React.FC<StatCardProps> = ({
       <Loader size="sm" />
     ) : (
       <div className="flex flex-col items-center text-center">
-        <div className={`w-12 h-12 ${iconBgClass} ${iconColorClass} rounded-2xl flex items-center justify-center mb-3 flex-shrink-0`}>
+        <div className={`w-12 h-12 ${iconBgClass} ${iconColorClass} rounded-app-control flex items-center justify-center mb-3 flex-shrink-0`}>
           {icon}
         </div>
         <p className="text-slate-400 dark:text-slate-500 text-xs font-semibold uppercase tracking-wider">{title}</p>
@@ -319,11 +319,11 @@ export const Dashboard: React.FC = () => {
                 return (
                   <div
                     key={activity.id}
-                    className="flex items-center justify-between p-4 border border-slate-100 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 hover:bg-slate-50/30 dark:hover:bg-slate-800/30 transition-colors"
+                    className="flex items-center justify-between p-4 border border-slate-100 dark:border-slate-800 rounded-app-inset bg-white dark:bg-slate-900 hover:bg-slate-50/30 dark:hover:bg-slate-800/30 transition-colors"
                   >
                     {/* Left details */}
                     <div className="flex items-center space-x-4">
-                      <div className={`w-10 h-10 ${iconBg} rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                      <div className={`w-10 h-10 ${iconBg} rounded-app-control flex items-center justify-center flex-shrink-0 shadow-sm`}>
                         {iconNode}
                       </div>
                       <div>

@@ -136,13 +136,13 @@ export const Login: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4">
-      <div className="max-w-md w-full space-y-6 bg-white p-8 rounded-2xl shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 transition-colors dark:bg-slate-950">
+      <div className="w-full max-w-md space-y-6 rounded-app-surface border border-slate-100 bg-white p-8 text-slate-900 shadow-xl dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 bg-amber-100 rounded-full flex items-center justify-center">
-            <Lock className="h-6 w-6 text-amber-700" />
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-500/10">
+            <Lock className="h-6 w-6 text-amber-700 dark:text-amber-400" />
           </div>
-          <h2 className="mt-5 text-3xl font-extrabold text-slate-900">
+          <h2 className="mt-5 text-3xl font-extrabold text-slate-900 dark:text-white">
             {mode === 'login'
               ? 'Sign in to Aurum POS'
               : mode === 'register'
@@ -152,11 +152,15 @@ export const Login: React.FC = () => {
         </div>
 
         {error && (
-          <div className="rounded-md bg-red-50 p-4 flex items-start text-sm text-red-700">
+          <div className="flex items-start rounded-app-inset bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-200">
             <AlertCircle className="h-5 w-5 mr-2 flex-none" />{error}
           </div>
         )}
-        {message && <div className="rounded-md bg-emerald-50 p-4 text-sm text-emerald-800">{message}</div>}
+        {message && (
+          <div className="rounded-app-inset bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+            {message}
+          </div>
+        )}
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           {fields.map(({ id, icon: Icon, type, value, set, placeholder }) => (
@@ -168,7 +172,7 @@ export const Login: React.FC = () => {
                 type={type}
                 required
                 minLength={id === 'password' && mode === 'register' ? 12 : undefined}
-                className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-3 text-slate-900"
+                className="w-full rounded-app-control border border-slate-300 bg-white py-3 pl-10 pr-3 text-slate-900 placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
                 placeholder={placeholder}
                 value={value}
                 onChange={(event) => set(event.target.value)}
@@ -178,7 +182,7 @@ export const Login: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-amber-600 py-3 font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+            className="w-full rounded-app-control bg-amber-600 py-3 font-medium text-white hover:bg-amber-700 disabled:opacity-60"
           >
             {loading
               ? 'Please wait…'
@@ -197,7 +201,7 @@ export const Login: React.FC = () => {
               || (mode === 'register' && !shopName)
               || (mode === 'staff' && !invitationToken)}
             onClick={() => void handleGoogle()}
-            className="w-full rounded-xl border border-slate-300 py-3 font-medium text-slate-700 disabled:opacity-60"
+            className="w-full rounded-app-control border border-slate-300 bg-white py-3 font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             Continue with Google
           </button>
@@ -205,7 +209,7 @@ export const Login: React.FC = () => {
 
         <button
           type="button"
-          className="w-full text-sm text-amber-700"
+          className="w-full text-sm text-amber-700 dark:text-amber-400"
           onClick={() => {
             setMode((current) => current === 'login' ? 'register' : 'login');
             setError('');
@@ -215,7 +219,7 @@ export const Login: React.FC = () => {
         </button>
         {mode === 'login' && (
           <a
-            className="block text-center text-sm text-slate-600"
+            className="block text-center text-sm text-slate-600 dark:text-slate-400"
             href="https://aurumpos.net/reset-password.html"
             target="_blank"
             rel="noreferrer"
@@ -226,7 +230,7 @@ export const Login: React.FC = () => {
         {mode !== 'staff' && (
           <button
             type="button"
-            className="w-full text-sm text-slate-600"
+            className="w-full text-sm text-slate-600 dark:text-slate-400"
             onClick={() => {
               setMode('staff');
               setError('');

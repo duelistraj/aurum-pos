@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -17,7 +18,7 @@ ACTIVE_ITEM_STATUSES = frozenset({"in_stock", "reserved"})
 
 @dataclass(frozen=True)
 class Entitlement:
-    plan: str
+    plan: Literal["free", "pro"]
     source: str
     limit: int | None
     expires_at: datetime | None
@@ -25,13 +26,13 @@ class Entitlement:
 
 async def resolve_entitlement(db: AsyncSession, shop_id: UUID) -> Entitlement:
     if not settings.is_hosted:
-        return Entitlement(plan="premium", source="self_hosted", limit=None, expires_at=None)
+        return Entitlement(plan="pro", source="self_hosted", limit=None, expires_at=None)
     now = datetime.now(UTC)
     subscription = await db.scalar(
         select(Subscription)
         .where(
             Subscription.shop_id == shop_id,
-            Subscription.plan == "premium",
+            Subscription.plan == "pro",
             Subscription.status == "active",
             Subscription.revoked_at.is_(None),
             Subscription.starts_at <= now,
@@ -42,7 +43,7 @@ async def resolve_entitlement(db: AsyncSession, shop_id: UUID) -> Entitlement:
     )
     if subscription:
         return Entitlement(
-            plan="premium",
+            plan="pro",
             source=subscription.source,
             limit=None,
             expires_at=subscription.expires_at,

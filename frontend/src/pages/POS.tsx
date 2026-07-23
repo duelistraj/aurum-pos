@@ -342,7 +342,7 @@ export const POS: React.FC = () => {
           {/* Main POS Section: Col span 2 */}
           <div className="lg:col-span-2 flex flex-col h-full lg:overflow-hidden gap-4 min-h-0">
             {/* Barcode Scanner */}
-            <Card className="p-5 flex-shrink-0 bg-white border border-slate-100 shadow-sm rounded-2xl animate-slide-up">
+            <Card className="p-5 flex-shrink-0 bg-white border border-slate-100 shadow-sm rounded-app-surface animate-slide-up">
               <form onSubmit={handleScanBarcode} className="space-y-3">
                 <div className="flex space-x-3 items-center">
                   <Input
@@ -351,13 +351,13 @@ export const POS: React.FC = () => {
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
                     autoFocus
-                    className="flex-1 text-lg py-3 rounded-xl focus:ring-amber-500"
+                    className="flex-1 text-lg py-3 rounded-app-control focus:ring-amber-500"
                   />
                   <Button
                     type="submit"
                     isLoading={loading}
                     disabled={!barcode.trim()}
-                    className="px-6 py-3 rounded-xl h-[46px] flex items-center justify-center"
+                    className="px-6 py-3 rounded-app-control h-[46px] flex items-center justify-center"
                   >
                     <Plus className="w-5 h-5" />
                   </Button>
@@ -366,7 +366,7 @@ export const POS: React.FC = () => {
             </Card>
 
             {/* Cart Items */}
-            <Card className="p-5 flex-1 flex flex-col lg:overflow-hidden min-h-0 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl animate-slide-up">
+            <Card className="p-5 flex-1 flex flex-col lg:overflow-hidden min-h-0 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface animate-slide-up">
               <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-3 flex-shrink-0">
                 Cart Items ({totalUnits})
               </h2>
@@ -375,7 +375,7 @@ export const POS: React.FC = () => {
                   {cart.map((item, index) => (
                     <div
                       key={`${item.id}-${index}`}
-                      className="grid grid-cols-[1fr_auto] items-center gap-4 p-4 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100/70 dark:hover:bg-slate-900/70 rounded-2xl transition-all border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 shadow-xs"
+                      className="grid grid-cols-[1fr_auto] items-center gap-4 p-4 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100/70 dark:hover:bg-slate-900/70 rounded-app-inset transition-all border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 shadow-xs"
                     >
                       {/* Left Side: Details */}
                       <div className="space-y-1">
@@ -385,7 +385,7 @@ export const POS: React.FC = () => {
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
                           {formatMetalLabel(item.metal, item.purity)} • {item.net_weight}g
                         </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/50 px-2 py-1 rounded inline-block font-mono font-medium mt-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/50 px-2 py-1 rounded-app-control inline-block font-mono font-medium mt-1">
                           Base: {formatCurrency(item.pricing.metal_value)} + Making:{' '}
                           {formatCurrency(item.pricing.making_charge)}{' '}
                           {isFixedMakingCategory(item.category) ? 'Fixed' : '/ gram'}
@@ -401,11 +401,11 @@ export const POS: React.FC = () => {
                         </div>
                         
                         {/* Quantity controls */}
-                        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-app-control border border-slate-200 dark:border-slate-800 shadow-xs">
                           <button
                             type="button"
                             onClick={() => decrementCartItem(index)}
-                            className="w-9 h-9 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-95 transition-all"
+                            className="w-9 h-9 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-app-control active:scale-95 transition-all"
                             title="Remove one unit"
                           >
                             <Minus className="w-4 h-4" />
@@ -416,7 +416,7 @@ export const POS: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => incrementCartItem(index)}
-                            className="w-9 h-9 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg active:scale-95 transition-all"
+                            className="w-9 h-9 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-app-control active:scale-95 transition-all"
                             title="Add one unit"
                           >
                             <Plus className="w-4 h-4" />
@@ -438,7 +438,7 @@ export const POS: React.FC = () => {
 
           {/* Summary Section: Col span 1 */}
           <div className="h-full flex flex-col min-h-0">
-            <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl flex flex-col justify-between h-full min-h-0 animate-slide-up">
+            <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface flex flex-col justify-between h-full min-h-0 animate-slide-up">
               <div className="flex-1 overflow-y-auto pr-1">
                 <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-6 border-b border-slate-100 dark:border-slate-800 pb-3">Summary</h2>
 
@@ -480,14 +480,14 @@ export const POS: React.FC = () => {
                 <Button
                   onClick={() => setShowCheckout(true)}
                   disabled={cart.length === 0}
-                  className="w-full py-3.5 text-base font-bold rounded-xl shadow-md"
+                  className="w-full py-3.5 text-base font-bold rounded-app-control shadow-md"
                 >
                   Proceed to Checkout
                 </Button>
 
                 <button
                   onClick={() => setCart([])}
-                  className="w-full py-3.5 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all font-semibold text-sm active:scale-99"
+                  className="w-full py-3.5 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-app-control transition-all font-semibold text-sm active:scale-99"
                 >
                   Clear Cart
                 </button>
@@ -507,14 +507,14 @@ export const POS: React.FC = () => {
               <Button
                 variant="secondary"
                 onClick={() => setShowCheckout(false)}
-                className="rounded-xl px-5"
+                className="rounded-app-control px-5"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleCheckout}
                 isLoading={loading}
-                className="rounded-xl px-5"
+                className="rounded-app-control px-5"
               >
                 Complete Sale
               </Button>
@@ -530,7 +530,7 @@ export const POS: React.FC = () => {
                 setCustomerDetails({ ...customerDetails, name: e.target.value })
               }
               required
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <Input
               label="Phone Number *"
@@ -545,7 +545,7 @@ export const POS: React.FC = () => {
               required
               type="tel"
               inputMode="tel"
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <Input
               label="Address (Optional)"
@@ -557,7 +557,7 @@ export const POS: React.FC = () => {
                   address: e.target.value,
                 })
               }
-              className="py-2.5 rounded-lg"
+              className="py-2.5 rounded-app-control"
             />
             <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
               <div className="space-y-3 text-sm">
@@ -604,7 +604,7 @@ export const POS: React.FC = () => {
             </div>
 
             {/* Video Viewport */}
-            <div className="relative flex-1 flex items-center justify-center my-6 overflow-hidden rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl">
+            <div className="relative flex-1 flex items-center justify-center my-6 overflow-hidden rounded-app-surface bg-slate-900 border border-slate-800 shadow-2xl">
               <video
                 id="scannerVideo"
                 className="absolute w-full h-full object-cover"
@@ -612,7 +612,7 @@ export const POS: React.FC = () => {
                 muted
               />
               {/* Viewfinder Target Frame Overlay */}
-              <div className="relative w-72 h-48 border-2 border-amber-500 rounded-3xl flex items-center justify-center shadow-2xl">
+              <div className="relative w-72 h-48 border-2 border-amber-500 rounded-app-surface flex items-center justify-center shadow-2xl">
                 {/* Bouncing Scanner Line */}
                 <div 
                   className="w-full h-0.5 bg-red-500 absolute shadow-md shadow-red-500/50" 

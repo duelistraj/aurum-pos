@@ -1,6 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
+import { PLAY_PRODUCT_ID } from '../constants/billing';
 
-export const PLAY_PRODUCT_ID = 'aurum_cloud_premium';
+export { PLAY_PRODUCT_ID };
 
 interface BillingOffer {
   basePlanId: string;

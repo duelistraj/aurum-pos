@@ -238,7 +238,7 @@ export const History: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 mb-8">
-          <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-2xl">
+          <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
               <div className="lg:col-span-2">
                 <Input
@@ -248,7 +248,7 @@ export const History: React.FC = () => {
                   onChange={(event) =>
                     handleChange('barcode', event.target.value)
                   }
-                  className="py-2.5 rounded-lg"
+                  className="py-2.5 rounded-app-control"
                 />
               </div>
               <div className="lg:col-span-2">
@@ -259,14 +259,14 @@ export const History: React.FC = () => {
                   onChange={(event) =>
                     handleChange('invoiceNo', event.target.value)
                   }
-                  className="py-2.5 rounded-lg"
+                  className="py-2.5 rounded-app-control"
                 />
               </div>
               <div className="relative flex flex-col w-full" ref={actionDropdownRef}>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-355 mb-1.5">Action</label>
                 <div 
                   onClick={() => setShowActionDropdown(!showActionDropdown)}
-                  className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border rounded-lg cursor-pointer select-none transition-all duration-200 flex items-center justify-between h-[46px] ${
+                  className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none transition-all duration-200 flex items-center justify-between h-[46px] ${
                     showActionDropdown 
                       ? 'border-transparent ring-2 ring-amber-500 dark:border-amber-550' 
                       : 'border-slate-300 dark:border-slate-800'
@@ -279,7 +279,7 @@ export const History: React.FC = () => {
                 </div>
 
                 {showActionDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
                     {actionOptions.map((opt) => {
                       const isSelected = opt.value === filters.action;
                       const Icon = opt.icon;
@@ -290,14 +290,14 @@ export const History: React.FC = () => {
                             handleChange('action', opt.value);
                             setShowActionDropdown(false);
                           }}
-                          className={`relative flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer select-none transition-all ${
+                          className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
                             isSelected 
                               ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
                               : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
                           }`}
                         >
                           <div className="flex items-center space-x-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${opt.bg}`}>
+                            <div className={`w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
                               <Icon className="w-4 h-4" />
                             </div>
                             <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-300'}`}>
@@ -325,7 +325,7 @@ export const History: React.FC = () => {
                   onChange={(event) =>
                     handleChange('fromDate', event.target.value)
                   }
-                  className="py-2.5 rounded-lg text-slate-700 dark:text-slate-300"
+                  className="py-2.5 rounded-app-control text-slate-700 dark:text-slate-300"
                 />
               </div>
               <div className="lg:col-span-2">
@@ -336,17 +336,17 @@ export const History: React.FC = () => {
                   onChange={(event) =>
                     handleChange('toDate', event.target.value)
                   }
-                  className="py-2.5 rounded-lg text-slate-700 dark:text-slate-300"
+                  className="py-2.5 rounded-app-control text-slate-700 dark:text-slate-300"
                 />
               </div>
               <div className="lg:col-span-1 flex items-end gap-3">
-                <Button type="submit" className="w-full h-[46px] rounded-xl flex items-center justify-center gap-2" variant="primary">
+                <Button type="submit" className="w-full h-[46px] rounded-app-control flex items-center justify-center gap-2" variant="primary">
                   <Search className="w-4 h-4" />
                   <span>Search</span>
                 </Button>
                 <Button
                   type="button"
-                  className="w-full h-[46px] rounded-xl flex items-center justify-center gap-2"
+                  className="w-full h-[46px] rounded-app-control flex items-center justify-center gap-2"
                   variant="secondary"
                   onClick={handleReset}
                 >
@@ -406,14 +406,14 @@ export const History: React.FC = () => {
 
 
                 return (
-                  <div key={entry.id} className="deferred-list-item border border-slate-100 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-300">
+                  <div key={entry.id} className="deferred-list-item border border-slate-100 dark:border-slate-800 rounded-app-surface bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-300">
                     <div
                       onClick={() => toggleExpand(entry.id)}
                       className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 hover:bg-slate-50/40 dark:hover:bg-slate-800/20 transition-colors cursor-pointer gap-4"
                     >
                       {/* Left details */}
                       <div className="flex items-center space-x-4">
-                        <div className={`w-10 h-10 ${iconBg} rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                        <div className={`w-10 h-10 ${iconBg} rounded-app-control flex items-center justify-center flex-shrink-0 shadow-sm`}>
                           {iconNode}
                         </div>
                         <div>
@@ -447,7 +447,7 @@ export const History: React.FC = () => {
                             {summary.details.map(([label, value]) => (
                               <div
                                 key={label}
-                                className="rounded-xl bg-white dark:bg-slate-900/60 p-3.5 border border-slate-100 dark:border-slate-800/80 shadow-xs"
+                                className="rounded-app-inset bg-white dark:bg-slate-900/60 p-3.5 border border-slate-100 dark:border-slate-800/80 shadow-xs"
                               >
                                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
                                   {humanizeKey(label)}

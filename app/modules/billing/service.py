@@ -79,7 +79,7 @@ async def verify_play_purchase(
         subscription = Subscription(
             shop_id=shop_id,
             source="play",
-            plan="premium",
+            plan="pro",
             status="active" if entitled else "expired",
             starts_at=parse_google_time(purchase.get("startTime")) or datetime.now(UTC),
             expires_at=expiry,

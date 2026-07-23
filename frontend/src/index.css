@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .rounded-app-surface {
+    border-radius: 2rem;
+  }
+
+  .rounded-app-inset {
+    border-radius: 1.5rem;
+  }
+
+  .rounded-app-control {
+    border-radius: 9999px;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -10,6 +24,11 @@
 
 html {
   scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
 }
 
 body {
@@ -25,21 +44,33 @@ code {
     monospace;
 }
 
+input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 @layer components {
   .btn-primary {
-    @apply px-4 py-2 bg-amber-500 text-white rounded-lg font-medium hover:bg-amber-600 transition-colors duration-200;
+    @apply px-4 py-2 bg-amber-500 text-white rounded-app-control font-medium hover:bg-amber-600 transition-colors duration-200;
   }
 
   .btn-secondary {
-    @apply px-4 py-2 bg-slate-100 text-slate-900 rounded-lg font-medium hover:bg-slate-200 transition-colors duration-200;
+    @apply px-4 py-2 bg-slate-100 text-slate-900 rounded-app-control font-medium hover:bg-slate-200 transition-colors duration-200;
   }
 
   .input-base {
-    @apply w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200;
+    @apply w-full px-4 py-2 border border-slate-300 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200;
   }
 
   .card-base {
-    @apply bg-white rounded-lg shadow-md border border-slate-100;
+    @apply bg-white rounded-app-surface shadow-md border border-slate-100;
   }
 
   .text-gradient {
@@ -64,7 +95,7 @@ a {
 
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -92,4 +123,48 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .deferred-list-item {
   content-visibility: auto;
   contain-intrinsic-size: auto 96px;
+}
+
+.checkbox-round {
+  appearance: none;
+  position: relative;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.checkbox-round:checked {
+  border-color: #f59e0b;
+  background: #f59e0b;
+}
+
+.checkbox-round:checked::after {
+  content: '';
+  position: absolute;
+  top: 0.2rem;
+  left: 0.4rem;
+  width: 0.35rem;
+  height: 0.6rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-round:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dark .checkbox-round {
+  border-color: #475569;
+  background: #0f172a;
+}
+
+.dark .checkbox-round:checked {
+  border-color: #f59e0b;
+  background: #f59e0b;
 }

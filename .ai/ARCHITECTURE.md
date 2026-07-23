@@ -43,8 +43,8 @@ Evidence:
 
 ### Inventory, entitlement, and sale flow
 
-Hosted entitlement belongs to a shop. Self-hosted shops are premium/unlimited;
-hosted shops without a current premium subscription are limited to 50 active
+Hosted entitlement belongs to a shop. Self-hosted shops are Pro/unlimited;
+hosted shops without a current Pro subscription are limited to 50 active
 inventory rows. Item activation locks the shop before counting. Sale creation
 locks inventory rows, prices with `Decimal`, stores line snapshots, decrements
 stock, and records a shop-scoped idempotency result.

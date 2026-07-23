@@ -8,7 +8,7 @@ self-hosting from the same public source tree.
 
 - Self-hosted deployments are unlimited and do not use billing.
 - Aurum Cloud's free tier permits 50 active inventory records per shop.
-- Aurum Cloud Premium removes the hosted item limit. The official Android app
+- Aurum Cloud Pro removes the hosted item limit. The official Android app
   uses Google Play Billing with monthly and annual base plans.
 - Owners can use verified email/password or Google. Staff join only through a
   shop invitation. Roles and entitlements are loaded from PostgreSQL.

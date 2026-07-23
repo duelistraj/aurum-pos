@@ -34,7 +34,7 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 rounded-lg shadow-xl border border-slate-100 dark:border-slate-800">
+      <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 rounded-app-surface shadow-xl border border-slate-100 dark:border-slate-800">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="h-12 w-12 bg-amber-100 dark:bg-amber-500/10 rounded-full flex items-center justify-center">
@@ -51,7 +51,7 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
             <button
               type="button"
               onClick={onCancel}
-              className="h-9 w-9 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="h-9 w-9 flex items-center justify-center rounded-app-control text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               aria-label="Close API setup"
             >
               <X className="h-5 w-5" />
@@ -61,7 +61,7 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-red-50 dark:bg-red-950/40 p-4 flex items-start">
+            <div className="rounded-app-inset bg-red-50 dark:bg-red-950/40 p-4 flex items-start">
               <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
               <div className="text-sm text-red-700 dark:text-red-200">{error}</div>
             </div>
@@ -76,7 +76,7 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
               name="api-url"
               type="url"
               required
-              className="mt-2 block w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-3 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="mt-2 block w-full rounded-app-control border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-3 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
               placeholder="https://pos.example.com"
               value={apiUrl}
               onChange={(event) => setApiUrl(event.target.value)}
@@ -86,7 +86,7 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-3 px-4 rounded-md text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-70 transition-colors"
+            className="w-full flex justify-center py-3 px-4 rounded-app-control text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-70 transition-colors"
           >
             {loading ? 'Checking...' : 'Save and continue'}
           </button>

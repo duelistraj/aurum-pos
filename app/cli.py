@@ -108,7 +108,7 @@ async def grant_subscription(args: argparse.Namespace) -> None:
         subscription = Subscription(
             shop_id=shop.id,
             source=args.source,
-            plan="premium",
+            plan="pro",
             status="active",
             starts_at=starts_at,
             expires_at=expires_at,
@@ -117,7 +117,7 @@ async def grant_subscription(args: argparse.Namespace) -> None:
         )
         session.add(subscription)
         await session.flush()
-        print(f"Granted premium to {shop.slug}: {subscription.id}")
+        print(f"Granted Pro to {shop.slug}: {subscription.id}")
 
 
 def _manifest_digest(items: list[dict]) -> str:

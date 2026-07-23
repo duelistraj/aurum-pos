@@ -54,7 +54,7 @@ export const Alert: React.FC<AlertProps> = ({
 
   return (
     <div
-      className={`${bg} border-l-4 ${border} p-4 rounded-md shadow-sm animate-slide-up`}
+      className={`${bg} border-l-4 ${border} p-4 rounded-app-inset shadow-sm animate-slide-up`}
     >
       <div className="flex">
         <Icon className={`${iconColor} w-5 h-5 flex-shrink-0 mt-0.5`} />
@@ -66,8 +66,10 @@ export const Alert: React.FC<AlertProps> = ({
         </div>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
-            className={`text-gray-400 hover:text-gray-600 ml-3 flex-shrink-0`}
+            className="ml-3 flex-shrink-0 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+            aria-label="Dismiss status"
           >
             <X className="w-4 h-4" />
           </button>
@@ -112,7 +114,7 @@ export const Card: React.FC<CardProps> = ({
 }) => {
   return (
     <div
-      className={`bg-white dark:bg-slate-900 rounded-lg shadow-md border border-slate-100 dark:border-slate-800 ${
+      className={`bg-white dark:bg-slate-900 rounded-app-surface shadow-md border border-slate-100 dark:border-slate-800 ${
         hover
           ? 'hover:shadow-lg hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer transform hover:scale-105'
           : ''
@@ -139,7 +141,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+    'font-medium rounded-app-control transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
 
   const variantStyles = {
     primary:
@@ -211,7 +213,7 @@ export const Input: React.FC<InputProps> = ({
         </label>
       )}
       <input
-        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border border-slate-300 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 ${
+        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border border-slate-300 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 ${
           error ? 'border-red-500' : ''
         } ${className}`}
         {...props}
@@ -242,7 +244,7 @@ export const Select: React.FC<SelectProps> = ({
         </label>
       )}
       <select
-        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 ${
+        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 ${
           error ? 'border-red-500' : ''
         } ${className}`}
         {...props}
@@ -286,12 +288,12 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className={`bg-white dark:bg-slate-900 rounded-lg shadow-xl border border-slate-100 dark:border-slate-800 ${sizeClasses[size]} w-full animate-slide-up`}>
+      <div className={`bg-white dark:bg-slate-900 rounded-app-surface shadow-xl border border-slate-100 dark:border-slate-800 ${sizeClasses[size]} w-full animate-slide-up overflow-hidden`}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+            className="rounded-app-control p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X />
           </button>

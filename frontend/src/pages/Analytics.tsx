@@ -307,7 +307,7 @@ export const Analytics: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setShowMetalDropdown(!showMetalDropdown)}
-                className="flex items-center gap-2.5 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:border-slate-300 dark:hover:border-slate-700 text-sm font-semibold transition-all"
+                className="flex items-center gap-2.5 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-control shadow-sm hover:border-slate-300 dark:hover:border-slate-700 text-sm font-semibold transition-all"
               >
                 <Coins className="w-5 h-5 text-amber-500" />
                 <span className="capitalize">{selectedJewellery} Jewellery</span>
@@ -315,7 +315,7 @@ export const Analytics: React.FC = () => {
               </button>
 
               {showMetalDropdown && (
-                <div className="absolute right-0 mt-2.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl z-50 p-2.5 animate-fade-in animate-slide-up">
+                <div className="absolute right-0 mt-2.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-50 p-2.5 animate-fade-in animate-slide-up">
                   {['all', 'gold', 'silver', 'platinum'].map((m) => (
                     <button
                       key={m}
@@ -323,7 +323,7 @@ export const Analytics: React.FC = () => {
                         setSelectedJewellery(m);
                         setShowMetalDropdown(false);
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors capitalize ${
+                      className={`w-full text-left px-3 py-2 rounded-app-control text-sm font-medium transition-colors capitalize ${
                         selectedJewellery === m
                           ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -340,7 +340,7 @@ export const Analytics: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setShowDatePicker(!showDatePicker)}
-                className="flex items-center gap-2.5 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:border-slate-300 dark:hover:border-slate-700 text-sm font-semibold transition-all"
+                className="flex items-center gap-2.5 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-control shadow-sm hover:border-slate-300 dark:hover:border-slate-700 text-sm font-semibold transition-all"
               >
                 <Calendar className="w-5 h-5 text-amber-500" />
                 <span>{getRangeLabel()}</span>
@@ -348,7 +348,7 @@ export const Analytics: React.FC = () => {
               </button>
 
             {showDatePicker && (
-              <div className="absolute right-0 mt-2.5 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl z-50 p-4 animate-fade-in">
+              <div className="absolute right-0 mt-2.5 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-50 p-4 animate-fade-in">
                 <div className="space-y-1 mb-4">
                   {PRESETS.map((preset) => (
                     <button
@@ -360,7 +360,7 @@ export const Analytics: React.FC = () => {
                           applyPreset(preset.id);
                         }
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                      className={`w-full text-left px-3 py-2 rounded-app-control text-sm font-medium transition-colors ${
                         activePreset === preset.id
                           ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -381,7 +381,7 @@ export const Analytics: React.FC = () => {
                         type="date"
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:ring-1 focus:ring-amber-500"
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-app-control text-sm outline-none focus:ring-1 focus:ring-amber-500"
                       />
                     </div>
                     <div>
@@ -392,12 +392,12 @@ export const Analytics: React.FC = () => {
                         type="date"
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:ring-1 focus:ring-amber-500"
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-app-control text-sm outline-none focus:ring-1 focus:ring-amber-500"
                       />
                     </div>
                     <button
                       onClick={() => setShowDatePicker(false)}
-                      className="w-full mt-1 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-colors"
+                      className="w-full mt-1 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-app-control text-xs font-bold transition-colors"
                     >
                       Apply Custom Range
                     </button>
@@ -411,7 +411,7 @@ export const Analytics: React.FC = () => {
 
         {/* Error State */}
         {error && (
-          <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/10 border border-red-200 dark:border-red-900/30 rounded-2xl flex items-center gap-3 text-red-700 dark:text-red-400">
+          <div className="mb-8 p-4 bg-red-50 dark:bg-red-950/10 border border-red-200 dark:border-red-900/30 rounded-app-inset flex items-center gap-3 text-red-700 dark:text-red-400">
             <span className="font-semibold">{error}</span>
           </div>
         )}
@@ -428,13 +428,13 @@ export const Analytics: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
               
               {/* Card 1: Total Sales */}
-              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-3xl">
+              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-app-surface">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                       Total Sales
                     </span>
-                    <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center shadow-xs">
+                    <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-app-control flex items-center justify-center shadow-xs">
                       <IndianRupee className="w-5 h-5" />
                     </div>
                   </div>
@@ -458,13 +458,13 @@ export const Analytics: React.FC = () => {
               </Card>
 
               {/* Card 2: Total Sale Value */}
-              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-3xl">
+              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-app-surface">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                       Total Sale Value
                     </span>
-                    <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center shadow-xs">
+                    <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-app-control flex items-center justify-center shadow-xs">
                       <ArrowUpRight className="w-5 h-5" />
                     </div>
                   </div>
@@ -488,13 +488,13 @@ export const Analytics: React.FC = () => {
               </Card>
 
               {/* Card 3: Inventory Items */}
-              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-3xl">
+              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-app-surface">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                       Inventory Items
                     </span>
-                    <div className="w-10 h-10 bg-purple-500/10 text-purple-500 rounded-2xl flex items-center justify-center shadow-xs">
+                    <div className="w-10 h-10 bg-purple-500/10 text-purple-500 rounded-app-control flex items-center justify-center shadow-xs">
                       <Package className="w-5 h-5" />
                     </div>
                   </div>
@@ -518,13 +518,13 @@ export const Analytics: React.FC = () => {
               </Card>
 
               {/* Card 4: Silver Rate */}
-              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-3xl">
+              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-app-surface">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                       Silver Rate (10g)
                     </span>
-                    <div className="w-10 h-10 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center shadow-xs">
+                    <div className="w-10 h-10 bg-emerald-500/10 text-emerald-500 rounded-app-control flex items-center justify-center shadow-xs">
                       <Coins className="w-5 h-5" />
                     </div>
                   </div>
@@ -548,13 +548,13 @@ export const Analytics: React.FC = () => {
               </Card>
 
               {/* Card 5: Total Stock Value */}
-              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-3xl">
+              <Card className="p-6 relative flex flex-col justify-between h-40 shadow-sm border border-slate-100 dark:border-slate-800 rounded-app-surface">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-wider">
                       Total Stock Value
                     </span>
-                    <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-2xl flex items-center justify-center shadow-xs">
+                    <div className="w-10 h-10 bg-orange-500/10 text-orange-500 rounded-app-control flex items-center justify-center shadow-xs">
                       <PieChart className="w-5 h-5" />
                     </div>
                   </div>
@@ -645,7 +645,7 @@ export const Analytics: React.FC = () => {
                       const colors = ['bg-[#8B5CF6]', 'bg-[#3B82F6]', 'bg-[#10B981]', 'bg-[#F97316]', 'bg-[#F59E0B]', 'bg-[#EC4899]', 'bg-[#6366F1]', 'bg-[#EF4444]'];
                       return data.sales_by_category.map((cat, i) => (
                         <div key={cat.category} className="flex items-center gap-2 text-xs font-semibold">
-                          <span className={`w-3 h-3 rounded-md ${colors[i % colors.length]}`} />
+                          <span className={`w-3 h-3 rounded-app-control ${colors[i % colors.length]}`} />
                           <span className="text-slate-500 dark:text-slate-400 max-w-[90px] truncate" title={cat.category}>
                             {cat.category}
                           </span>
