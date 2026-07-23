@@ -106,14 +106,13 @@ The importer preserves item UUIDs, values, quantities, status, and timestamps.
 It does not import users, devices, rates, sales, sale lines, or change history.
 Do not point the SaaS migration at the live BMR database: use a clean Aiven
 database and retain the old EC2/database deployment only as the 30-day rollback
-environment. The private `bmr-chandiwala` Compose file still follows the legacy
-mutable `latest` workflow and should be archived after cutover, not reused for
-Aurum Cloud.
+environment.
 
 ## Production
 
-`compose.cloud.yml` is the lean single-EC2 topology: Caddy, API, and a reliable
-worker, with Aiven PostgreSQL. `AURUM_IMAGE` must be a GHCR digest. See
+`compose.cloud.yml` is the lean single-EC2 topology: a loopback-only API and a
+reliable worker behind host Nginx, with Aiven PostgreSQL. `AURUM_IMAGE` must be
+a GHCR digest. See
 [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES,
 Google RTDN, backup, restore, and scaling gates.
 

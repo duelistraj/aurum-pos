@@ -38,8 +38,9 @@ Evidence:
 
 Capacitor wraps Vite assets for Android. The official client uses Google
 Credential Manager and Play Billing Library 9.1.0. Docker builds a non-root,
-multi-architecture API image; hosted Compose uses Caddy, API, and worker with
-Aiven PostgreSQL and an immutable image digest.
+multi-architecture API image; hosted Compose runs loopback-only API and worker
+containers behind host Nginx, with Aiven PostgreSQL and an immutable image
+digest.
 
 Evidence:
 - `frontend/android/app/build.gradle::dependencies`

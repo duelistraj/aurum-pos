@@ -1,22 +1,12 @@
-name: Build Docker Image
+name: Publish Docker Image
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*.*.*"
-    paths:
-      - "app/**"
-      - "alembic/**"
-      - "nginx/**"
-      - "Dockerfile"
-      - "docker-compose.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/docker-publish.yml"
-
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Tested commit to package
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -30,6 +20,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -64,7 +56,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VCS_REF=${{ github.sha }}
+            VCS_REF=${{ inputs.ref }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha

@@ -37,9 +37,31 @@ Rationale: Credentials, customer data, and deployment authority remain outside t
 Consequences: Operators supply `.env.cloud`, DNS, AWS/Aiven resources, signing configuration, and the selected image digest.
 
 Evidence:
-- `.github/workflows/docker-publish.yml::Build and Push Docker Image`
+- `.github/workflows/ci.yml::publish-image`
 - `compose.cloud.yml::services`
 - `deploy/OPERATIONS.md::Required preparation`
+
+### Promote production through a private operations repository
+
+Recorded: 2026-07-23
+Status: accepted
+Basis: user-confirmed
+Decision: Successful public CI publishes an immutable GHCR image; a private
+operations repository promotes an approved digest to production through AWS
+OIDC and SSM. Production uses host Nginx and Certbot in front of the
+loopback-only API.
+Rationale: The user selected private operations CD, digest promotion by pull
+request, and host Nginx while keeping production authority outside the
+open-source repository.
+Consequences: Public pull requests cannot access production credentials.
+Production changes are auditable digest updates, and mutable image tags are
+never deployment inputs.
+
+Evidence:
+- `.github/workflows/ci.yml::publish-image`
+- `compose.cloud.yml::services.api`
+- `deploy/nginx-api.conf`
+- `deploy/OPERATIONS.md::Deployment`
 
 ### License future releases under AGPL version 3 only
 

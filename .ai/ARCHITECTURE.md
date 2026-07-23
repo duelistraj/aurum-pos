@@ -4,8 +4,9 @@
 
 Aurum POS has a FastAPI API, async PostgreSQL persistence, a database-backed
 worker, and a React client packaged for Capacitor Android. Local Compose supplies
-PostgreSQL. The lean hosted topology uses Caddy, API, and worker containers on
-one EC2 instance with Aiven PostgreSQL; the API remains stateless.
+PostgreSQL. The lean hosted topology uses host Nginx in front of loopback-only
+API and worker containers on one EC2 instance with Aiven PostgreSQL; the API
+remains stateless.
 
 Evidence:
 - `app/main.py::app`
