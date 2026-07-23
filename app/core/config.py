@@ -7,6 +7,7 @@ DEFAULT_CORS_ORIGINS = (
     "capacitor://localhost",
     "https://aurumpos.net",
 )
+AUTH_TOKEN_EXPOSURE_ENVIRONMENTS = frozenset({"local", "test"})
 
 
 class Settings(BaseSettings):
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
     @property
     def is_hosted(self) -> bool:
         return self.deployment_mode == "hosted"
+
+    @property
+    def exposes_auth_tokens(self) -> bool:
+        return self.env.strip().lower() in AUTH_TOKEN_EXPOSURE_ENVIRONMENTS
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -16,6 +16,13 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      AURUM_DISTRIBUTION: cloud
+      VITE_DISTRIBUTION: cloud
+      VITE_API_URL: https://api.aurumpos.net
+      VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      ANDROID_APPLICATION_ID: com.duelistraj.aurumpos
+      CAPACITOR_APP_ID: com.duelistraj.aurumpos
 
     steps:
     - name: Checkout repository

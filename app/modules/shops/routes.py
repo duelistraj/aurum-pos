@@ -62,5 +62,5 @@ async def invite(
         role=invitation.role,
         expires_at=invitation.expires_at,
         created_at=invitation.created_at,
-        token=raw_token if settings.env == "local" else None,
+        token=raw_token if settings.exposes_auth_tokens else None,
     )

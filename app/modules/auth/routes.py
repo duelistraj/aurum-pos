@@ -108,7 +108,7 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     await create_shop(db, name=data.shop_name, owner_id=user.id)
     token = await create_verification_token(db, user)
     response = {"message": "Check your email to verify your account"}
-    if settings.env == "local":
+    if settings.exposes_auth_tokens:
         response["verification_token"] = token
     return response
 
@@ -166,7 +166,7 @@ async def start_account_deletion(data: AccountDeletionStart, db: AsyncSession = 
         delete_owned_shops=data.delete_owned_shops,
     )
     response = {"message": "If the account exists, a confirmation email has been sent"}
-    if token and settings.env == "local":
+    if token and settings.exposes_auth_tokens:
         response["confirmation_token"] = token
     return response
 
