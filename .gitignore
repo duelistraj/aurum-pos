@@ -19,6 +19,7 @@ pip-wheel-metadata/
 
 # Environment variables
 .env
+.env.cloud
 .env.*.local
 
 # Node / frontend

@@ -30,7 +30,7 @@ Evidence:
 
 ### Secrets and cutover safety
 
-Never commit `.env`, `.env.cloud`, signing keys, Play service-account JSON,
+Never commit `.env`, signing keys, Play service-account JSON,
 billing encryption keys, access tokens, customer records, database dumps, or
 item exports. BMR cutover uses a clean SaaS database and the checksummed
 item-only export/import; keep the old deployment isolated for 30 days. Do not

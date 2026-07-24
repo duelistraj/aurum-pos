@@ -7,26 +7,22 @@ the loopback-only API port, and Certbot manages TLS.
 
 ## Required preparation
 
-- Attach a least-privilege instance role for SSM, CloudWatch, SES, and the backup S3 bucket.
-- Install Nginx, Certbot with its Nginx plugin, Docker Compose, the PostgreSQL
-  client, AWS CLI, and Git.
-- Enable S3 versioning, default encryption, and a 35-day lifecycle policy.
-- Allowlist the Elastic IP in Aiven and use TLS URLs. Runtime uses the pool URL;
-  migrations and backups use the direct URL.
-- Put the single `.env.cloud` file on the host as mode `0600`. It contains both
-  runtime and backup settings and is retrieved from AWS secure parameters
-  during provisioning; never commit the file. Compose explicitly passes only
-  runtime settings into the API and worker containers.
+- Attach a least-privilege instance role for SSM, CloudWatch, and SES.
+- Install Nginx, Certbot with its Nginx plugin, Docker Compose, AWS CLI, and Git.
+- Allowlist the Elastic IP in Aiven and use a TLS pool URL for the application.
+- Retrieve the runtime configuration from an encrypted AWS parameter and
+  install it as `.env` on the host with mode `0600`; never commit the file.
+  Compose loads that file into the API and worker containers.
 - Configure SES DKIM/SPF/DMARC for `aurumpos.net`, Google service credentials,
   Pub/Sub authenticated push (including the exact OIDC service-account email),
   and `api.aurumpos.net` DNS before deployment.
 
 ## Deployment
 
-Set `AURUM_IMAGE` to the tested GHCR digest, create a manual database backup,
-then run `deploy/deploy.sh` through SSM. The script refuses mutable tags, runs
-the migration from the same image, starts the API and worker, and checks
-readiness. Nginx remains a host service and proxies to `127.0.0.1:8000`.
+Set `AURUM_IMAGE` to the tested GHCR digest, then run `deploy/deploy.sh` through
+SSM. The script refuses mutable tags, runs the migration from the same image,
+starts the API and worker, and checks readiness. Nginx remains a host service
+and proxies to `127.0.0.1:8000`.
 
 Keep the prior image digest for application rollback. Database migrations must
 remain backward-compatible after the initial clean-database SaaS cutover. The
@@ -39,9 +35,9 @@ must not run the destructive non-item reset against the live BMR database.
 
 ## Backup and restore
 
-Run `deploy/backup-aiven.sh` daily from a systemd timer. Once per month, restore
-the newest object into an isolated database, run Alembic current, compare row
-counts, and record the result. Never validate a restore against production.
+Database backup, retention, and restoration are configured and operated
+directly through the selected infrastructure providers. Aurum POS does not run
+application-managed backup jobs.
 
 ## Scale triggers
 

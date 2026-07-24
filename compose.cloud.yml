@@ -1,32 +1,8 @@
-x-app-environment: &app-environment
-  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
-  APP_NAME: ${APP_NAME:-Aurum POS}
-  ENV: ${ENV:-production}
-  DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-hosted}
-  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY}
-  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-  JWT_ISSUER: ${JWT_ISSUER:-aurum-pos}
-  JWT_AUDIENCE: ${JWT_AUDIENCE:-aurum-pos-api}
-  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
-  REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
-  CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS}
-  FREE_ACTIVE_ITEM_LIMIT: ${FREE_ACTIVE_ITEM_LIMIT:-50}
-  SOURCE_REPOSITORY_URL: ${SOURCE_REPOSITORY_URL:-https://github.com/duelistraj/aurum-pos}
-  GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}
-  GOOGLE_PLAY_PACKAGE_NAME: ${GOOGLE_PLAY_PACKAGE_NAME:-com.duelistraj.aurumpos}
-  GOOGLE_PLAY_PRODUCT_ID: ${GOOGLE_PLAY_PRODUCT_ID:-aurum_cloud_pro}
-  GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:-}
-  GOOGLE_PLAY_PUBSUB_AUDIENCE: ${GOOGLE_PLAY_PUBSUB_AUDIENCE:-}
-  GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL: ${GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT_EMAIL:-}
-  BILLING_TOKEN_ENCRYPTION_KEY: ${BILLING_TOKEN_ENCRYPTION_KEY:-}
-  EMAIL_FROM: ${EMAIL_FROM:-Aurum POS <noreply@aurumpos.net>}
-  SES_REGION: ${SES_REGION:-ap-south-1}
-  PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://aurumpos.net}
-
 services:
   api:
     image: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
-    environment: *app-environment
+    env_file:
+      - .env
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
@@ -43,7 +19,8 @@ services:
   worker:
     image: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
     command: ["python", "-m", "app.worker"]
-    environment: *app-environment
+    env_file:
+      - .env
     restart: unless-stopped
     depends_on:
       api:

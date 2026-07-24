@@ -94,13 +94,13 @@ There are no shop-specific entitlement branches.
 
 ## BMR item-only cutover
 
-1. Stop legacy writes and create an encrypted final database backup.
+1. Stop legacy writes.
 2. Set `LEGACY_DATABASE_URL` and run `uv run python scripts/export_legacy_items.py`.
 3. Create the clean SaaS database and run Alembic.
 4. Bootstrap the BMR shop and verified owner.
 5. Run `uv run python -m app.cli import-items --shop bmr-chandiwala --file bmr-items.json`.
 6. Apply the complimentary grant above and verify the reported row count and SHA-256.
-7. Keep the isolated old database for 30 days, then drop it and destroy the manual archive.
+7. Keep the isolated old database for 30 days, then drop it.
 
 The importer preserves item UUIDs, values, quantities, status, and timestamps.
 It does not import users, devices, rates, sales, sale lines, or change history.
@@ -112,11 +112,11 @@ environment.
 
 `compose.cloud.yml` is the lean single-EC2 topology: a loopback-only API and a
 reliable worker behind host Nginx, with Aiven PostgreSQL. `AURUM_IMAGE` must be
-a GHCR digest. Copy `.env.cloud.example` to `.env.cloud` and assign the runtime
-and backup values in that single file. Compose passes only runtime values into
-the application containers. See
+a GHCR digest. Create an untracked `.env` from `.env.example`, assign the
+runtime values, and provision it securely on the host. Compose loads that file
+into the application containers. See
 [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES,
-Google RTDN, backup, restore, and scaling gates.
+Google RTDN, provider-managed recovery, and scaling gates.
 
 Public privacy, terms, source, and account-deletion pages are published from
 `site/` to `aurumpos.net`.
