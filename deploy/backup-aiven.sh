@@ -1,6 +1,20 @@
 #!/usr/bin/env sh
 set -eu
 
+CDPATH=
+APP_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd)
+readonly APP_DIR CDPATH
+
+test -f "$APP_DIR/.env.cloud" || {
+  echo "Missing $APP_DIR/.env.cloud" >&2
+  exit 2
+}
+
+set -a
+# shellcheck disable=SC1091
+. "$APP_DIR/.env.cloud"
+set +a
+
 : "${DIRECT_DATABASE_URL:?Set the direct Aiven PostgreSQL URL}"
 : "${BACKUP_S3_BUCKET:?Set the versioned backup bucket name}"
 

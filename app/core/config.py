@@ -20,13 +20,11 @@ class Settings(BaseSettings):
     jwt_audience: str = "aurum-pos-api"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
-    phone_number: str = "1010101010"
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     deployment_mode: str = "self_hosted"
     free_active_item_limit: int = 50
     source_repository_url: str = "https://github.com/duelistraj/aurum-pos"
     git_sha: str = "development"
-    cloud_api_url: str = "https://api.aurumpos.net"
     google_web_client_id: str | None = None
     google_play_package_name: str = "com.duelistraj.aurumpos"
     google_play_product_id: str = "aurum_cloud_pro"

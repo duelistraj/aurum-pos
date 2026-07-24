@@ -13,8 +13,10 @@ the loopback-only API port, and Certbot manages TLS.
 - Enable S3 versioning, default encryption, and a 35-day lifecycle policy.
 - Allowlist the Elastic IP in Aiven and use TLS URLs. Runtime uses the pool URL;
   migrations and backups use the direct URL.
-- Put `.env.cloud` on the host as root-readable only. Retrieve values from AWS
-  secure parameters during provisioning; never commit the file.
+- Put the single `.env.cloud` file on the host as mode `0600`. It contains both
+  runtime and backup settings and is retrieved from AWS secure parameters
+  during provisioning; never commit the file. Compose explicitly passes only
+  runtime settings into the API and worker containers.
 - Configure SES DKIM/SPF/DMARC for `aurumpos.net`, Google service credentials,
   Pub/Sub authenticated push (including the exact OIDC service-account email),
   and `api.aurumpos.net` DNS before deployment.

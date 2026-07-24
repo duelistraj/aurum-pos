@@ -7,7 +7,13 @@ case "$AURUM_IMAGE" in
   *) echo "AURUM_IMAGE must be pinned by sha256 digest" >&2; exit 2 ;;
 esac
 
-docker compose -f compose.cloud.yml pull api worker
-docker compose -f compose.cloud.yml run --rm api alembic upgrade head
-docker compose -f compose.cloud.yml up -d --remove-orphans
-docker compose -f compose.cloud.yml exec -T api curl -fsS http://localhost:8000/health/ready
+test -f .env.cloud || {
+  echo "Missing .env.cloud" >&2
+  exit 2
+}
+
+docker compose --env-file .env.cloud -f compose.cloud.yml pull api worker
+docker compose --env-file .env.cloud -f compose.cloud.yml run --rm api alembic upgrade head
+docker compose --env-file .env.cloud -f compose.cloud.yml up -d --remove-orphans
+docker compose --env-file .env.cloud -f compose.cloud.yml exec -T api \
+  curl -fsS http://localhost:8000/health/ready

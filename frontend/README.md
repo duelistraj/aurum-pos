@@ -35,7 +35,7 @@ React + TypeScript frontend for Aurum POS with:
 ### Installation
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 npm ci
 ```
 
@@ -62,6 +62,7 @@ blank for generic Android/web builds, where users enter the URL on first launch.
 ```env
 VITE_API_URL=http://localhost:8080
 VITE_DISTRIBUTION=self_hosted
+VITE_GOOGLE_WEB_CLIENT_ID=
 ```
 
 ## Project Structure

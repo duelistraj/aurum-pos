@@ -112,7 +112,9 @@ environment.
 
 `compose.cloud.yml` is the lean single-EC2 topology: a loopback-only API and a
 reliable worker behind host Nginx, with Aiven PostgreSQL. `AURUM_IMAGE` must be
-a GHCR digest. See
+a GHCR digest. Copy `.env.cloud.example` to `.env.cloud` and assign the runtime
+and backup values in that single file. Compose passes only runtime values into
+the application containers. See
 [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES,
 Google RTDN, backup, restore, and scaling gates.
 

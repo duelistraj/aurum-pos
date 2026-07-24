@@ -41,6 +41,25 @@ Evidence:
 - `compose.cloud.yml::services`
 - `deploy/OPERATIONS.md::Required preparation`
 
+### Use synchronized environment contracts
+
+Recorded: 2026-07-24
+Status: accepted
+Basis: user-confirmed
+Decision: Keep backend local and cloud environment files on one synchronized
+key contract, keep frontend example and local files on one Vite key contract,
+and store runtime plus backup configuration in one cloud environment file.
+Rationale: The user explicitly requested fewer environment files and aligned
+variables across backend and frontend configuration.
+Consequences: Automated tests detect key drift. Cloud Compose explicitly
+allowlists runtime variables, so backup-only values remain unavailable to the
+API and worker containers.
+
+Evidence:
+- `tests/test_env_contract.py::test_backend_environment_files_share_the_settings_contract`
+- `compose.cloud.yml::x-app-environment`
+- `.env.cloud.example::DIRECT_DATABASE_URL`
+
 ### Promote production through a private operations repository
 
 Recorded: 2026-07-23
