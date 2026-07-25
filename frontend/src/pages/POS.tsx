@@ -11,7 +11,7 @@ import {
 } from '../components/UI';
 import { apiClient } from '../api/client';
 import { ItemPOSWithPrice, CustomerDetails } from '../types';
-import { formatCurrency, generateInvoiceNumber, downloadBlob } from '../utils';
+import { downloadUrl, formatCurrency, generateInvoiceNumber } from '../utils';
 
 const FIXED_MAKING_CATEGORIES = new Set(['ring', 'other', 'pendant']);
 
@@ -289,8 +289,8 @@ export const POS: React.FC = () => {
 
       // Download invoice PDF
       try {
-        const pdf = await apiClient.getInvoicePDF(sale.id);
-        await downloadBlob(pdf, `${sale.invoice_no}.pdf`);
+        const invoice = await apiClient.getInvoiceDownload(sale.id);
+        await downloadUrl(invoice.url, `${sale.invoice_no}.pdf`);
       } catch (pdfErr) {
         console.error('Failed to download PDF:', pdfErr);
       }

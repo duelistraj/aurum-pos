@@ -7,6 +7,7 @@ import { useShop } from '../context/ShopContext';
 import { AurumGoogleAuth, createNonce } from '../native/googleAuth';
 import { getAccessToken, setAuthData } from '../utils/auth';
 import { getDeviceInfo, getDeviceUUID } from '../utils/device';
+import { safeReturnPath } from '../utils/navigation';
 
 export const Login: React.FC = () => {
   const [mode, setMode] = React.useState<'login' | 'register' | 'staff'>('login');
@@ -20,6 +21,7 @@ export const Login: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const returnPath = safeReturnPath(location.state);
   const { reload } = useShop();
   const googleClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
 
@@ -30,9 +32,9 @@ export const Login: React.FC = () => {
       setMode('staff');
     }
     void getAccessToken().then((token) => {
-      if (token) navigate(location.state?.from?.pathname || '/', { replace: true });
+      if (token) navigate(returnPath, { replace: true });
     });
-  }, [navigate, location]);
+  }, [navigate, location.search, returnPath]);
 
   const devicePayload = async () => {
     const deviceInfo = getDeviceInfo();
@@ -84,7 +86,7 @@ export const Login: React.FC = () => {
         memberships: response.memberships,
       });
       await reload();
-      navigate(location.state?.from?.pathname || '/', { replace: true });
+      navigate(returnPath, { replace: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Authentication failed');
     } finally {

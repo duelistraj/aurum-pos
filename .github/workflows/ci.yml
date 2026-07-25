@@ -31,6 +31,8 @@ jobs:
       ENV: test
       JWT_SECRET_KEY: test-secret-key-that-is-long-enough-for-ci
       CORS_ORIGINS: '["http://localhost:5174"]'
+      AWS_REGION: ap-southeast-1
+      S3_INVOICE_BUCKET: aurum-pos-ci-invoices
       RUN_INTEGRATION: "1"
 
     steps:
@@ -58,12 +60,14 @@ jobs:
           uv run ruff check app tests scripts
           alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py
           alembic/versions/d4e5f6a7b8c9_add_deletion_and_idempotency.py
+          alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py
 
       - name: Check backend formatting
         run: >-
           uv run ruff format --check app tests scripts
           alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py
           alembic/versions/d4e5f6a7b8c9_add_deletion_and_idempotency.py
+          alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py
 
       - name: Type-check backend
         run: uv run mypy app

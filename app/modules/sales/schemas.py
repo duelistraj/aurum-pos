@@ -22,3 +22,8 @@ class SaleOut(BaseModel):
     id: UUID
     invoice_no: str
     total_amount: float
+
+
+class InvoiceDownloadOut(BaseModel):
+    url: str
+    expires_in_seconds: int

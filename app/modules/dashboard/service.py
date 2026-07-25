@@ -190,11 +190,13 @@ async def get_dashboard_analytics(
             # Catalog value (suggested price)
             metal_lower = item.metal.lower()
             base_rate_per_gram = rates_dict.get((metal_lower, 100.0), 0.0)
-            rate_per_gram = float(calculate_effective_rate_per_gram(
-                metal=item.metal,
-                purity=item.purity,
-                base_rate_per_gram=base_rate_per_gram,
-            ))
+            rate_per_gram = float(
+                calculate_effective_rate_per_gram(
+                    metal=item.metal,
+                    purity=item.purity,
+                    base_rate_per_gram=base_rate_per_gram,
+                )
+            )
             total_stock_value += net_weight * qty_at_T * rate_per_gram
 
             category = str(item.category).strip().lower()

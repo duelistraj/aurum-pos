@@ -1,3 +1,4 @@
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CORS_ORIGINS = (
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     billing_token_encryption_key: str | None = None
     email_from: str = "Aurum POS <noreply@aurumpos.net>"
     ses_region: str = "ap-south-1"
+    aws_region: str
+    s3_invoice_bucket: str
+    s3_invoice_prefix: str = "shops"
+    s3_presigned_url_expiry_seconds: int = Field(default=600, ge=1)
     public_site_url: str = "https://aurumpos.net"
 
     model_config = SettingsConfigDict(
@@ -48,6 +53,22 @@ class Settings(BaseSettings):
     @property
     def exposes_auth_tokens(self) -> bool:
         return self.env.strip().lower() in AUTH_TOKEN_EXPOSURE_ENVIRONMENTS
+
+    @field_validator("aws_region", "s3_invoice_bucket")
+    @classmethod
+    def validate_required_aws_value(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("s3_invoice_prefix")
+    @classmethod
+    def normalize_s3_invoice_prefix(cls, value: str) -> str:
+        normalized = value.strip().strip("/")
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
 
 
 settings = Settings()  # type: ignore[call-arg]

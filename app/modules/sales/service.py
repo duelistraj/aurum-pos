@@ -1,28 +1,82 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.changelog.service import log_change
+from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
 from app.modules.metal_rates.models import MetalRate
 from app.modules.metal_rates.service import calculate_effective_rate_per_gram
+from app.modules.sales.invoice import generate_invoice_pdf
 from app.modules.sales.models import Sale, SaleItem
 from app.modules.sales.schemas import SaleCreate
+from app.modules.sales.storage import (
+    InvoiceStorage,
+    build_invoice_object_key,
+)
 
 
-async def get_sale_by_id(db: AsyncSession, sale_id: UUID) -> Sale | None:
+async def get_sale_by_id(
+    db: AsyncSession,
+    *,
+    sale_id: UUID,
+    shop_id: UUID,
+    for_update: bool = False,
+) -> Sale | None:
     stmt = (
         select(Sale)
-        .where(Sale.id == sale_id)
+        .where(
+            Sale.id == sale_id,
+            Sale.shop_id == shop_id,
+        )
         .options(selectinload(Sale.items).selectinload(SaleItem.item))
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def persist_invoice_pdf(
+    *,
+    shop_id: UUID,
+    sale_id: UUID,
+    storage: InvoiceStorage,
+) -> Sale | None:
+    async with AsyncSessionLocal.begin() as db:
+        await db.execute(
+            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+            {"shop_id": str(shop_id)},
+        )
+        sale = await get_sale_by_id(
+            db,
+            sale_id=sale_id,
+            shop_id=shop_id,
+            for_update=True,
+        )
+        if sale is None or sale.s3_object_key is not None:
+            return sale
+
+        pdf = generate_invoice_pdf(sale)
+        generated_at = datetime.now(UTC)
+        object_key = build_invoice_object_key(
+            prefix=settings.s3_invoice_prefix,
+            shop_id=shop_id,
+            invoice_id=sale.id,
+            created_at=sale.created_at,
+        )
+        metadata = await storage.upload_pdf(object_key=object_key, pdf=pdf)
+        sale.s3_object_key = object_key
+        sale.pdf_generated_at = generated_at
+        sale.pdf_checksum_sha256 = metadata.checksum_sha256
+        return sale
 
 
 async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:

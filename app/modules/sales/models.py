@@ -83,6 +83,21 @@ class Sale(Base):
         default="19",
     )
 
+    s3_object_key: Mapped[str | None] = mapped_column(
+        String(1024),
+        nullable=True,
+    )
+
+    pdf_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    pdf_checksum_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     items = relationship(
         "SaleItem",
         back_populates="sale",

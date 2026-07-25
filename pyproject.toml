@@ -64,5 +64,5 @@ warn_unused_ignores = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["boto3.*", "openpyxl.*", "passlib.*", "reportlab.*"]
+module = ["boto3.*", "botocore.*", "openpyxl.*", "passlib.*", "reportlab.*"]
 ignore_missing_imports = true

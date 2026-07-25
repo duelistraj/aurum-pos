@@ -54,6 +54,11 @@ export interface Sale {
   total_amount: number;
 }
 
+export interface InvoiceDownload {
+  url: string;
+  expires_in_seconds: number;
+}
+
 export interface ChangeLogEntry {
   id: string;
   entity: string;

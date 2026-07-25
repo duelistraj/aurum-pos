@@ -69,6 +69,17 @@ Evidence:
 - `app/modules/billing/routes.py::receive_rtdn`
 - `app/worker.py::run_once`
 
+### Invoice document storage
+
+PostgreSQL sales remain the authoritative invoice index.
+After a sale commits, the API renders its immutable sale snapshot to PDF and uploads it to a private S3 object whose key contains only the configured prefix, shop UUID, year, and sale UUID.
+Authenticated shop-scoped downloads receive a ten-minute presigned URL generated from the exact database key.
+
+Evidence:
+- `app/modules/sales/service.py::persist_invoice_pdf`
+- `app/modules/sales/storage.py::InvoiceStorage`
+- `app/modules/sales/routes.py::invoice`
+
 ### Client boot and shop state
 
 The React root supplies TanStack Query and shop contexts. Axios adds API prefix,

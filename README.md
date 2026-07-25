@@ -48,6 +48,10 @@ uv run uvicorn app.main:app --reload --port 8080
 The backend always runs at `http://localhost:8080`; API documentation is at
 `http://localhost:8080/docs`.
 
+Invoice PDFs are stored in the private S3 bucket configured by `AWS_REGION` and `S3_INVOICE_BUCKET`.
+For local AWS access, use the normal SDK credential chain through `aws configure`, `AWS_PROFILE`, or temporary credentials exported in the shell.
+Do not commit local AWS credentials or add them to the application settings.
+
 In another terminal:
 
 ```bash
@@ -116,7 +120,10 @@ a GHCR digest. Create an untracked `.env` from `.env.example`, assign the
 runtime values, and provision it securely on the host. Compose loads that file
 into the application containers. See
 [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES,
-Google RTDN, provider-managed recovery, and scaling gates.
+private invoice storage, Google RTDN, provider-managed recovery, and scaling gates.
+
+Aurum Cloud uses the private `aurum-pos-prod-duelistraj` bucket in `ap-southeast-1`.
+The application automatically uses temporary credentials from the EC2 instance role and never requires static AWS access keys in production.
 
 Public privacy, terms, source, and account-deletion pages are published from
 `site/` to `aurumpos.net`.

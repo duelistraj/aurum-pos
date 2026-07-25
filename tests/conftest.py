@@ -6,3 +6,5 @@ os.environ.setdefault(
 )
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-that-is-long-enough")
 os.environ.setdefault("CORS_ORIGINS", '["http://localhost:5174"]')
+os.environ.setdefault("AWS_REGION", "ap-southeast-1")
+os.environ.setdefault("S3_INVOICE_BUCKET", "test-invoice-bucket")

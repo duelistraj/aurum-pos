@@ -1,6 +1,15 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { PLAY_PRODUCT_ID } from '../constants/billing';
-import { Item, MetalRate, Sale, ItemPOSWithPrice, DashboardSummary, ChangeLogEntry, AnalyticsDashboardResponse } from '../types';
+import {
+  AnalyticsDashboardResponse,
+  ChangeLogEntry,
+  DashboardSummary,
+  InvoiceDownload,
+  Item,
+  ItemPOSWithPrice,
+  MetalRate,
+  Sale,
+} from '../types';
 import {
   clearAuthData,
   getAccessToken,
@@ -457,11 +466,9 @@ export const apiClient = {
   },
 
   // Invoices
-  async getInvoicePDF(saleId: string) {
-    const response = await client.get(`/sales/${saleId}/invoice`, {
-      responseType: 'arraybuffer',
-    });
-    return response.data;
+  async getInvoiceDownload(saleId: string) {
+    const { data } = await client.get<InvoiceDownload>(`/sales/${saleId}/invoice`);
+    return data;
   },
 };
 

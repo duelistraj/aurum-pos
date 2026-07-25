@@ -23,3 +23,18 @@ def test_auth_tokens_are_hidden_in_deployed_environments(environment: str) -> No
     )
 
     assert settings.exposes_auth_tokens is False
+
+
+def test_invoice_storage_defaults_and_prefix_normalization() -> None:
+    settings = Settings(
+        database_url="postgresql+asyncpg://example",
+        jwt_secret_key="test-secret-key",
+        aws_region=" ap-southeast-1 ",
+        s3_invoice_bucket=" invoice-bucket ",
+        s3_invoice_prefix="/shops/",
+    )
+
+    assert settings.aws_region == "ap-southeast-1"
+    assert settings.s3_invoice_bucket == "invoice-bucket"
+    assert settings.s3_invoice_prefix == "shops"
+    assert settings.s3_presigned_url_expiry_seconds == 600

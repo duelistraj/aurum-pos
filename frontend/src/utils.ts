@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { FileTransfer } from '@capacitor/file-transfer';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
@@ -31,6 +32,39 @@ export const formatWeight = (weight: number): string => {
   return `${weight.toFixed(2)}g`;
 };
 
+const requestPublicStoragePermission = async () => {
+  try {
+    const fsPermission = await Filesystem.checkPermissions();
+    if (fsPermission.publicStorage !== 'granted') {
+      await Filesystem.requestPermissions();
+    }
+  } catch (permissionErr) {
+    console.error('Error checking/requesting filesystem permissions:', permissionErr);
+  }
+};
+
+const notifyFileDownloaded = async (filename: string) => {
+  try {
+    const notifyPermission = await LocalNotifications.checkPermissions();
+    if (notifyPermission.display !== 'granted') {
+      await LocalNotifications.requestPermissions();
+    }
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          title: 'File Downloaded',
+          body: `${filename} has been saved to your Documents folder.`,
+          id: Math.floor(Math.random() * 100000),
+          schedule: { at: new Date(Date.now() + 500) },
+        },
+      ],
+    });
+  } catch (notificationErr) {
+    console.error('Error scheduling local notification:', notificationErr);
+  }
+};
+
 export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) => {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -56,15 +90,7 @@ export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) =
         base64Data = window.btoa(binary);
       }
 
-      // Check and request Storage permission (required for public directories on Android)
-      try {
-        const fsPermission = await Filesystem.checkPermissions();
-        if (fsPermission.publicStorage !== 'granted') {
-          await Filesystem.requestPermissions();
-        }
-      } catch (permissionErr) {
-        console.error('Error checking/requesting filesystem permissions:', permissionErr);
-      }
+      await requestPublicStoragePermission();
 
       await Filesystem.writeFile({
         path: filename,
@@ -72,26 +98,7 @@ export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) =
         directory: Directory.Documents,
       });
 
-      // Check and request Notification permission (required for Android 13+) and display notification
-      try {
-        const notifyPermission = await LocalNotifications.checkPermissions();
-        if (notifyPermission.display !== 'granted') {
-          await LocalNotifications.requestPermissions();
-        }
-
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              title: 'File Downloaded',
-              body: `${filename} has been saved to your Documents folder.`,
-              id: Math.floor(Math.random() * 100000),
-              schedule: { at: new Date(Date.now() + 500) },
-            },
-          ],
-        });
-      } catch (notificationErr) {
-        console.error('Error scheduling local notification:', notificationErr);
-      }
+      await notifyFileDownloaded(filename);
     } catch (error) {
       console.error('Error saving file natively:', error);
       throw error;
@@ -107,6 +114,30 @@ export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) =
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   }
+};
+
+export const downloadUrl = async (url: string, filename: string) => {
+  if (Capacitor.isNativePlatform()) {
+    await requestPublicStoragePermission();
+    const destination = await Filesystem.getUri({
+      path: filename,
+      directory: Directory.Documents,
+    });
+    await FileTransfer.downloadFile({
+      url,
+      path: destination.uri,
+    });
+    await notifyFileDownloaded(filename);
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
 export const generateInvoiceNumber = (): string => {
