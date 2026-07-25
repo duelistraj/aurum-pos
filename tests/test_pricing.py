@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from app.modules.items.pricing import calculate_suggested_price, lock_price_at_sale
 from app.modules.items.schemas import ItemUpdate
+from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 
 
 def test_price_calculation_uses_decimal_and_half_up_rounding() -> None:
@@ -35,3 +36,33 @@ def test_unique_item_price_is_only_the_fixed_making_charge() -> None:
 def test_item_update_is_partial() -> None:
     update = ItemUpdate(name="Updated name")
     assert update.model_dump(exclude_unset=True) == {"name": "Updated name"}
+
+
+def test_gold_rate_is_converted_from_the_100_percent_base_rate() -> None:
+    rate = calculate_effective_rate_per_gram(
+        metal="Gold",
+        purity=Decimal("91.6"),
+        base_rate_per_gram=Decimal("7000"),
+    )
+
+    assert rate == Decimal("6412")
+
+
+def test_platinum_rate_is_converted_from_the_100_percent_base_rate() -> None:
+    rate = calculate_effective_rate_per_gram(
+        metal="Platinum",
+        purity=Decimal("95"),
+        base_rate_per_gram=Decimal("4000"),
+    )
+
+    assert rate == Decimal("3800")
+
+
+def test_silver_rate_ignores_item_purity() -> None:
+    rate = calculate_effective_rate_per_gram(
+        metal="Silver",
+        purity=Decimal("92.5"),
+        base_rate_per_gram=Decimal("100"),
+    )
+
+    assert rate == Decimal("100")

@@ -9,6 +9,7 @@ from app.core.changelog.models import ChangeLog
 from app.modules.items.models import Item
 from app.modules.items.pricing import calculate_suggested_price
 from app.modules.metal_rates.models import MetalRate
+from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 from app.modules.sales.models import Sale, SaleItem
 
 
@@ -16,15 +17,17 @@ async def get_dashboard_summary(db: AsyncSession) -> dict:
     total_sales_subquery = select(func.coalesce(func.sum(Sale.total_amount), 0)).scalar_subquery()
     stmt = select(
         func.coalesce(func.sum(Item.quantity), 0),
-        func.coalesce(func.sum(Item.net_weight * Item.quantity), 0),
         total_sales_subquery,
     ).where(Item.status == "in_stock")
-    inventory_count, total_net_weight, total_sales_amount = (await db.execute(stmt)).one()
+    inventory_count, total_sales_amount = (await db.execute(stmt)).one()
     inventory_count = int(inventory_count or 0)
-    total_net_weight = Decimal(total_net_weight or 0)
     total_sales_amount = Decimal(total_sales_amount or 0)
 
-    rates_stmt = select(MetalRate).order_by(MetalRate.effective_from.desc())
+    rates_stmt = (
+        select(MetalRate)
+        .where(MetalRate.purity == Decimal("100"))
+        .order_by(MetalRate.effective_from.desc())
+    )
     rates_result = await db.execute(rates_stmt)
     rate_by_key: dict[tuple[str, Decimal], Decimal] = {}
     for rate in rates_result.scalars():
@@ -32,17 +35,23 @@ async def get_dashboard_summary(db: AsyncSession) -> dict:
 
     silver_rate_per_gram = rate_by_key.get(("silver", Decimal("100")), Decimal(0))
     silver_rate_per_10g = silver_rate_per_gram * 10
-    total_stock_value = total_net_weight * silver_rate_per_gram
+    total_stock_value = Decimal(0)
 
     items_stmt = select(Item).where(Item.status == "in_stock")
     total_sale_value = Decimal(0)
     for item in (await db.execute(items_stmt)).scalars():
         metal_lower = item.metal.lower()
-        purity = Decimal("100") if metal_lower == "silver" else item.purity
+        base_rate = rate_by_key.get((metal_lower, Decimal("100")), Decimal(0))
+        effective_rate = calculate_effective_rate_per_gram(
+            metal=item.metal,
+            purity=item.purity,
+            base_rate_per_gram=base_rate,
+        )
+        total_stock_value += item.net_weight * effective_rate * item.quantity
         pricing = calculate_suggested_price(
             category=item.category,
             net_weight=item.net_weight,
-            rate_per_gram=rate_by_key.get((metal_lower, purity), Decimal(0)),
+            rate_per_gram=effective_rate,
             making_charge=item.making_charge,
         )
         total_sale_value += Decimal(str(pricing["suggested_price"])) * item.quantity
@@ -137,7 +146,7 @@ async def get_dashboard_analytics(
         # Fetch rates active at or before T
         rates_stmt = (
             select(MetalRate)
-            .where(MetalRate.effective_from <= T)
+            .where(MetalRate.effective_from <= T, MetalRate.purity == Decimal("100"))
             .order_by(MetalRate.effective_from.desc())
         )
         rates_result = await db.execute(rates_stmt)
@@ -178,12 +187,15 @@ async def get_dashboard_analytics(
 
             inventory_items += qty_at_T
             net_weight = float(item.net_weight or 0.0)
-            total_stock_value += net_weight * qty_at_T * silver_rate_per_gram
-
             # Catalog value (suggested price)
             metal_lower = item.metal.lower()
-            purity = 100.0 if metal_lower == "silver" else float(item.purity)
-            rate_per_gram = rates_dict.get((metal_lower, purity), 0.0)
+            base_rate_per_gram = rates_dict.get((metal_lower, 100.0), 0.0)
+            rate_per_gram = float(calculate_effective_rate_per_gram(
+                metal=item.metal,
+                purity=item.purity,
+                base_rate_per_gram=base_rate_per_gram,
+            ))
+            total_stock_value += net_weight * qty_at_T * rate_per_gram
 
             category = str(item.category).strip().lower()
             making_charge = float(item.making_charge or 0.0)

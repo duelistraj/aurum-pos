@@ -1,6 +1,6 @@
 import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, AlertCircle } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, Plus } from 'lucide-react';
 import {
   Card,
   Button,
@@ -33,6 +33,8 @@ export const MetalRates: React.FC = () => {
     metal: '',
     rate_per_gram: '',
   });
+  const [showMetalDropdown, setShowMetalDropdown] = React.useState(false);
+  const metalDropdownRef = React.useRef<HTMLDivElement>(null);
 
   const ratesQuery = useQuery<RateWithId[]>({
     queryKey: queryKeys.metalRates(shopId),
@@ -50,6 +52,13 @@ export const MetalRates: React.FC = () => {
   });
   const rates = ratesQuery.data ?? [];
   const availableMetals = metalsQuery.data ?? EMPTY_METALS;
+  const metals = Object.keys(availableMetals).map((metal) => ({
+    value: metal,
+    label: metal.charAt(0).toUpperCase() + metal.slice(1),
+  }));
+  const hasRateForAllMetals = metals.length > 0 && metals.every((metal) => (
+    rates.some((rate) => rate.metal.toLowerCase() === metal.value.toLowerCase() && Number(rate.purity) === 100)
+  ));
   const loading = ratesQuery.isPending || metalsQuery.isPending || updateRate.isPending;
   const queryError = ratesQuery.error ?? metalsQuery.error;
   const visibleError = error || (queryError instanceof Error ? queryError.message : '');
@@ -60,9 +69,23 @@ export const MetalRates: React.FC = () => {
     setFormData((previous) => previous.metal ? previous : { ...previous, metal: defaultMetal });
   }, [availableMetals]);
 
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (metalDropdownRef.current && !metalDropdownRef.current.contains(event.target as Node)) {
+        setShowMetalDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.rate_per_gram) {
+    if (!formData.metal) {
+      setError('Metal type is required');
+      return;
+    }
+    if (!formData.rate_per_gram || Number(formData.rate_per_gram) <= 0) {
       setError('Rate per gram is required');
       return;
     }
@@ -95,11 +118,6 @@ export const MetalRates: React.FC = () => {
     }
   };
 
-  const metals = Object.keys(availableMetals).map((metal) => ({
-    value: metal,
-    label: metal.charAt(0).toUpperCase() + metal.slice(1),
-  }));
-
   const handleAddRateClick = () => {
     if (!canManage) {
       setError('Your shop role does not allow rate changes.');
@@ -118,28 +136,29 @@ export const MetalRates: React.FC = () => {
       setError('Your shop role does not allow rate changes.');
       return;
     }
+    const selectedMetal = metals.find((metal) => metal.value.toLowerCase() === rate.metal.toLowerCase())?.value ?? rate.metal;
     setFormData({
-      metal: rate.metal,
+      metal: selectedMetal,
       rate_per_gram: String(rate.rate_per_gram),
     });
     setShowModal(true);
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="app-page min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
+      <div className="app-page__container max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8 animate-slide-down">
-          <div className="flex justify-between items-center mb-2">
-            <div>
+        <div className="app-page__header metal-rates-page__header mb-8 animate-slide-down">
+          <div className="metal-rates-page__title">
               <h1 className="text-4xl font-bold text-slate-900 dark:text-white">Metal Rates</h1>
               <p className="text-slate-600 dark:text-slate-400 mt-1">
                 Update current market prices for metals
               </p>
-            </div>
+          </div>
+          <div className="metal-rates-page__actions">
             <Button
               onClick={handleAddRateClick}
-              disabled={Object.keys(availableMetals).length === 0 || rates.some(r => r.metal === 'Silver' && r.purity === 100)}
+              disabled={metals.length === 0 || hasRateForAllMetals}
               className="flex items-center space-x-2"
             >
               <Plus className="w-5 h-5" />
@@ -171,7 +190,7 @@ export const MetalRates: React.FC = () => {
               <Alert
                 type="warning"
                 title="No Metals Available"
-                message="Please add metal types and their purities through system settings before adding rates."
+                message="No supported metal types are currently available for rate configuration."
                 onClose={() => {}}
               />
             )}
@@ -200,7 +219,7 @@ export const MetalRates: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-slate-800 dark:to-slate-800/80 p-4 rounded-app-inset">
+                  <div className="app-rate-highlight p-4 rounded-app-inset">
                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Rate per gram</p>
                     <p className="text-3xl font-bold text-amber-600 dark:text-amber-500">
                       ₹{rate.rate_per_gram.toFixed(2)}
@@ -274,28 +293,46 @@ export const MetalRates: React.FC = () => {
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Metal Type
               </label>
-              <select
-                value={formData.metal}
-                onChange={(e) => {
-                  const selectedMetal = e.target.value;
-                  setFormData({
-                    ...formData,
-                    metal: selectedMetal,
-                  });
-                }}
-                className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all duration-200"
-              >
-                {metals.map((metal) => (
-                  <option key={metal.value} value={metal.value}>
-                    {metal.label}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={metalDropdownRef}>
+                <button
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={showMetalDropdown}
+                  onClick={() => setShowMetalDropdown((open) => !open)}
+                  className="metal-rate-dropdown__trigger"
+                >
+                  <span>{metals.find((metal) => metal.value === formData.metal)?.label || 'Select metal'}</span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showMetalDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                {showMetalDropdown && (
+                  <div className="metal-rate-dropdown__menu" role="listbox" aria-label="Metal type">
+                    {metals.map((metal) => {
+                      const isSelected = metal.value === formData.metal;
+                      return (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          key={metal.value}
+                          onClick={() => {
+                            setFormData({ ...formData, metal: metal.value });
+                            setShowMetalDropdown(false);
+                          }}
+                          className={`metal-rate-dropdown__option ${isSelected ? 'is-selected' : ''}`}
+                        >
+                          <span>{metal.label}</span>
+                          {isSelected && <Check className="w-4 h-4" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="rounded-app-inset border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-4">
               <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Purity</p>
-              <p className="text-slate-900 dark:text-white font-semibold">100%</p>
+              <p className="text-slate-900 dark:text-white font-semibold">100% base rate</p>
             </div>
 
             <Input

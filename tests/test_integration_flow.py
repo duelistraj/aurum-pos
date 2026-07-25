@@ -23,7 +23,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
     suffix = uuid4().hex[:10]
     email = f"integration-{suffix}@example.com"
     device_uuid = f"device-{suffix}"
-    metal = f"testmetal-{suffix}"
+    metal = "Silver"
     invoice_no = f"INV-{suffix}"
     shop_id: UUID | None = None
     user_id: UUID | None = None
@@ -142,7 +142,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             rate = await client.post(
                 "/api/v1/metal-rates/",
                 headers=headers,
-                json={"metal": metal, "purity": 92.5, "rate_per_gram": 100},
+                json={"metal": metal, "purity": 100, "rate_per_gram": 100},
             )
             assert rate.status_code == 200, rate.text
 

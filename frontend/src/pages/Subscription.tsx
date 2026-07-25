@@ -101,8 +101,11 @@ export const Subscription: React.FC = () => {
   if (!activeMembership) return <Alert type="error" message="Select a shop first." />;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
-      <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Aurum Cloud</h1>
+    <div className="app-page app-page__container mx-auto max-w-2xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
+      <div className="app-page__header app-page__header--stacked">
+        <h1>Aurum Cloud</h1>
+        <p>Manage this shop's plan, purchases, and account controls.</p>
+      </div>
       {error && <Alert type="error" message={error} />}
       <Card className="p-6">
         <div className="space-y-3">

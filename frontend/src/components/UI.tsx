@@ -6,6 +6,7 @@ interface AlertProps {
   title?: string;
   message: string;
   onClose?: () => void;
+  className?: string;
 }
 
 export const Alert: React.FC<AlertProps> = ({
@@ -13,54 +14,26 @@ export const Alert: React.FC<AlertProps> = ({
   title,
   message,
   onClose,
+  className = '',
 }) => {
-  const config = {
-    success: {
-      bg: 'bg-green-50 dark:bg-green-950/20',
-      border: 'border-green-200 dark:border-green-900/30',
-      icon: CheckCircle,
-      iconColor: 'text-green-600 dark:text-green-400',
-      titleColor: 'text-green-900 dark:text-green-200',
-      textColor: 'text-green-700 dark:text-green-300',
-    },
-    error: {
-      bg: 'bg-red-50 dark:bg-red-950/20',
-      border: 'border-red-200 dark:border-red-900/30',
-      icon: XCircle,
-      iconColor: 'text-red-600 dark:text-red-400',
-      titleColor: 'text-red-900 dark:text-red-200',
-      textColor: 'text-red-700 dark:text-red-300',
-    },
-    warning: {
-      bg: 'bg-amber-50 dark:bg-amber-950/20',
-      border: 'border-amber-200 dark:border-amber-900/30',
-      icon: AlertCircle,
-      iconColor: 'text-amber-600 dark:text-amber-400',
-      titleColor: 'text-amber-900 dark:text-amber-200',
-      textColor: 'text-amber-700 dark:text-amber-300',
-    },
-    info: {
-      bg: 'bg-blue-50 dark:bg-blue-950/20',
-      border: 'border-blue-200 dark:border-blue-900/30',
-      icon: Info,
-      iconColor: 'text-blue-600 dark:text-blue-400',
-      titleColor: 'text-blue-900 dark:text-blue-200',
-      textColor: 'text-blue-700 dark:text-blue-300',
-    },
+  const icons = {
+    success: CheckCircle,
+    error: XCircle,
+    warning: AlertCircle,
+    info: Info,
   };
-
-  const { bg, border, icon: Icon, iconColor, titleColor, textColor } =
-    config[type];
+  const Icon = icons[type];
 
   return (
     <div
-      className={`${bg} border-l-4 ${border} p-4 rounded-app-inset shadow-sm animate-slide-up`}
+      role="alert"
+      className={`ui-alert ui-alert--${type} animate-slide-up ${className}`}
     >
-      <div className="flex">
-        <Icon className={`${iconColor} w-5 h-5 flex-shrink-0 mt-0.5`} />
-        <div className="ml-3 flex-1">
-          {title && <h3 className={`text-sm font-medium ${titleColor}`}>{title}</h3>}
-          <p className={`text-sm ${textColor} ${title ? 'mt-1' : ''}`}>
+      <div className="ui-alert__content">
+        <Icon className="ui-alert__icon" />
+        <div className="ui-alert__copy">
+          {title && <h3 className="ui-alert__title">{title}</h3>}
+          <p className={`ui-alert__message ${title ? 'has-title' : ''}`}>
             {message}
           </p>
         </div>
@@ -68,10 +41,10 @@ export const Alert: React.FC<AlertProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="ml-3 flex-shrink-0 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+            className="ui-alert__close"
             aria-label="Dismiss status"
           >
-            <X className="w-4 h-4" />
+            <X className="ui-alert__close-icon" />
           </button>
         )}
       </div>
@@ -114,11 +87,11 @@ export const Card: React.FC<CardProps> = ({
 }) => {
   return (
     <div
-      className={`bg-white dark:bg-slate-900 rounded-app-surface shadow-md border border-slate-100 dark:border-slate-800 ${
+      className={`ui-card ${
         hover
-          ? 'hover:shadow-lg hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer transform hover:scale-105'
+          ? 'ui-card--interactive'
           : ''
-      } ${className}`}
+        } ${className}`}
     >
       {children}
     </div>
@@ -140,22 +113,19 @@ export const Button: React.FC<ButtonProps> = ({
   children,
   ...props
 }) => {
-  const baseStyles =
-    'font-medium rounded-app-control transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseStyles = 'ui-button disabled:opacity-50 disabled:cursor-not-allowed';
 
   const variantStyles = {
-    primary:
-      'bg-amber-500 text-white hover:bg-amber-600 focus:ring-amber-500 shadow-md hover:shadow-lg',
-    secondary:
-      'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 focus:ring-slate-300 dark:focus:ring-slate-700',
-    danger: 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-500',
-    success: 'bg-green-500 text-white hover:bg-green-600 focus:ring-green-500',
+    primary: 'ui-button--primary',
+    secondary: 'ui-button--secondary',
+    danger: 'ui-button--danger',
+    success: 'ui-button--success',
   };
 
   const sizeStyles = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg',
+    sm: 'ui-button--sm',
+    md: 'ui-button--md',
+    lg: 'ui-button--lg',
   };
 
   return (
@@ -208,17 +178,15 @@ export const Input: React.FC<InputProps> = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+        <label className="ui-field-label" htmlFor={props.id}>
           {label}
         </label>
       )}
       <input
-        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border border-slate-300 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 ${
-          error ? 'border-red-500' : ''
-        } ${className}`}
+        className={`ui-input ${error ? 'ui-input--error' : ''} ${className}`}
         {...props}
       />
-      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+      {error && <p className="ui-field-error">{error}</p>}
     </div>
   );
 };
@@ -239,14 +207,12 @@ export const Select: React.FC<SelectProps> = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+        <label className="ui-field-label" htmlFor={props.id}>
           {label}
         </label>
       )}
       <select
-        className={`w-full px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 ${
-          error ? 'border-red-500' : ''
-        } ${className}`}
+        className={`ui-select ${error ? 'ui-input--error' : ''} ${className}`}
         {...props}
       >
         <option value="">Select an option</option>
@@ -256,7 +222,7 @@ export const Select: React.FC<SelectProps> = ({
           </option>
         ))}
       </select>
-      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+      {error && <p className="ui-field-error">{error}</p>}
     </div>
   );
 };
@@ -268,6 +234,7 @@ interface ModalProps {
   onClose: () => void;
   footer?: React.ReactNode;
   size?: 'md' | 'lg' | 'xl';
+  className?: string;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -277,6 +244,7 @@ export const Modal: React.FC<ModalProps> = ({
   onClose,
   footer,
   size = 'md',
+  className = '',
 }) => {
   if (!isOpen) return null;
 
@@ -287,20 +255,27 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className={`bg-white dark:bg-slate-900 rounded-app-surface shadow-xl border border-slate-100 dark:border-slate-800 ${sizeClasses[size]} w-full animate-slide-up overflow-hidden`}>
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h2>
+    <div className="ui-modal-backdrop animate-fade-in">
+      <div
+        className={`ui-modal ${sizeClasses[size]} ${className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ui-modal-title"
+      >
+        <div className="ui-modal__header">
+          <h2 id="ui-modal-title" className="ui-modal__title">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-app-control p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="ui-modal__close"
+            aria-label="Close dialog"
           >
-            <X />
+            <X className="ui-modal__close-icon" />
           </button>
         </div>
-        <div className="p-6 text-slate-700 dark:text-slate-300">{children}</div>
+        <div className="ui-modal__body">{children}</div>
         {footer && (
-          <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-end space-x-3">
+          <div className="ui-modal__footer">
             {footer}
           </div>
         )}
@@ -312,19 +287,13 @@ export const Modal: React.FC<ModalProps> = ({
 interface BadgeProps {
   children: React.ReactNode;
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
+  className?: string;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ children, variant = 'default' }) => {
-  const styles = {
-    default: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
-    success: 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-400',
-    warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400',
-    danger: 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400',
-    info: 'bg-blue-100 text-blue-800 dark:bg-blue-950/30 dark:text-blue-400',
-  };
+export const Badge: React.FC<BadgeProps> = ({ children, variant = 'default', className = '' }) => {
 
   return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${styles[variant]}`}>
+    <span className={`ui-badge ui-badge--${variant} ${className}`}>
       {children}
     </span>
   );
@@ -332,9 +301,10 @@ export const Badge: React.FC<BadgeProps> = ({ children, variant = 'default' }) =
 
 interface LoaderProps {
   size?: 'sm' | 'md' | 'lg';
+  className?: string;
 }
 
-export const Loader: React.FC<LoaderProps> = ({ size = 'md' }) => {
+export const Loader: React.FC<LoaderProps> = ({ size = 'md', className = '' }) => {
   const sizeClass = {
     sm: 'w-6 h-6',
     md: 'w-12 h-12',
@@ -342,9 +312,9 @@ export const Loader: React.FC<LoaderProps> = ({ size = 'md' }) => {
   };
 
   return (
-    <div className="flex justify-center items-center">
+    <div className={`ui-loader ${className}`} role="status" aria-label="Loading">
       <svg
-        className={`${sizeClass[size]} animate-spin text-amber-500`}
+        className={`${sizeClass[size]} ui-loader__icon animate-spin`}
         fill="none"
         viewBox="0 0 24 24"
       >

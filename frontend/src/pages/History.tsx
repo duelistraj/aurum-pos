@@ -228,9 +228,9 @@ export const History: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8 animate-slide-down">
+    <div className="app-page min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
+      <div className="app-page__container max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="app-page__header app-page__header--stacked mb-8 animate-slide-down">
           <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">History</h1>
           <p className="text-slate-600 dark:text-slate-400">
             Search the change log by date range, barcode, invoice number or action.
@@ -263,12 +263,12 @@ export const History: React.FC = () => {
                 />
               </div>
               <div className="relative flex flex-col w-full" ref={actionDropdownRef}>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-355 mb-1.5">Action</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-400 mb-1.5">Action</label>
                 <div 
                   onClick={() => setShowActionDropdown(!showActionDropdown)}
                   className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none transition-all duration-200 flex items-center justify-between h-[46px] ${
                     showActionDropdown 
-                      ? 'border-transparent ring-2 ring-amber-500 dark:border-amber-550' 
+                      ? 'border-transparent ring-2 ring-amber-500 dark:border-amber-500'
                       : 'border-slate-300 dark:border-slate-800'
                   }`}
                 >
@@ -373,7 +373,7 @@ export const History: React.FC = () => {
               <Loader />
             </div>
           ) : entries.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 dark:text-slate-555 font-semibold">
+            <div className="text-center py-12 text-slate-400 dark:text-slate-500 font-semibold">
               No history entries were found for the selected filters.
             </div>
           ) : (
@@ -420,7 +420,7 @@ export const History: React.FC = () => {
                           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                             {summary.title}
                           </p>
-                          <p className="text-xs text-slate-400 dark:text-slate-555 mt-0.5 font-medium">
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 font-medium">
                             {getPayloadSummary(entry)}
                           </p>
                         </div>

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Server, X } from 'lucide-react';
+import { Server, X } from 'lucide-react';
 import { getApiBaseUrl, saveApiBaseUrl, validateApiBaseUrl } from '../utils/apiConfig';
+import { useConfig } from '../context/ConfigContext';
+import { Alert, Button, Input } from '../components/UI';
+import { BrandLockup } from '../components/Brand';
 
 interface ApiSetupProps {
   onConfigured: () => void;
@@ -8,12 +11,23 @@ interface ApiSetupProps {
 }
 
 export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) => {
+  const { appName } = useConfig();
   const [apiUrl, setApiUrl] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    getApiBaseUrl().then(setApiUrl);
+    let active = true;
+    void getApiBaseUrl()
+      .then((url) => {
+        if (active) setApiUrl(url);
+      })
+      .catch(() => {
+        // An empty value is a valid first-run state for self-hosted builds.
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -33,65 +47,72 @@ export const ApiSetup: React.FC<ApiSetupProps> = ({ onConfigured, onCancel }) =>
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 rounded-app-surface shadow-xl border border-slate-100 dark:border-slate-800">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="h-12 w-12 bg-amber-100 dark:bg-amber-500/10 rounded-full flex items-center justify-center">
-              <Server className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-            </div>
-            <h2 className="mt-6 text-2xl font-bold text-slate-900 dark:text-white">
-              Connect backend
-            </h2>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              Enter the API URL for your shop's Aurum POS backend.
-            </p>
+    <div className={`api-setup${onCancel ? ' api-setup--overlay' : ''}`}>
+      <main className="api-setup__panel" aria-labelledby="api-setup-title">
+        <header className="api-setup__header">
+          <div className="api-setup__brand">
+            <BrandLockup appName={appName || 'Aurum POS'} isPro={false} />
+            <span className="api-setup__brand-label">Backend connection</span>
           </div>
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
-              className="h-9 w-9 flex items-center justify-center rounded-app-control text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="api-setup__close"
               aria-label="Close API setup"
             >
-              <X className="h-5 w-5" />
+              <X className="api-setup__close-icon" />
             </button>
           )}
+        </header>
+
+        <div className="api-setup__intro">
+          <p className="api-setup__eyebrow">Workspace setup</p>
+          <h1 id="api-setup-title" className="api-setup__title">Connect your backend</h1>
+          <p className="api-setup__description">
+            Connect this Aurum POS client to the API that stores your shop, inventory, sales, and settings.
+          </p>
         </div>
 
-        <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-app-inset bg-red-50 dark:bg-red-950/40 p-4 flex items-start">
-              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-2 flex-shrink-0" />
-              <div className="text-sm text-red-700 dark:text-red-200">{error}</div>
-            </div>
-          )}
+        <div className="api-setup__status" role="status">
+          <Server className="api-setup__status-icon" aria-hidden="true" />
+          <span className="api-setup__status-dot" aria-hidden="true" />
+          <span>Ready to verify your backend connection</span>
+        </div>
 
-          <div>
-            <label htmlFor="api-url" className="block text-sm font-medium text-slate-700 dark:text-slate-200">
-              Backend API URL
-            </label>
-            <input
-              id="api-url"
-              name="api-url"
-              type="url"
-              required
-              className="mt-2 block w-full rounded-app-control border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-3 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="https://pos.example.com"
-              value={apiUrl}
-              onChange={(event) => setApiUrl(event.target.value)}
-            />
+        <form className="api-setup__form" onSubmit={handleSubmit}>
+          {error && <Alert type="error" title="Connection failed" message={error} />}
+
+          <Input
+            id="api-url"
+            name="api-url"
+            type="url"
+            label="Backend API URL"
+            required
+            placeholder="https://pos.example.com"
+            value={apiUrl}
+            onChange={(event) => setApiUrl(event.target.value)}
+          />
+          <p className="api-setup__hint">
+            Use the complete server address, including <code>http://</code> or <code>https://</code>.
+          </p>
+
+          <div className="api-setup__actions">
+            {onCancel && (
+              <Button type="button" variant="secondary" onClick={onCancel}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" isLoading={loading}>
+              Save and continue
+            </Button>
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-3 px-4 rounded-app-control text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-70 transition-colors"
-          >
-            {loading ? 'Checking...' : 'Save and continue'}
-          </button>
         </form>
-      </div>
+
+        <p className="api-setup__footer">
+          The URL is stored locally on this device and can be changed later from Account and settings.
+        </p>
+      </main>
     </div>
   );
 };

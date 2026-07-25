@@ -30,7 +30,10 @@ from app.modules.items.service import (
     list_items_paginated,
     update_item,
 )
-from app.modules.metal_rates.service import get_latest_metal_rate
+from app.modules.metal_rates.service import (
+    calculate_effective_rate_per_gram,
+    get_latest_metal_rate,
+)
 from app.utils.label import generate_batch_labels_pdf, generate_batch_labels_xlsx
 
 router = APIRouter(prefix="/items", tags=["Items"])
@@ -52,6 +55,7 @@ async def list_all(
     search: str | None = Query(None),
     category: str | None = Query(None),
     status: str | None = Query(None),
+    metal: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await list_items_paginated(
@@ -61,6 +65,7 @@ async def list_all(
         search=search,
         category=category,
         status=status,
+        metal=metal,
     )
     return {
         "items": items,
@@ -104,14 +109,20 @@ async def pos_scan(
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found or is out of stock")
 
-    rate = await get_latest_metal_rate(db, metal=item.metal, purity=float(item.purity))
-    if rate is None:
+    base_rate = await get_latest_metal_rate(db, metal=item.metal)
+    if base_rate is None:
         raise HTTPException(status_code=400, detail="Metal rate not configured for this item")
+
+    rate_per_gram = calculate_effective_rate_per_gram(
+        metal=item.metal,
+        purity=item.purity,
+        base_rate_per_gram=base_rate.rate_per_gram,
+    )
 
     pricing = calculate_suggested_price(
         category=item.category,
         net_weight=item.net_weight,
-        rate_per_gram=rate.rate_per_gram,
+        rate_per_gram=rate_per_gram,
         making_charge=item.making_charge,
     )
     return {

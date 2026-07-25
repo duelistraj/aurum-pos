@@ -93,7 +93,7 @@ function App() {
     <ConfigProvider>
       <Router>
         <Suspense fallback={<PageLoader />}>
-          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 transition-colors duration-200 dark:from-slate-900 dark:to-slate-950 dark:text-slate-100">
+          <div className="app-root">
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route

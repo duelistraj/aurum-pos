@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -35,4 +35,7 @@ async def create_rate(
     data: MetalRateCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    return await add_metal_rate(db, data)
+    try:
+        return await add_metal_rate(db, data)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

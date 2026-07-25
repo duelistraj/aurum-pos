@@ -335,6 +335,7 @@ export const apiClient = {
     search?: string;
     category?: string;
     status?: string;
+    metal?: string;
   }) {
     const { data } = await client.get<{
       items: Item[];

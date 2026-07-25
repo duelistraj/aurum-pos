@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import MappingProxyType
 
 from sqlalchemy import select
@@ -7,8 +8,29 @@ from app.core.changelog.service import log_change
 from app.modules.metal_rates.models import MetalRate
 from app.modules.metal_rates.schemas import MetalRateCreate
 
-# Supported metals and their purities in the system
-SUPPORTED_METALS = MappingProxyType({"Silver": (100.0,)})
+# Item purities supported by the inventory form. Metal rates themselves are
+# always stored at 100% and converted to the item's purity during pricing.
+RATE_PURITY = Decimal("100")
+SUPPORTED_METALS = MappingProxyType(
+    {
+        "Silver": (92.5, 99.9, 0.0),
+        "Gold": (58.5, 75.0, 91.6, 99.9),
+        "Platinum": (90.0, 95.0, 99.9),
+    }
+)
+
+
+def calculate_effective_rate_per_gram(
+    *,
+    metal: str,
+    purity: Decimal | float | str,
+    base_rate_per_gram: Decimal | float | str,
+) -> Decimal:
+    """Convert a 100% base-metal rate into the item's effective rate."""
+    base_rate = Decimal(str(base_rate_per_gram))
+    if metal.strip().lower() == "silver":
+        return base_rate
+    return base_rate * Decimal(str(purity)) / RATE_PURITY
 
 
 async def add_metal_rate(
@@ -16,7 +38,12 @@ async def add_metal_rate(
     data: MetalRateCreate,
 ) -> MetalRate:
     """Add or update a metal rate. If a rate for this metal/purity exists, it will be updated."""
-    metal_lower = data.metal.lower()
+    metal_lower = data.metal.strip().lower()
+    supported_metals = {metal.lower() for metal in SUPPORTED_METALS}
+    if metal_lower not in supported_metals:
+        raise ValueError(f"Unsupported metal: {data.metal}")
+    if data.purity != RATE_PURITY:
+        raise ValueError("Metal rates must be recorded at 100% purity.")
 
     # Check if rate already exists
     stmt = select(MetalRate).where(
@@ -79,12 +106,16 @@ async def get_available_metals(db: AsyncSession) -> dict[str, list[float]]:
     Returns supported metals from configuration, which can be customized
     by modifying SUPPORTED_METALS.
     """
-    return {metal: sorted(purities) for metal, purities in SUPPORTED_METALS.items()}
+    return {metal: list(purities) for metal, purities in SUPPORTED_METALS.items()}
 
 
 async def get_all_metal_rates(db: AsyncSession) -> list[MetalRate]:
     """Get all metal rates from the database"""
-    stmt = select(MetalRate).order_by(MetalRate.metal, MetalRate.purity)
+    stmt = (
+        select(MetalRate)
+        .where(MetalRate.purity == RATE_PURITY)
+        .order_by(MetalRate.metal, MetalRate.purity)
+    )
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -93,17 +124,12 @@ async def get_latest_metal_rate(
     db,
     *,
     metal: str,
-    purity: float,
 ):
-    # 🔹 Business rule:
-    # Silver is always priced at 100% purity
-    effective_purity = 100.0 if str(metal).lower() == "silver" else purity
-
     stmt = (
         select(MetalRate)
         .where(
-            MetalRate.metal == metal.lower(),
-            MetalRate.purity == effective_purity,
+            MetalRate.metal == metal.strip().lower(),
+            MetalRate.purity == RATE_PURITY,
         )
         .order_by(MetalRate.effective_from.desc())
         .limit(1)

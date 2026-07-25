@@ -310,10 +310,10 @@ export const POS: React.FC = () => {
   };
 
   return (
-    <div className="h-full lg:h-[calc(100vh-11rem)] flex flex-col bg-transparent overflow-hidden">
-      <div className="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 h-full flex flex-col">
+    <div className="app-page h-full lg:h-[calc(100vh-11rem)] flex flex-col bg-transparent overflow-hidden">
+      <div className="app-page__container w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 h-full flex flex-col">
         {/* Header */}
-        <div className="mb-4 animate-slide-down flex-shrink-0">
+        <div className="app-page__header app-page__header--stacked mb-4 animate-slide-down flex-shrink-0">
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Point of Sale</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Scan items and process sales</p>
         </div>

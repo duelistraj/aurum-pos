@@ -102,11 +102,13 @@ export const Staff: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
-      <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Staff invitations</h1>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Staff accounts can join this shop only with an invitation. Codes expire after seven days.
-      </p>
+    <div className="app-page app-page__container mx-auto max-w-xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
+      <div className="app-page__header app-page__header--stacked">
+        <h1>Staff invitations</h1>
+        <p>
+          Staff accounts can join this shop only with an invitation. Codes expire after seven days.
+        </p>
+      </div>
       {error ? <Alert type="error" message={error} /> : null}
       {message ? <Alert type="success" message={message} /> : null}
       <Card className="p-6">

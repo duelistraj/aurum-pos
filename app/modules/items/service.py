@@ -239,6 +239,7 @@ async def list_items_paginated(
     search: str | None = None,
     category: str | None = None,
     status: str | None = None,
+    metal: str | None = None,
 ) -> tuple[list[Item], int]:
     stmt = select(Item).order_by(Item.updated_at.desc())
 
@@ -258,6 +259,9 @@ async def list_items_paginated(
     # Filter by status
     if status and status.lower() != "all":
         stmt = stmt.where(Item.status == status.lower())
+
+    if metal and metal.lower() != "all":
+        stmt = stmt.where(func.lower(Item.metal) == metal.lower())
 
     # Count matching items
     count_stmt = select(func.count()).select_from(stmt.subquery())

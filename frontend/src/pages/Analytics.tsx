@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ResponsiveBar } from '@nivo/bar';
+import { ResponsiveLine } from '@nivo/line';
+import { ResponsivePie } from '@nivo/pie';
 import {
   Activity,
   AlertCircle,
@@ -11,42 +14,19 @@ import {
   ChevronDown,
   Coins,
   IndianRupee,
+  Info,
   Package,
   PieChart,
   RefreshCw,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
-import {
-  ArcElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Filler,
-  Legend,
-  LinearScale,
-  LineElement,
-  PointElement,
-  Tooltip,
-  TooltipItem,
-} from 'chart.js';
-import { Doughnut, Line } from 'react-chartjs-2';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
 import { AnalyticsDashboardResponse } from '../types';
-import { formatCurrency } from '../utils';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Legend,
-  ArcElement,
-  Filler,
-);
+import { formatCurrency, formatWholeCurrency } from '../utils';
 
 type PresetId = '7d' | '30d' | 'this_month' | 'last_month' | 'custom';
 
@@ -59,7 +39,7 @@ const PRESETS: Array<{ id: PresetId; label: string }> = [
 ];
 
 const JEWELLERY_OPTIONS = ['all', 'gold', 'silver', 'platinum'] as const;
-const CATEGORY_COLORS = ['#C27D18', '#6386AA', '#6D8F74', '#A179A6', '#C28A4A', '#8C7772', '#75849A', '#A86762'];
+const CATEGORY_COLORS = ['#E0A02B', '#6D8FC1', '#67A67B', '#A179A6', '#C28A4A', '#8C7772', '#75849A', '#A86762'];
 
 const CHART_THEME = {
   light: {
@@ -67,10 +47,11 @@ const CHART_THEME = {
     label: '#7B8790',
     tooltipBackground: '#182027',
     tooltipBorder: '#2D3942',
-    line: '#B8791F',
-    fill: 'rgba(184, 121, 31, 0.12)',
-    point: '#B8791F',
+    tooltipText: '#FFFDF8',
+    line: '#3E9161',
+    point: '#3E9161',
     pointBorder: '#FFFEFA',
+    chartBorder: '#FFFEFA',
     stock: '#6D8F74',
     sold: '#6386AA',
   },
@@ -79,14 +60,69 @@ const CHART_THEME = {
     label: '#A5ADB1',
     tooltipBackground: '#F7F2E9',
     tooltipBorder: '#E1D6C4',
-    line: '#E0A14B',
-    fill: 'rgba(224, 161, 75, 0.16)',
-    point: '#E0A14B',
+    tooltipText: '#1A1D20',
+    line: '#83C59A',
+    point: '#83C59A',
     pointBorder: '#1A1D20',
+    chartBorder: '#1A1D20',
     stock: '#86B794',
     sold: '#82A8D1',
   },
 } as const;
+
+type ChartTheme = (typeof CHART_THEME)[keyof typeof CHART_THEME];
+type AnalyticsLineSeries = {
+  id: string;
+  data: Array<{ x: string; y: number }>;
+};
+type AnalyticsPieDatum = {
+  id: string;
+  value: number;
+};
+type AnalyticsBarDatum = {
+  category: string;
+  sales: number;
+};
+
+const createNivoTheme = (theme: ChartTheme) => ({
+  background: 'transparent',
+  text: {
+    fill: theme.label,
+    fontSize: 10,
+    fontWeight: 700,
+  },
+  axis: {
+    domain: {
+      line: { stroke: 'transparent' },
+    },
+    ticks: {
+      line: { stroke: 'transparent' },
+      text: {
+        fill: theme.label,
+        fontSize: 10,
+        fontWeight: 700,
+      },
+    },
+  },
+  grid: {
+    line: {
+      stroke: theme.grid,
+      strokeWidth: 1,
+    },
+  },
+  tooltip: {
+    container: {
+      background: theme.tooltipBackground,
+      color: theme.tooltipText,
+      border: `1px solid ${theme.tooltipBorder}`,
+      borderRadius: '.45rem',
+      boxShadow: 'none',
+      fontSize: '.7rem',
+      fontWeight: 700,
+      padding: '.6rem .7rem',
+    },
+  },
+});
 
 const formatDateStr = (date: Date): string => {
   const year = date.getFullYear();
@@ -130,9 +166,9 @@ const getRangeLabel = (startDate: string, endDate: string): string => {
 };
 
 const formatCompactValue = (value: number): string => {
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return String(value);
+  if (Math.abs(value) >= 100_000) return `₹${(value / 100_000).toFixed(0)}L`;
+  if (Math.abs(value) >= 1_000) return `₹${(value / 1_000).toFixed(0)}K`;
+  return `₹${value}`;
 };
 
 const formatPercentage = (value: number): string => `${Math.abs(value).toFixed(1)}%`;
@@ -248,6 +284,7 @@ export const Analytics: React.FC = () => {
   const loading = hasRequest && analyticsQuery.isPending && !data;
   const error = analyticsQuery.error instanceof Error ? analyticsQuery.error.message : null;
   const chartTheme = isDarkMode ? CHART_THEME.dark : CHART_THEME.light;
+  const nivoTheme = useMemo(() => createNivoTheme(chartTheme), [chartTheme]);
 
   const applyPreset = (presetId: PresetId) => {
     if (presetId === 'custom') {
@@ -262,148 +299,26 @@ export const Analytics: React.FC = () => {
     setOpenFilter(null);
   };
 
-  const lineChartData = useMemo(() => {
-    if (!data) return null;
-    return {
-      labels: data.sales_overview.map((point) => point.date),
-      datasets: [{
-        label: 'Sales',
-        data: data.sales_overview.map((point) => point.total_amount),
-        fill: true,
-        backgroundColor: chartTheme.fill,
-        borderColor: chartTheme.line,
-        borderWidth: 2.5,
-        pointBackgroundColor: chartTheme.point,
-        pointBorderColor: chartTheme.pointBorder,
-        pointBorderWidth: 2,
-        pointRadius: 3,
-        pointHoverRadius: 5,
-        tension: 0.35,
-      }],
-    };
-  }, [chartTheme.fill, chartTheme.line, chartTheme.point, chartTheme.pointBorder, data]);
-
-  const lineChartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { intersect: false, mode: 'index' as const },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: chartTheme.tooltipBackground,
-        borderColor: chartTheme.tooltipBorder,
-        borderWidth: 1,
-        titleColor: isDarkMode ? '#1A1D20' : '#FFFDF8',
-        bodyColor: isDarkMode ? '#1A1D20' : '#FFFDF8',
-        titleFont: { size: 11, weight: 'bold' as const },
-        bodyFont: { size: 11, weight: 'bold' as const },
-        padding: 10,
-        displayColors: false,
-        callbacks: {
-          label: (context: TooltipItem<'line'>) => formatCurrency(Number(context.raw)),
-        },
-      },
-    },
-    scales: {
-      x: {
-        border: { display: false },
-        grid: { display: false },
-        ticks: {
-          color: chartTheme.label,
-          maxRotation: 0,
-          font: { size: 10, weight: 'bold' as const },
-        },
-      },
-      y: {
-        border: { display: false },
-        grid: { color: chartTheme.grid },
-        ticks: {
-          color: chartTheme.label,
-          font: { size: 10, weight: 'bold' as const },
-          callback: (value: string | number) => formatCompactValue(Number(value)),
-        },
-      },
-    },
-  }), [chartTheme.grid, chartTheme.label, chartTheme.tooltipBackground, chartTheme.tooltipBorder, isDarkMode]);
-
   const categoryHasData = Boolean(data?.sales_by_category.some((category) => category.sales_value > 0));
-  const categoryChartData = useMemo(() => {
-    if (!data || !categoryHasData) return null;
-    return {
-      labels: data.sales_by_category.map((category) => category.category),
-      datasets: [{
-        data: data.sales_by_category.map((category) => category.sales_value),
-        backgroundColor: CATEGORY_COLORS,
-        borderColor: isDarkMode ? '#1A1D20' : '#FFFEFA',
-        borderWidth: 3,
-        hoverOffset: 5,
-      }],
-    };
-  }, [categoryHasData, data, isDarkMode]);
-
-  const categoryChartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: '76%',
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: chartTheme.tooltipBackground,
-        borderColor: chartTheme.tooltipBorder,
-        borderWidth: 1,
-        titleColor: isDarkMode ? '#1A1D20' : '#FFFDF8',
-        bodyColor: isDarkMode ? '#1A1D20' : '#FFFDF8',
-        padding: 10,
-        callbacks: {
-          label: (context: TooltipItem<'doughnut'>) => {
-            const value = Number(context.raw);
-            const total = context.dataset.data.reduce((sum, item) => sum + Number(item), 0);
-            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-            return ` ${context.label}: ${formatCurrency(value)} (${percentage}%)`;
-          },
-        },
-      },
-    },
-  }), [chartTheme.tooltipBackground, chartTheme.tooltipBorder, isDarkMode]);
-
   const inventoryHasData = Boolean(data && data.inventory_summary.total_count > 0);
-  const inventoryChartData = useMemo(() => {
-    if (!data || !inventoryHasData) return null;
-    return {
-      labels: ['In stock', 'Sold'],
-      datasets: [{
-        data: [data.inventory_summary.in_stock_count, data.inventory_summary.sold_count],
-        backgroundColor: [chartTheme.stock, chartTheme.sold],
-        borderColor: isDarkMode ? '#1A1D20' : '#FFFEFA',
-        borderWidth: 3,
-      }],
-    };
-  }, [chartTheme.sold, chartTheme.stock, data, inventoryHasData, isDarkMode]);
-
-  const inventoryChartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: '76%',
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: chartTheme.tooltipBackground,
-        borderColor: chartTheme.tooltipBorder,
-        borderWidth: 1,
-        titleColor: isDarkMode ? '#1A1D20' : '#FFFDF8',
-        bodyColor: isDarkMode ? '#1A1D20' : '#FFFDF8',
-        padding: 10,
-        callbacks: {
-          label: (context: TooltipItem<'doughnut'>) => {
-            const value = Number(context.raw);
-            const total = context.dataset.data.reduce((sum, item) => sum + Number(item), 0);
-            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-            return ` ${context.label}: ${value} (${percentage}%)`;
-          },
-        },
-      },
-    },
-  }), [chartTheme.tooltipBackground, chartTheme.tooltipBorder, isDarkMode]);
+  const lineChartData = useMemo<AnalyticsLineSeries[]>(() => data ? [{
+    id: 'Sales',
+    data: data.sales_overview.map((point) => ({ x: point.date, y: point.total_amount })),
+  }] : [], [data]);
+  const categoryChartData = useMemo<AnalyticsPieDatum[]>(() => data && categoryHasData ? data.sales_by_category.map((category) => ({
+    id: category.category,
+    value: category.sales_value,
+  })) : [], [categoryHasData, data]);
+  const topCategoryChartData = useMemo<AnalyticsBarDatum[]>(() => data && categoryHasData ? data.sales_by_category.slice(0, 3).map((category) => ({
+    category: category.category,
+    sales: category.sales_value,
+  })) : [], [categoryHasData, data]);
+  const inventoryChartData = useMemo<AnalyticsPieDatum[]>(() => data && inventoryHasData ? [
+    { id: 'In stock', value: data.inventory_summary.in_stock_count },
+    { id: 'Sold', value: data.inventory_summary.sold_count },
+  ] : [], [data, inventoryHasData]);
+  const categoryTotal = categoryChartData.reduce((sum, category) => sum + category.value, 0);
+  const inventoryTotal = inventoryChartData.reduce((sum, category) => sum + category.value, 0);
 
   const totalSalesTrend = data?.total_sales_change_percentage ?? 0;
   const previousSales = data?.sales_trend.previous.sales_value ?? 0;
@@ -550,14 +465,14 @@ export const Analytics: React.FC = () => {
           <div className="analytics-kpis" aria-label="Analytics metrics">
             <AnalyticsKpi
               label="Total sales"
-              value={formatCurrency(data.total_sales)}
+              value={formatWholeCurrency(data.total_sales)}
               change={data.total_sales_change_percentage}
               tone="gold"
               icon={<IndianRupee className="analytics-kpi__svg" />}
             />
             <AnalyticsKpi
               label="Catalog value"
-              value={formatCurrency(data.total_sale_value)}
+              value={formatWholeCurrency(data.total_sale_value)}
               change={data.total_sale_value_change_percentage}
               tone="blue"
               icon={<ArrowUpRight className="analytics-kpi__svg" />}
@@ -570,7 +485,7 @@ export const Analytics: React.FC = () => {
               icon={<Package className="analytics-kpi__svg" />}
             />
             <AnalyticsKpi
-              label="Silver rate"
+              label="Silver rate (per g)"
               value={formatCurrency(data.silver_rate_10g)}
               change={data.silver_rate_change_percentage}
               tone="green"
@@ -578,7 +493,7 @@ export const Analytics: React.FC = () => {
             />
             <AnalyticsKpi
               label="Stock value"
-              value={formatCurrency(data.total_stock_value)}
+              value={formatWholeCurrency(data.total_stock_value)}
               change={data.total_stock_value_change_percentage}
               tone="slate"
               icon={<PieChart className="analytics-kpi__svg" />}
@@ -587,12 +502,43 @@ export const Analytics: React.FC = () => {
 
           <div className="analytics-grid analytics-grid--primary">
             <article className="analytics-panel analytics-panel--sales">
-              <PanelHeader eyebrow="Sales overview" title={formatCurrency(data.total_sales)} icon={<Activity className="analytics-panel__icon" />} tone="green">
+              <PanelHeader eyebrow="Sales overview" title={formatWholeCurrency(data.total_sales)} icon={<Activity className="analytics-panel__icon" />} tone="green">
                 <ChangeIndicator value={data.total_sales_change_percentage} />
               </PanelHeader>
               <div className="analytics-chart analytics-chart--line">
-                {data.sales_overview.length > 0 && lineChartData ? (
-                  <Line data={lineChartData} options={lineChartOptions} />
+                {lineChartData[0]?.data.length ? (
+                  <ResponsiveLine
+                    data={lineChartData}
+                    margin={{ top: 8, right: 8, bottom: 32, left: 48 }}
+                    xScale={{ type: 'point' }}
+                    yScale={{ type: 'linear', min: 'auto', max: 'auto', stacked: false, reverse: false }}
+                    curve="monotoneX"
+                    colors={[chartTheme.line]}
+                    theme={nivoTheme}
+                    enableGridX={false}
+                    enableGridY
+                    axisBottom={{ tickSize: 0, tickPadding: 10, tickRotation: 0 }}
+                    axisLeft={{ tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactValue }}
+                    enablePoints
+                    pointSize={6}
+                    pointColor={chartTheme.point}
+                    pointBorderWidth={2}
+                    pointBorderColor={chartTheme.pointBorder}
+                    enableArea
+                    areaOpacity={0.12}
+                    useMesh
+                    enableSlices="x"
+                    ariaLabel="Sales overview"
+                    sliceTooltip={({ slice }) => {
+                      const point = slice.points[0];
+                      return point ? (
+                        <div className="analytics-chart-tooltip">
+                          <span>{String(point.data.x)}</span>
+                          <strong>{formatWholeCurrency(Number(point.data.y))}</strong>
+                        </div>
+                      ) : null;
+                    }}
+                  />
                 ) : (
                   <EmptyState message="No sales data in this range" />
                 )}
@@ -603,10 +549,35 @@ export const Analytics: React.FC = () => {
               <PanelHeader eyebrow="Sales breakdown" title="By category" icon={<PieChart className="analytics-panel__icon" />} tone="violet" />
               <div className="analytics-category-layout">
                 <div className="analytics-chart analytics-chart--donut">
-                  {categoryChartData ? <Doughnut data={categoryChartData} options={categoryChartOptions} /> : <EmptyState message="No category sales yet" />}
-                  {categoryChartData ? (
+                  {categoryChartData.length > 0 ? (
+                    <ResponsivePie
+                      data={categoryChartData}
+                      margin={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                      innerRadius={0.76}
+                      padAngle={1}
+                      cornerRadius={1}
+                      activeOuterRadiusOffset={5}
+                      colors={CATEGORY_COLORS}
+                      borderWidth={3}
+                      borderColor={chartTheme.chartBorder}
+                      enableArcLabels={false}
+                      enableArcLinkLabels={false}
+                      sortByValue={false}
+                      theme={nivoTheme}
+                      tooltip={({ datum }) => {
+                        const percentage = categoryTotal > 0 ? ((datum.value / categoryTotal) * 100).toFixed(1) : '0.0';
+                        return (
+                          <div className="analytics-chart-tooltip">
+                            <span>{String(datum.id)}</span>
+                            <strong>{formatWholeCurrency(datum.value)} ({percentage}%)</strong>
+                          </div>
+                        );
+                      }}
+                    />
+                  ) : <EmptyState message="No category sales yet" />}
+                  {categoryChartData.length > 0 ? (
                     <div className="analytics-chart__center-label">
-                      <strong>{formatCurrency(data.total_sales)}</strong>
+                      <strong>{formatWholeCurrency(data.total_sales)}</strong>
                       <span>Total sales</span>
                     </div>
                   ) : null}
@@ -618,7 +589,10 @@ export const Analytics: React.FC = () => {
                         <span className="analytics-legend__swatch" style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
                         <span title={category.category}>{category.category}</span>
                       </span>
-                      <strong>{category.share}%</strong>
+                      <strong>
+                        {formatWholeCurrency(category.sales_value)}
+                        <small>({category.share}%)</small>
+                      </strong>
                     </div>
                   )) : <span className="analytics-legend__empty">No category data</span>}
                 </div>
@@ -629,16 +603,41 @@ export const Analytics: React.FC = () => {
           <div className="analytics-grid analytics-grid--supporting">
             <article className="analytics-panel analytics-panel--supporting">
               <PanelHeader eyebrow="Merchandising" title="Top selling categories" icon={<TrendingUp className="analytics-panel__icon" />} />
-              <div className="analytics-category-list">
-                {data.sales_by_category.length > 0 ? data.sales_by_category.slice(0, 3).map((category) => (
-                  <div key={category.category} className="analytics-category-list__row">
-                    <div>
-                      <p>{category.category}</p>
-                      <span>{category.share}% of sales</span>
-                    </div>
-                    <strong>{formatCurrency(category.sales_value)}</strong>
-                  </div>
-                )) : <EmptyState message="No category data available" />}
+              <div className="analytics-category-chart">
+                {topCategoryChartData.length > 0 ? (
+                  <ResponsiveBar
+                    data={topCategoryChartData}
+                    keys={['sales']}
+                    indexBy="category"
+                    layout="horizontal"
+                    margin={{ top: 4, right: 16, bottom: 28, left: 104 }}
+                    padding={0.5}
+                    valueScale={{ type: 'linear' }}
+                    indexScale={{ type: 'band', round: true }}
+                    colors={(bar) => CATEGORY_COLORS[bar.index % CATEGORY_COLORS.length]}
+                    borderRadius={4}
+                    enableGridX
+                    enableGridY={false}
+                    axisBottom={{ tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactValue }}
+                    axisLeft={{ tickSize: 0, tickPadding: 8, tickRotation: 0 }}
+                    enableLabel
+                    labelSkipWidth={0}
+                    labelSkipHeight={0}
+                    labelPosition="end"
+                    labelOffset={8}
+                    labelTextColor={chartTheme.label}
+                    labelFormat={(value) => formatWholeCurrency(Number(value))}
+                    valueFormat={(value) => formatWholeCurrency(Number(value))}
+                    theme={nivoTheme}
+                    ariaLabel="Top selling categories"
+                    tooltip={({ label, value, color }) => (
+                      <div className="analytics-chart-tooltip">
+                        <span style={{ color }}>{label}</span>
+                        <strong>{formatWholeCurrency(value)}</strong>
+                      </div>
+                    )}
+                  />
+                ) : <EmptyState message="No category data available" />}
               </div>
             </article>
 
@@ -646,8 +645,33 @@ export const Analytics: React.FC = () => {
               <PanelHeader eyebrow="Inventory mix" title="Inventory summary" icon={<Package className="analytics-panel__icon" />} tone="violet" />
               <div className="analytics-inventory-layout">
                 <div className="analytics-chart analytics-chart--inventory">
-                  {inventoryChartData ? <Doughnut data={inventoryChartData} options={inventoryChartOptions} /> : <EmptyState message="No inventory yet" />}
-                  {inventoryChartData ? (
+                  {inventoryChartData.length > 0 ? (
+                    <ResponsivePie
+                      data={inventoryChartData}
+                      margin={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                      innerRadius={0.76}
+                      padAngle={1}
+                      cornerRadius={1}
+                      activeOuterRadiusOffset={5}
+                      colors={[chartTheme.stock, chartTheme.sold]}
+                      borderWidth={3}
+                      borderColor={chartTheme.chartBorder}
+                      enableArcLabels={false}
+                      enableArcLinkLabels={false}
+                      sortByValue={false}
+                      theme={nivoTheme}
+                      tooltip={({ datum }) => {
+                        const percentage = inventoryTotal > 0 ? ((datum.value / inventoryTotal) * 100).toFixed(1) : '0.0';
+                        return (
+                          <div className="analytics-chart-tooltip">
+                            <span>{String(datum.id)}</span>
+                            <strong>{datum.value} ({percentage}%)</strong>
+                          </div>
+                        );
+                      }}
+                    />
+                  ) : <EmptyState message="No inventory yet" />}
+                  {inventoryChartData.length > 0 ? (
                     <div className="analytics-chart__center-label">
                       <strong>{data.inventory_summary.total_count}</strong>
                       <span>Total items</span>
@@ -677,11 +701,11 @@ export const Analytics: React.FC = () => {
                 <p className="analytics-trend__caption">{totalSalesTrend >= 0 ? 'Increase' : 'Decrease'} in total sales</p>
                 <div className="analytics-trend__bars">
                   <div className="analytics-trend__bar-group">
-                    <div className="analytics-trend__bar-label"><span>{data.sales_trend.previous.period}</span><strong>{formatCurrency(previousSales)}</strong></div>
+                    <div className="analytics-trend__bar-label"><span>{data.sales_trend.previous.period}</span><strong>{formatWholeCurrency(previousSales)}</strong></div>
                     <div className="analytics-trend__track"><span className="analytics-trend__bar analytics-trend__bar--previous" style={{ width: previousSalesWidth }} /></div>
                   </div>
                   <div className="analytics-trend__bar-group">
-                    <div className="analytics-trend__bar-label"><span>{data.sales_trend.current.period}</span><strong>{formatCurrency(currentSales)}</strong></div>
+                    <div className="analytics-trend__bar-label"><span>{data.sales_trend.current.period}</span><strong>{formatWholeCurrency(currentSales)}</strong></div>
                     <div className="analytics-trend__track"><span className="analytics-trend__bar analytics-trend__bar--current" style={{ width: currentSalesWidth }} /></div>
                   </div>
                 </div>
@@ -696,6 +720,12 @@ export const Analytics: React.FC = () => {
           <span>Choose a shop and date range to view performance insights.</span>
         </div>
       )}
+      {data ? (
+        <p className="analytics-page__footnote">
+          <Info className="analytics-page__footnote-icon" />
+          All values are inclusive of taxes.
+        </p>
+      ) : null}
     </section>
   );
 };

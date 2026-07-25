@@ -9,6 +9,14 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+export const formatWholeCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
 export const formatDate = (date: string | Date): string => {
   return new Intl.DateTimeFormat('en-IN', {
     year: 'numeric',

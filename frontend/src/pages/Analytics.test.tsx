@@ -16,9 +16,14 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
-vi.mock('react-chartjs-2', () => ({
-  Doughnut: () => <div data-testid="doughnut-chart" />,
-  Line: () => <div data-testid="line-chart" />,
+vi.mock('@nivo/bar', () => ({
+  ResponsiveBar: () => <div data-testid="nivo-bar-chart" />,
+}));
+vi.mock('@nivo/line', () => ({
+  ResponsiveLine: () => <div data-testid="nivo-line-chart" />,
+}));
+vi.mock('@nivo/pie', () => ({
+  ResponsivePie: () => <div data-testid="nivo-pie-chart" />,
 }));
 
 const analyticsData: AnalyticsDashboardResponse = {
@@ -95,12 +100,13 @@ describe('Analytics', () => {
     renderAnalytics();
 
     expect(await screen.findByRole('heading', { name: 'Analytics' })).toBeInTheDocument();
-    expect((await screen.findAllByText('₹3,200.00')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('₹3,200')).length).toBeGreaterThan(0);
     expect(screen.getByText('Top selling categories')).toBeInTheDocument();
     expect(screen.getByText('Inventory summary')).toBeInTheDocument();
     expect(screen.getByText('Sales trend')).toBeInTheDocument();
-    expect(screen.getByTestId('line-chart')).toBeInTheDocument();
-    expect(screen.getAllByTestId('doughnut-chart')).toHaveLength(2);
+    expect(screen.getByTestId('nivo-line-chart')).toBeInTheDocument();
+    expect(screen.getAllByTestId('nivo-pie-chart')).toHaveLength(2);
+    expect(screen.getByTestId('nivo-bar-chart')).toBeInTheDocument();
 
     await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/),

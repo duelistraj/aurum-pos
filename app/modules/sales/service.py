@@ -10,6 +10,7 @@ from app.core.changelog.service import log_change
 from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
 from app.modules.metal_rates.models import MetalRate
+from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 from app.modules.sales.models import Sale, SaleItem
 from app.modules.sales.schemas import SaleCreate
 
@@ -72,26 +73,23 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
 
     sale_items: list[SaleItem] = []
 
-    rate_keys = {
-        (item.metal.lower(), Decimal("100") if item.metal.lower() == "silver" else item.purity)
-        for item in items
-    }
-    metal_names = {metal for metal, _purity in rate_keys}
-    purities = {purity for _metal, purity in rate_keys}
+    metal_names = {item.metal.lower() for item in items}
     rates_result = await db.execute(
         select(MetalRate)
-        .where(func.lower(MetalRate.metal).in_(metal_names), MetalRate.purity.in_(purities))
+        .where(
+            func.lower(MetalRate.metal).in_(metal_names),
+            MetalRate.purity == Decimal("100"),
+        )
         .order_by(MetalRate.effective_from.desc())
     )
-    rate_by_key: dict[tuple[str, Decimal], MetalRate] = {}
+    rate_by_metal: dict[str, MetalRate] = {}
     for rate in rates_result.scalars():
-        rate_by_key.setdefault((rate.metal.lower(), rate.purity), rate)
+        rate_by_metal.setdefault(rate.metal.lower(), rate)
 
     # Create sale items with locked pricing
     for item_id, quantity_requested in item_quantities.items():
         item = item_by_id[item_id]
-        effective_purity = Decimal("100") if item.metal.lower() == "silver" else item.purity
-        selected_rate = rate_by_key.get((item.metal.lower(), effective_purity))
+        selected_rate = rate_by_metal.get(item.metal.lower())
 
         if selected_rate is None:
             raise HTTPException(
@@ -99,12 +97,18 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
                 f"Metal rate not set for {item.metal}",
             )
 
+        effective_rate = calculate_effective_rate_per_gram(
+            metal=item.metal,
+            purity=item.purity,
+            base_rate_per_gram=selected_rate.rate_per_gram,
+        )
+
         breakdown = lock_price_at_sale(
             metal=item.metal,
             category=item.category,
             purity=item.purity,
             net_weight=item.net_weight,
-            rate_per_gram=selected_rate.rate_per_gram,
+            rate_per_gram=effective_rate,
             making_charge=item.making_charge,
         )
 

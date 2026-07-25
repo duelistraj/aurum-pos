@@ -53,25 +53,90 @@ const PDFIcon = () => (
   </svg>
 );
 
+const METAL_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Metals', icon: LayoutGrid },
+  { value: 'silver', label: 'Silver', icon: Disc },
+  { value: 'gold', label: 'Gold', icon: Sparkles },
+  { value: 'platinum', label: 'Platinum', icon: Gem },
+];
+
+const PURITY_OPTIONS_BY_METAL: Record<string, Array<{ value: string; label: string }>> = {
+  silver: [
+    { value: '99.9', label: '99.9%' },
+    { value: '92.5', label: '92.5%' },
+    { value: 'other', label: 'Other (Unspecified)' },
+  ],
+  gold: [
+    { value: '99.9', label: '24K (99.9%)' },
+    { value: '91.6', label: '22K (91.6%)' },
+    { value: '75', label: '18K (75.0%)' },
+    { value: '58.5', label: '14K (58.5%)' },
+  ],
+  platinum: [
+    { value: '99.9', label: 'Pt999 (99.9%)' },
+    { value: '95', label: 'Pt950 (95.0%)' },
+    { value: '90', label: 'Pt900 (90.0%)' },
+  ],
+};
+
+const DEFAULT_PURITY_BY_METAL: Record<string, string> = {
+  silver: '92.5',
+  gold: '91.6',
+  platinum: '95',
+};
+
+const getConfiguredPurities = (
+  metal: string,
+  availableMetals: Record<string, number[]>,
+) => Object.entries(availableMetals).find(
+  ([name]) => name.toLowerCase() === metal.toLowerCase(),
+)?.[1] ?? [];
+
+const getPurityOptions = (
+  metal: string,
+  availableMetals: Record<string, number[]>,
+) => {
+  const options = PURITY_OPTIONS_BY_METAL[metal.toLowerCase()] ?? [];
+  const configured = getConfiguredPurities(metal, availableMetals);
+  if (configured.length === 0 || configured.includes(100)) return options;
+
+  return options.filter((option) => (
+    option.value === 'other'
+      ? configured.includes(0)
+      : configured.includes(Number(option.value))
+  ));
+};
+
+const getDefaultPurity = (
+  metal: string,
+  availableMetals: Record<string, number[]>,
+) => {
+  const options = getPurityOptions(metal, availableMetals);
+  return options.find((option) => option.value === DEFAULT_PURITY_BY_METAL[metal.toLowerCase()])?.value
+    ?? options[0]?.value
+    ?? 'other';
+};
+
+const getCanonicalMetal = (
+  metal: string,
+  availableMetals: Record<string, number[]>,
+) => Object.keys(availableMetals).find(
+  (name) => name.toLowerCase() === metal.toLowerCase(),
+) ?? metal;
+
 const getMetalIconBg = (metalName: string) => {
   const name = metalName.toLowerCase();
   if (name === 'gold') {
-    return { icon: Sparkles, bg: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400' };
+    return { icon: Sparkles, bg: 'inventory-option-icon' };
   }
   if (name === 'silver') {
-    return { icon: Disc, bg: 'bg-blue-50 text-blue-500 dark:bg-blue-950/20 dark:text-blue-400' };
+    return { icon: Disc, bg: 'inventory-option-icon' };
   }
-  return { icon: LayoutGrid, bg: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' };
+  return { icon: Gem, bg: 'inventory-option-icon' };
 };
 
 const getPurityIconBg = (purityValue: string) => {
-  if (purityValue === '99.9') {
-    return { icon: Award, bg: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400' };
-  }
-  if (purityValue === '92.5') {
-    return { icon: CircleDot, bg: 'bg-blue-50 text-blue-500 dark:bg-blue-950/20 dark:text-blue-400' };
-  }
-  return { icon: Settings, bg: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' };
+  return { icon: purityValue === 'other' ? Settings : Award, bg: 'inventory-option-icon' };
 };
 
 export const Items: React.FC = () => {
@@ -89,6 +154,7 @@ export const Items: React.FC = () => {
   // Search and Filters State
   const [searchTerm, setSearchTerm] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  const [selectedMetal, setSelectedMetal] = React.useState('all');
   const [selectedCategory, setSelectedCategory] = React.useState('all');
   const [selectedStatus, setSelectedStatus] = React.useState('all');
   
@@ -117,7 +183,9 @@ export const Items: React.FC = () => {
   
   // Custom dropdown overlays toggle states
   const [showCategoryDropdown, setShowCategoryDropdown] = React.useState(false);
+  const [showMetalDropdown, setShowMetalDropdown] = React.useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = React.useState(false);
+  const [showRowsPerPageDropdown, setShowRowsPerPageDropdown] = React.useState(false);
   const [categorySearch, setCategorySearch] = React.useState('');
   
   const [showFormCategoryDropdown, setShowFormCategoryDropdown] = React.useState(false);
@@ -125,18 +193,14 @@ export const Items: React.FC = () => {
   const [showFormPurityDropdown, setShowFormPurityDropdown] = React.useState(false);
   
   const categoryDropdownRef = React.useRef<HTMLDivElement>(null);
+  const metalDropdownRef = React.useRef<HTMLDivElement>(null);
   const statusDropdownRef = React.useRef<HTMLDivElement>(null);
+  const rowsPerPageDropdownRef = React.useRef<HTMLDivElement>(null);
   const formCategoryDropdownRef = React.useRef<HTMLDivElement>(null);
   const formMetalDropdownRef = React.useRef<HTMLDivElement>(null);
   const formPurityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [showDownloadDropdown, setShowDownloadDropdown] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
-  
-  const purityOptions = [
-    { value: '99.9', label: '99.9%' },
-    { value: '92.5', label: '92.5%' },
-    { value: 'other', label: 'Other (Unspecified)' },
-  ];
   
   const [formData, setFormData] = React.useState({
     sku: '',
@@ -144,7 +208,7 @@ export const Items: React.FC = () => {
     name: '',
     category: 'jewellery',
     metal: '',
-    purity: '99.9',
+    purity: '92.5',
     net_weight: '',
     making_charge: '',
     quantity: '1',
@@ -180,7 +244,7 @@ export const Items: React.FC = () => {
         setFormData((prev) => ({
           ...prev,
           metal: metalKeys[0],
-          purity: '99.9',
+          purity: getDefaultPurity(metalKeys[0], metals),
         }));
       }
     } catch (err) {
@@ -194,8 +258,14 @@ export const Items: React.FC = () => {
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(target)) {
         setShowCategoryDropdown(false);
       }
+      if (metalDropdownRef.current && !metalDropdownRef.current.contains(target)) {
+        setShowMetalDropdown(false);
+      }
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(target)) {
         setShowStatusDropdown(false);
+      }
+      if (rowsPerPageDropdownRef.current && !rowsPerPageDropdownRef.current.contains(target)) {
+        setShowRowsPerPageDropdown(false);
       }
       if (formCategoryDropdownRef.current && !formCategoryDropdownRef.current.contains(target)) {
         setShowFormCategoryDropdown(false);
@@ -253,6 +323,7 @@ export const Items: React.FC = () => {
         page: currentPage,
         limit: rowsPerPage,
         search: debouncedSearch || undefined,
+        metal: selectedMetal !== 'all' ? selectedMetal : undefined,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         status: selectedStatus !== 'all' ? selectedStatus : undefined,
       });
@@ -267,6 +338,7 @@ export const Items: React.FC = () => {
             (item.sku.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
              item.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
              (item.barcode?.includes(debouncedSearch) ?? false)) &&
+            (selectedMetal === 'all' || item.metal.toLowerCase() === selectedMetal.toLowerCase()) &&
             (selectedCategory === 'all' || item.category.toLowerCase() === selectedCategory.toLowerCase()) &&
             (selectedStatus === 'all' || item.status.toLowerCase() === selectedStatus.toLowerCase())
         );
@@ -291,7 +363,7 @@ export const Items: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage, debouncedSearch, selectedCategory, selectedStatus]);
+  }, [currentPage, rowsPerPage, debouncedSearch, selectedMetal, selectedCategory, selectedStatus]);
 
   const loadLatestItem = React.useCallback(async () => {
     try {
@@ -328,11 +400,12 @@ export const Items: React.FC = () => {
       return;
     }
     if (latestItem) {
+      const metal = getCanonicalMetal(latestItem.metal, availableMetals);
       setFormData({
         sku: latestItem.sku,
         name: latestItem.name,
         category: latestItem.category,
-        metal: latestItem.metal,
+        metal,
         purity: String(latestItem.purity),
         net_weight: '',
         making_charge: latestItem.making_charge?.toString() ?? '',
@@ -360,11 +433,12 @@ export const Items: React.FC = () => {
   const openEditItem = (item: Item) => {
     if (!isManageMode) return;
     setEditingItem(item);
+    const metal = getCanonicalMetal(item.metal, availableMetals);
     setFormData({
       sku: item.sku,
       name: item.name,
       category: item.category,
-      metal: item.metal,
+      metal,
       purity: String(item.purity),
       net_weight: String(item.net_weight),
       making_charge: item.making_charge?.toString() ?? '',
@@ -413,6 +487,12 @@ export const Items: React.FC = () => {
     setSelectedStatus(val);
     setCurrentPage(1);
     setShowStatusDropdown(false);
+  };
+
+  const handleMetalSelect = (val: string) => {
+    setSelectedMetal(val);
+    setCurrentPage(1);
+    setShowMetalDropdown(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -555,22 +635,23 @@ export const Items: React.FC = () => {
     return pages;
   };
 
+  const purityOptions = getPurityOptions(formData.metal, availableMetals);
+
   return (
-    <div className="min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="app-page min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
+      <div className="app-page__container max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Header Title and Actions */}
-        <div className="mb-8 animate-slide-down">
-          <div className="flex justify-between items-center mb-2">
-            <div>
+        <div className="app-page__header inventory-page__header mb-8 animate-slide-down">
+          <div className="inventory-page__title">
               <h1 className="text-4xl font-bold text-slate-900 dark:text-white">Inventory</h1>
               <p className="text-slate-400 dark:text-slate-400 mt-1 font-medium">
                 {isManageMode
-                  ? 'Manage mode enabled — add, edit, delete, and label downloads are available.'
+                  ? 'Manage mode enabled - add, edit, delete, and label downloads are available.'
                   : 'Inventory is view-only. Click Manage to unlock add, edit, delete, and label download actions.'}
               </p>
-            </div>
-            <div className="flex space-x-3">
+          </div>
+          <div className="inventory-page__actions">
               <button
                 onClick={handleManageToggle}
                 className={`flex items-center space-x-2 border px-5 py-2.5 rounded-app-control shadow-xs transition-all duration-200 font-bold focus:outline-none focus:ring-2 focus:ring-offset-2 ${
@@ -640,7 +721,6 @@ export const Items: React.FC = () => {
                 <Plus className="w-5 h-5 font-bold" />
                 <span>Add Item</span>
               </Button>
-            </div>
           </div>
         </div>
 
@@ -648,7 +728,7 @@ export const Items: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-slide-down">
           {/* In Stock */}
           <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-green-50 dark:bg-green-950/30 rounded-app-control text-green-500 mr-4">
+            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
               <CheckCircle className="w-6 h-6" />
             </div>
             <div>
@@ -659,7 +739,7 @@ export const Items: React.FC = () => {
 
           {/* Unique Items */}
           <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-purple-50 dark:bg-purple-950/30 rounded-app-control text-purple-500 mr-4">
+            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
               <Gem className="w-6 h-6" />
             </div>
             <div>
@@ -670,7 +750,7 @@ export const Items: React.FC = () => {
 
           {/* Sold Items */}
           <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-app-control text-blue-500 mr-4">
+            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
               <ShoppingBag className="w-6 h-6" />
             </div>
             <div>
@@ -681,7 +761,7 @@ export const Items: React.FC = () => {
 
           {/* 925 Items */}
           <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-app-control text-indigo-500 mr-4">
+            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
               <Tag className="w-6 h-6" />
             </div>
             <div>
@@ -706,7 +786,7 @@ export const Items: React.FC = () => {
         )}
 
         {/* Search Bar and Dropdown Filters */}
-        <div className="flex flex-col md:flex-row gap-4 mb-6 items-stretch animate-slide-up">
+        <div className="inventory-page__filter-row flex flex-col md:flex-row gap-4 mb-6 items-stretch animate-slide-up">
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
               <Search className="h-5 w-5 text-slate-400" />
@@ -720,6 +800,64 @@ export const Items: React.FC = () => {
             />
           </div>
           
+          {/* Metal Custom Selector */}
+          <div className="relative w-full md:w-48" ref={metalDropdownRef}>
+            <div
+              onClick={() => {
+                setShowMetalDropdown(!showMetalDropdown);
+                setShowCategoryDropdown(false);
+                setShowStatusDropdown(false);
+              }}
+              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${
+                showMetalDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-200 dark:border-slate-800'
+              }`}
+            >
+              <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5 pointer-events-none">Metal</label>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-800 dark:text-slate-100 font-bold text-sm truncate">
+                  {METAL_FILTER_OPTIONS.find((option) => option.value === selectedMetal)?.label || 'All Metals'}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showMetalDropdown ? 'rotate-180' : ''}`} />
+              </div>
+            </div>
+
+            {showMetalDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+                {METAL_FILTER_OPTIONS.map((opt) => {
+                  const isSelected = opt.value === selectedMetal;
+                  const Icon = opt.icon;
+                  return (
+                    <div
+                      key={opt.value}
+                      onClick={() => handleMetalSelect(opt.value)}
+                      className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
+                        isSelected
+                          ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center">
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
+                          {opt.label}
+                        </span>
+                      </div>
+                      {isSelected ? (
+                        <div className="w-5 h-5 rounded-full border-2 border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-slate-200 dark:border-slate-700" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Category Custom Selector */}
           <div className="relative w-full md:w-56" ref={categoryDropdownRef}>
             <div 
@@ -770,7 +908,7 @@ export const Items: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
+                          <div className={`inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
                             <Icon className="w-4 h-4" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -827,7 +965,7 @@ export const Items: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
+                        <div className={`inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
                           <Icon className="w-4 h-4" />
                         </div>
                         <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1069,21 +1207,37 @@ export const Items: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span>Rows per page</span>
-              <div className="relative flex items-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control px-3 py-2 shadow-2xs">
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="bg-transparent font-semibold text-slate-800 dark:text-slate-200 appearance-none pr-6 focus:outline-none cursor-pointer text-sm"
+              <div className="inventory-page__rows-dropdown relative" ref={rowsPerPageDropdownRef}>
+                <button
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={showRowsPerPageDropdown}
+                  onClick={() => setShowRowsPerPageDropdown((open) => !open)}
+                  className="inventory-page__rows-trigger"
                 >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 pointer-events-none" />
+                  <span>{rowsPerPage}</span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showRowsPerPageDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                {showRowsPerPageDropdown && (
+                  <div className="inventory-page__rows-menu" role="listbox" aria-label="Rows per page">
+                    {[10, 20, 50, 100].map((option) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={rowsPerPage === option}
+                        key={option}
+                        onClick={() => {
+                          setRowsPerPage(option);
+                          setCurrentPage(1);
+                          setShowRowsPerPageDropdown(false);
+                        }}
+                        className={`inventory-page__rows-option ${rowsPerPage === option ? 'is-selected' : ''}`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1239,11 +1393,10 @@ export const Items: React.FC = () => {
                       <div
                         key={metal}
                         onClick={() => {
-                          const purities = availableMetals[metal] || [];
                           setFormData({
                             ...formData,
                             metal: metal,
-                            purity: String(purities[0] || ''),
+                            purity: getDefaultPurity(metal, availableMetals),
                           });
                           setShowFormMetalDropdown(false);
                         }}
@@ -1254,7 +1407,7 @@ export const Items: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
+                          <div className={`inventory-option-icon w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1315,7 +1468,7 @@ export const Items: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
+                          <div className={`inventory-option-icon w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
