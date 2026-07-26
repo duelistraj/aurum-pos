@@ -1,11 +1,12 @@
 import { Capacitor } from '@capacitor/core';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient } from '../api/client';
+import { ApiError, apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
-import { getAccessToken } from '../utils/auth';
+import { AurumGoogleAuth } from '../native/googleAuth';
+import { getAccessToken, setAuthData } from '../utils/auth';
 import { Login } from './Login';
 
 vi.mock('@capacitor/core', () => ({
@@ -13,11 +14,50 @@ vi.mock('@capacitor/core', () => ({
     getPlatform: vi.fn(),
   },
 }));
-vi.mock('../api/client', () => ({
-  apiClient: {
-    authProviders: vi.fn(),
-  },
-}));
+vi.mock('../api/client', () => {
+  class MockApiError extends Error {
+    readonly status?: number;
+    readonly code?: string;
+    readonly detail?: {
+      code?: string;
+      message?: string;
+      email?: string;
+      full_name?: string;
+    };
+
+    constructor(
+      message: string,
+      options: {
+        status?: number;
+        code?: string;
+        detail?: {
+          code?: string;
+          message?: string;
+          email?: string;
+          full_name?: string;
+        };
+      } = {},
+    ) {
+      super(message);
+      this.status = options.status;
+      this.code = options.code;
+      this.detail = options.detail;
+    }
+  }
+
+  return {
+    ApiError: MockApiError,
+    apiClient: {
+      acceptInvitation: vi.fn(),
+      authProviders: vi.fn(),
+      googleAuth: vi.fn(),
+      login: vi.fn(),
+      register: vi.fn(),
+      resendVerification: vi.fn(),
+      verifyEmail: vi.fn(),
+    },
+  };
+});
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 vi.mock('../native/googleAuth', () => ({
   AurumGoogleAuth: { signIn: vi.fn() },
@@ -37,13 +77,27 @@ vi.mock('../utils/device', () => ({
   getDeviceUUID: vi.fn(async () => 'device-uuid'),
 }));
 
+const tokenResponse = {
+  access_token: 'access-token',
+  refresh_token: 'refresh-token',
+  full_name: 'Google Owner',
+  user_id: 'user-id',
+  email: 'owner@example.com',
+  memberships: [{
+    shop_id: 'shop-id',
+    shop_name: 'Chosen Shop',
+    shop_slug: 'chosen-shop',
+    role: 'OWNER' as const,
+  }],
+};
+
 const renderLogin = () => render(
   <MemoryRouter>
     <Login />
   </MemoryRouter>,
 );
 
-describe('Login Google provider discovery', () => {
+describe('Login', () => {
   afterEach(cleanup);
 
   beforeEach(() => {
@@ -62,7 +116,7 @@ describe('Login Google provider discovery', () => {
     });
   });
 
-  it('shows mode-specific Google actions from backend provider metadata', async () => {
+  it('uses one Google action across account and invitation modes', async () => {
     const user = userEvent.setup();
     vi.mocked(apiClient.authProviders).mockResolvedValue({
       google: {
@@ -73,14 +127,15 @@ describe('Login Google provider discovery', () => {
 
     renderLogin();
 
-    expect(await screen.findByRole('button', { name: 'Sign in with Google' }))
+    expect(await screen.findByRole('button', { name: 'Continue with Google' }))
       .toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'New owner? Create a shop' }));
-    expect(screen.getByRole('button', { name: 'Sign up with Google' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Create account' }));
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Accept a staff invitation' }));
-    expect(screen.getByRole('button', { name: 'Join with Google' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Have a staff invitation?' }));
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeDisabled();
+    expect(screen.queryByText('Sign up with Google')).not.toBeInTheDocument();
   });
 
   it('keeps Google login out of the debug APK', () => {
@@ -103,5 +158,79 @@ describe('Login Google provider discovery', () => {
     expect(
       await screen.findByRole('button', { name: 'Google Sign-In unavailable' }),
     ).toBeDisabled();
+  });
+
+  it('asks a first-time Google user for a shop name and reuses the credential', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: {
+        enabled: true,
+        client_id: 'google-client.apps.googleusercontent.com',
+      },
+    });
+    vi.mocked(AurumGoogleAuth.signIn).mockResolvedValue({ idToken: 'google-id-token' });
+    vi.mocked(apiClient.googleAuth)
+      .mockRejectedValueOnce(new ApiError('Choose a shop name to finish setup.', {
+        status: 409,
+        code: 'google_shop_required',
+        detail: {
+          code: 'google_shop_required',
+          message: 'Choose a shop name to finish setup.',
+          email: 'owner@example.com',
+          full_name: 'Google Owner',
+        },
+      }))
+      .mockResolvedValueOnce(tokenResponse);
+
+    renderLogin();
+    await user.click(await screen.findByRole('button', { name: 'Continue with Google' }));
+
+    expect(await screen.findByRole('heading', { name: 'Name your shop' }))
+      .toBeInTheDocument();
+    expect(screen.getByText('owner@example.com')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Shop name'), 'Chosen Shop');
+    await user.click(screen.getByRole('button', { name: 'Create shop' }));
+
+    await waitFor(() => expect(apiClient.googleAuth).toHaveBeenCalledTimes(2));
+    expect(apiClient.googleAuth).toHaveBeenLastCalledWith({
+      id_token: 'google-id-token',
+      nonce: 'nonce-value-that-is-long-enough',
+      shop_name: 'Chosen Shop',
+      device_uuid: 'device-uuid',
+      device_name: 'Android Device',
+      platform: 'android',
+      app_version: '1.0',
+    });
+    expect(setAuthData).toHaveBeenCalledWith(
+      'access-token',
+      'refresh-token',
+      expect.objectContaining({ email: 'owner@example.com' }),
+    );
+  });
+
+  it('shows a verification-pending state after email registration', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+    vi.mocked(apiClient.register).mockResolvedValue({
+      message: 'Check your email to verify your account',
+    });
+
+    renderLogin();
+    await user.click(screen.getByRole('tab', { name: 'Create account' }));
+    await user.type(screen.getByLabelText('Full name'), 'Email Owner');
+    await user.type(screen.getByLabelText('Shop name'), 'Email Shop');
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.type(screen.getByLabelText('Password'), 'strong-password-123');
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(await screen.findByRole('heading', { name: 'Check your email' }))
+      .toBeInTheDocument();
+    expect(screen.getByText('owner@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Resend available in 5:00/ }))
+      .toBeDisabled();
+    expect(apiClient.resendVerification).not.toHaveBeenCalled();
   });
 });

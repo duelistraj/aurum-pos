@@ -45,6 +45,7 @@ from app.modules.auth.schemas import (
     ResetPasswordRequest,
     TokenResponse,
     UserResponse,
+    VerificationResendRequest,
     VerifyEmailRequest,
 )
 from app.modules.auth.security import get_password_hash, hash_token, verify_password
@@ -56,11 +57,12 @@ from app.modules.auth.service import (
     register_device,
     request_account_deletion,
     request_password_reset,
+    resend_verification_email,
     reset_password,
     revoke_session,
     verify_auth_token,
 )
-from app.modules.shops.models import ShopDeviceAccess, ShopInvitation, ShopMembership
+from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, ShopMembership
 from app.modules.shops.service import create_shop
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -134,6 +136,15 @@ async def verify_email(data: VerifyEmailRequest, db: AsyncSession = Depends(get_
         raise HTTPException(status_code=400, detail="Invalid verification token")
     user.email_verified_at = datetime.now(UTC)
     return {"message": "Email verified"}
+
+
+@router.post("/verification/resend", status_code=202)
+async def resend_verification(
+    data: VerificationResendRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    await resend_verification_email(db, data.email)
+    return {"message": "If the account needs verification, a new email has been sent"}
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -271,15 +282,12 @@ async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=401, detail="Invalid Google credential") from exc
     if claims.get("nonce") != data.nonce or not claims.get("email_verified"):
         raise HTTPException(status_code=401, detail="Invalid Google credential")
-    nonce = GoogleNonce(nonce_hash=hash_token(data.nonce))
-    db.add(nonce)
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        raise HTTPException(status_code=401, detail="Google credential was already used") from exc
 
     subject = str(claims["sub"])
     email = str(claims["email"]).strip().casefold()
+    nonce_hash = hash_token(data.nonce)
+    if await db.get(GoogleNonce, nonce_hash) is not None:
+        raise HTTPException(status_code=401, detail="Google credential was already used")
     identity = await db.scalar(
         select(UserIdentity).where(
             UserIdentity.provider == "google",
@@ -287,18 +295,61 @@ async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db
         )
     )
     user = await db.get(User, identity.user_id) if identity else None
+    if user is not None and not user.is_active:
+        raise HTTPException(status_code=403, detail="User is inactive")
     if user is None:
         user = await db.scalar(select(User).where(User.email == email))
-        if user is None:
-            if not data.shop_name and not data.invitation_token:
-                raise HTTPException(status_code=400, detail="Shop name or invitation is required")
-            user = User(
-                email=email,
-                full_name=str(claims.get("name") or email.split("@", 1)[0]),
-                email_verified_at=datetime.now(UTC),
+        if user is not None and not user.is_active:
+            raise HTTPException(status_code=403, detail="User is inactive")
+
+    has_active_membership = False
+    if user is not None:
+        has_active_membership = bool(
+            await db.scalar(
+                select(ShopMembership.id)
+                .join(Shop, Shop.id == ShopMembership.shop_id)
+                .where(
+                    ShopMembership.user_id == user.id,
+                    ShopMembership.is_active.is_(True),
+                    Shop.is_active.is_(True),
+                )
             )
-            db.add(user)
-            await db.flush()
+        )
+    if not data.invitation_token and not has_active_membership and not data.shop_name:
+        full_name = (
+            user.full_name
+            if user is not None
+            else str(claims.get("name") or email.split("@", 1)[0]).strip()[:100]
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "google_shop_required",
+                "message": "Choose a shop name to finish setup.",
+                "email": user.email if user is not None else email,
+                "full_name": full_name or email.split("@", 1)[0][:100],
+            },
+        )
+
+    nonce = GoogleNonce(nonce_hash=nonce_hash)
+    db.add(nonce)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=401, detail="Google credential was already used") from exc
+
+    if user is None:
+        full_name = str(claims.get("name") or email.split("@", 1)[0]).strip()[:100]
+        user = User(
+            email=email,
+            full_name=full_name or email.split("@", 1)[0][:100],
+            email_verified_at=datetime.now(UTC),
+        )
+        db.add(user)
+        await db.flush()
+    elif identity is None and user.email_verified_at is None:
+        user.email_verified_at = datetime.now(UTC)
+    if identity is None:
         db.add(
             UserIdentity(
                 user_id=user.id,
@@ -309,9 +360,7 @@ async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db
         )
     if data.invitation_token:
         await _accept_invitation(db, token=data.invitation_token, user=user)
-    elif data.shop_name and not await db.scalar(
-        select(ShopMembership.id).where(ShopMembership.user_id == user.id)
-    ):
+    elif data.shop_name and not has_active_membership:
         await create_shop(db, name=data.shop_name, owner_id=user.id)
     await register_device(db, user=user, data=data)
     return await issue_session(db, user=user, device_uuid=data.device_uuid)

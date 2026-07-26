@@ -18,6 +18,8 @@ from app.modules.auth.security import (
 from app.modules.notifications.service import queue_email
 from app.modules.shops.service import list_memberships
 
+VERIFICATION_RESEND_COOLDOWN = timedelta(minutes=5)
+
 
 async def register_device(db: AsyncSession, *, user: User, data: DeviceInfo) -> Device:
     device = await db.scalar(
@@ -60,6 +62,25 @@ async def create_verification_token(db: AsyncSession, user: User) -> str:
         text_body=f"Verify your email: {settings.public_site_url}/verify-email.html?token={token}",
     )
     return token
+
+
+async def resend_verification_email(db: AsyncSession, email: str) -> None:
+    user = await db.scalar(select(User).where(User.email == email).with_for_update())
+    if user is None or not user.is_active or user.email_verified_at is not None:
+        return
+    latest_created_at = await db.scalar(
+        select(AuthToken.created_at)
+        .where(
+            AuthToken.user_id == user.id,
+            AuthToken.purpose == "verify_email",
+        )
+        .order_by(AuthToken.created_at.desc())
+        .limit(1)
+    )
+    now = datetime.now(UTC)
+    if latest_created_at is not None and latest_created_at > now - VERIFICATION_RESEND_COOLDOWN:
+        return
+    await create_verification_token(db, user)
 
 
 async def verify_auth_token(db: AsyncSession, *, token: str, purpose: str) -> AuthToken:

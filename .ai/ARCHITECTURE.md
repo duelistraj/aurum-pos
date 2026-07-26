@@ -31,6 +31,8 @@ Evidence:
 ### Identity, membership, and deletion
 
 Owners register with verified email/password or Android Google ID tokens.
+First-time Google owners choose their shop name only after Google verifies their identity, while returning members and invited staff continue directly.
+Verification email resend uses a generic public response and a database-backed cooldown to avoid account enumeration and email abuse.
 The unauthenticated auth-provider endpoint exposes only the public Google Web client ID and enabled state, keeping the backend environment as the authoritative Google audience configuration.
 Staff join through hashed, expiring shop invitations. Access JWTs contain user
 and session identity but no role; opaque hashed refresh tokens rotate in the
