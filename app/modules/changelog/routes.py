@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.modules.auth.dependencies import ShopContext, get_shop_context
 from app.modules.changelog.schemas import ChangeLogEntry
 from app.modules.changelog.service import get_change_log_history
 
@@ -34,10 +35,12 @@ async def change_log_history(
         None,
         description="Filter by action type.",
     ),
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
     return await get_change_log_history(
         db,
+        shop_id=context.shop.id,
         from_date=from_date,
         to_date=to_date,
         barcode=barcode,

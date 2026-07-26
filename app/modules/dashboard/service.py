@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,19 +14,29 @@ from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 from app.modules.sales.models import Sale, SaleItem
 
 
-async def get_dashboard_summary(db: AsyncSession) -> dict:
-    total_sales_subquery = select(func.coalesce(func.sum(Sale.total_amount), 0)).scalar_subquery()
+async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
+    total_sales_subquery = (
+        select(func.coalesce(func.sum(Sale.total_amount), 0))
+        .where(Sale.shop_id == shop_id)
+        .scalar_subquery()
+    )
     stmt = select(
         func.coalesce(func.sum(Item.quantity), 0),
         total_sales_subquery,
-    ).where(Item.status == "in_stock")
+    ).where(
+        Item.shop_id == shop_id,
+        Item.status == "in_stock",
+    )
     inventory_count, total_sales_amount = (await db.execute(stmt)).one()
     inventory_count = int(inventory_count or 0)
     total_sales_amount = Decimal(total_sales_amount or 0)
 
     rates_stmt = (
         select(MetalRate)
-        .where(MetalRate.purity == Decimal("100"))
+        .where(
+            MetalRate.shop_id == shop_id,
+            MetalRate.purity == Decimal("100"),
+        )
         .order_by(MetalRate.effective_from.desc())
     )
     rates_result = await db.execute(rates_stmt)
@@ -37,7 +48,10 @@ async def get_dashboard_summary(db: AsyncSession) -> dict:
     silver_rate_per_10g = silver_rate_per_gram * 10
     total_stock_value = Decimal(0)
 
-    items_stmt = select(Item).where(Item.status == "in_stock")
+    items_stmt = select(Item).where(
+        Item.shop_id == shop_id,
+        Item.status == "in_stock",
+    )
     total_sale_value = Decimal(0)
     for item in (await db.execute(items_stmt)).scalars():
         metal_lower = item.metal.lower()
@@ -57,7 +71,12 @@ async def get_dashboard_summary(db: AsyncSession) -> dict:
         total_sale_value += Decimal(str(pricing["suggested_price"])) * item.quantity
 
     # Recent changelog entries
-    activity_stmt = select(ChangeLog).order_by(ChangeLog.created_at.desc()).limit(5)
+    activity_stmt = (
+        select(ChangeLog)
+        .where(ChangeLog.shop_id == shop_id)
+        .order_by(ChangeLog.created_at.desc())
+        .limit(5)
+    )
     activity_result = await db.execute(activity_stmt)
     recent_activity = activity_result.scalars().all()
 
@@ -85,6 +104,8 @@ async def get_dashboard_analytics(
     from_date: datetime,
     to_date: datetime,
     metal: str = "all",
+    *,
+    shop_id: UUID,
 ) -> dict:
     # Ensure timezone awareness
     if from_date.tzinfo is None:
@@ -100,7 +121,11 @@ async def get_dashboard_analytics(
     # Current period sales
     curr_sales_stmt = (
         select(Sale)
-        .where(Sale.created_at >= from_date, Sale.created_at <= to_date)
+        .where(
+            Sale.shop_id == shop_id,
+            Sale.created_at >= from_date,
+            Sale.created_at <= to_date,
+        )
         .options(selectinload(Sale.items).selectinload(SaleItem.item))
     )
     curr_sales_result = await db.execute(curr_sales_stmt)
@@ -119,7 +144,11 @@ async def get_dashboard_analytics(
     # Previous period sales
     prev_sales_stmt = (
         select(Sale)
-        .where(Sale.created_at >= prev_start, Sale.created_at < from_date)
+        .where(
+            Sale.shop_id == shop_id,
+            Sale.created_at >= prev_start,
+            Sale.created_at < from_date,
+        )
         .options(selectinload(Sale.items).selectinload(SaleItem.item))
     )
     prev_sales_result = await db.execute(prev_sales_stmt)
@@ -146,7 +175,11 @@ async def get_dashboard_analytics(
         # Fetch rates active at or before T
         rates_stmt = (
             select(MetalRate)
-            .where(MetalRate.effective_from <= T, MetalRate.purity == Decimal("100"))
+            .where(
+                MetalRate.shop_id == shop_id,
+                MetalRate.effective_from <= T,
+                MetalRate.purity == Decimal("100"),
+            )
             .order_by(MetalRate.effective_from.desc())
         )
         rates_result = await db.execute(rates_stmt)
@@ -165,11 +198,19 @@ async def get_dashboard_analytics(
         sold_after_subquery = (
             select(func.coalesce(func.sum(SaleItem.quantity), 0))
             .join(Sale)
-            .where(SaleItem.item_id == Item.id, Sale.created_at > T)
+            .where(
+                SaleItem.shop_id == shop_id,
+                Sale.shop_id == shop_id,
+                SaleItem.item_id == Item.id,
+                Sale.created_at > T,
+            )
             .scalar_subquery()
         )
 
-        stmt = select(Item, sold_after_subquery.label("sold_after")).where(Item.created_at <= T)
+        stmt = select(Item, sold_after_subquery.label("sold_after")).where(
+            Item.shop_id == shop_id,
+            Item.created_at <= T,
+        )
         if metal.lower() != "all":
             stmt = stmt.where(Item.metal.ilike(metal))
 
@@ -218,7 +259,11 @@ async def get_dashboard_analytics(
         sold_stmt = (
             select(func.coalesce(func.sum(SaleItem.quantity), 0))
             .join(Sale)
-            .where(Sale.created_at <= T)
+            .where(
+                SaleItem.shop_id == shop_id,
+                Sale.shop_id == shop_id,
+                Sale.created_at <= T,
+            )
         )
         if metal.lower() != "all":
             sold_stmt = sold_stmt.join(Item).where(Item.metal.ilike(metal))

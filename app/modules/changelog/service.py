@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,13 +10,14 @@ from app.core.changelog.models import ChangeLog
 async def get_change_log_history(
     db: AsyncSession,
     *,
+    shop_id: UUID,
     from_date: datetime | None = None,
     to_date: datetime | None = None,
     barcode: str | None = None,
     invoice_no: str | None = None,
     action: str | None = None,
 ):
-    stmt = select(ChangeLog)
+    stmt = select(ChangeLog).where(ChangeLog.shop_id == shop_id)
     filters = []
 
     if from_date is not None:

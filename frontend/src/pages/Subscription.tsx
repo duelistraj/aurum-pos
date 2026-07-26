@@ -14,10 +14,25 @@ interface Offer {
   billingPeriod?: string;
 }
 
+type BillingAvailability = 'idle' | 'loading' | 'ready' | 'unavailable' | 'error';
+
+const PLAN_NAME_BY_ID: Readonly<Record<string, string>> = {
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
+
+const PERIOD_LABEL_BY_VALUE: Readonly<Record<string, string>> = {
+  P1M: 'per month',
+  P1Y: 'per year',
+};
+
 export const Subscription: React.FC = () => {
   const queryClient = useQueryClient();
   const { user, activeMembership } = useShop();
   const [offers, setOffers] = React.useState<Offer[]>([]);
+  const [billingAvailability, setBillingAvailability] =
+    React.useState<BillingAvailability>('idle');
+  const [billingError, setBillingError] = React.useState('');
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [deleteOwnedShops, setDeleteOwnedShops] = React.useState(false);
@@ -30,11 +45,31 @@ export const Subscription: React.FC = () => {
   });
 
   React.useEffect(() => {
-    if (!isCloudDistribution || Capacitor.getPlatform() !== 'android') return;
+    if (
+      !isCloudDistribution
+      || Capacitor.getPlatform() !== 'android'
+      || activeMembership?.role !== 'OWNER'
+    ) return;
+    setBillingAvailability('loading');
+    setBillingError('');
     void AurumBilling.getProducts({ productId: PLAY_PRODUCT_ID })
-      .then(({ products }) => setOffers(products[0]?.offers ?? []))
-      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Billing unavailable'));
-  }, []);
+      .then(({ products }) => {
+        const offerByBasePlan = new Map(
+          (products[0]?.offers ?? []).map((offer) => [offer.basePlanId, offer]),
+        );
+        const availableOffers = Array.from(offerByBasePlan.values());
+        setOffers(availableOffers);
+        setBillingAvailability(availableOffers.length > 0 ? 'ready' : 'unavailable');
+      })
+      .catch((caught: unknown) => {
+        setBillingAvailability('error');
+        setBillingError(
+          caught instanceof Error
+            ? caught.message
+            : 'Google Play Billing is temporarily unavailable.',
+        );
+      });
+  }, [activeMembership?.role]);
 
   const refreshEntitlement = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) });
@@ -126,20 +161,79 @@ export const Subscription: React.FC = () => {
       </Card>
 
       {activeMembership.role === 'OWNER' && isCloudDistribution && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {offers.map((offer) => (
-            <Card key={offer.basePlanId} className="p-6">
-              <h2 className="font-semibold capitalize">{offer.basePlanId}</h2>
-              <p className="my-3 text-2xl font-bold">{offer.formattedPrice ?? 'See Google Play'}</p>
-              <Button onClick={() => void purchase(offer.basePlanId)} disabled={busy}>
-                Choose {offer.basePlanId}
-              </Button>
+        <>
+          {Capacitor.getPlatform() !== 'android' && (
+            <Alert
+              type="info"
+              title="Google Play required"
+              message="Open Aurum POS from Google Play on Android to purchase or restore Pro."
+            />
+          )}
+          {Capacitor.getPlatform() === 'android' && billingAvailability === 'loading' && (
+            <Card className="p-6">
+              <p className="font-semibold">Loading Google Play plans...</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Prices and availability come directly from Google Play.
+              </p>
             </Card>
-          ))}
-          <Button variant="secondary" onClick={() => void restore()} disabled={busy}>
-            Restore purchases
-          </Button>
-        </div>
+          )}
+          {Capacitor.getPlatform() === 'android' && billingAvailability === 'unavailable' && (
+            <Alert
+              type="warning"
+              title="Pro is not available yet"
+              message="Google Play did not return an active Aurum Cloud Pro plan. Try again after the subscription has been published."
+            />
+          )}
+          {Capacitor.getPlatform() === 'android' && billingAvailability === 'error' && (
+            <Alert
+              type="error"
+              title="Google Play Billing unavailable"
+              message={billingError}
+            />
+          )}
+          {Capacitor.getPlatform() === 'android' && billingAvailability === 'ready' && (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {offers.map((offer) => {
+                  const planName = PLAN_NAME_BY_ID[offer.basePlanId] ?? offer.basePlanId;
+                  const periodLabel =
+                    PERIOD_LABEL_BY_VALUE[offer.billingPeriod ?? ''] ?? 'per billing period';
+                  return (
+                    <Card key={offer.basePlanId} className="flex flex-col p-6">
+                      <h2 className="text-lg font-semibold">{planName}</h2>
+                      <p className="my-3 text-2xl font-bold">
+                        {offer.formattedPrice ?? 'See Google Play'}
+                      </p>
+                      <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">
+                        {periodLabel}. Renews automatically until cancelled in Google Play.
+                      </p>
+                      <Button
+                        className="mt-auto"
+                        onClick={() => void purchase(offer.basePlanId)}
+                        disabled={busy}
+                      >
+                        Choose {planName}
+                      </Button>
+                    </Card>
+                  );
+                })}
+              </div>
+              <Button variant="secondary" onClick={() => void restore()} disabled={busy}>
+                Restore purchases
+              </Button>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Payment is charged by Google Play. You can cancel from your Play subscriptions.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+      {activeMembership.role !== 'OWNER' && isCloudDistribution && (
+        <Alert
+          type="info"
+          title="Owner access required"
+          message="Only a shop owner can purchase or restore Aurum Cloud Pro for this shop."
+        />
       )}
       {!isCloudDistribution && (
         <Alert type="success" message="Self-hosted Aurum POS includes unlimited active inventory." />

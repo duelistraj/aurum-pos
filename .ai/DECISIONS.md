@@ -115,12 +115,18 @@ Evidence:
 Recorded: 2026-07-21
 Status: accepted
 Basis: user-confirmed
-Decision: Shops share PostgreSQL with tenant keys and forced RLS. Hosted free shops are capped at 50 active item rows; Pro belongs to a shop and is sold through Google Play. Self-hosted mode is unlimited.
+Decision: Shops share PostgreSQL with tenant keys, explicit shop predicates, forced RLS, and a restricted production runtime role.
+Hosted free shops are capped at 50 active item rows; Pro belongs to a shop and is sold through Google Play.
+Self-hosted mode is unlimited.
 Rationale: The user explicitly rejected one database per shop and requested cloud-infrastructure billing with free self-hosting.
-Consequences: Every tenant request selects a shop; roles and subscriptions are database state; Play tokens are verified server-side.
+The user explicitly selected defense in depth using query scoping plus a `NOBYPASSRLS` runtime credential separated from the Alembic administrator credential.
+Consequences: Every tenant request selects and validates a shop, tenant-aware queries include its UUID, roles and subscriptions are database state, and Play tokens are verified server-side.
+Production migrations use a transient administrator URL that is not written to the API or worker runtime environment.
 
 Evidence:
 - `alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py::upgrade`
+- `app/modules/items/service.py::get_item_by_id`
+- `app/modules/dashboard/service.py::get_dashboard_summary`
 - `app/modules/subscriptions/service.py::resolve_entitlement`
 - `app/modules/billing/service.py::verify_play_purchase`
 

@@ -56,10 +56,12 @@ async def list_all(
     category: str | None = Query(None),
     status: str | None = Query(None),
     metal: str | None = Query(None),
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await list_items_paginated(
         db,
+        shop_id=context.shop.id,
         page=page,
         limit=limit,
         search=search,
@@ -77,24 +79,31 @@ async def list_all(
 
 
 @router.get("/summary")
-async def get_summary(db: AsyncSession = Depends(get_db)):
-    return await get_items_summary(db)
+async def get_summary(
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_items_summary(db, shop_id=context.shop.id)
 
 
 @router.get("/barcode/{barcode}", response_model=ItemOut)
 async def get_by_barcode(
     barcode: str,
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await get_item_by_barcode(db, barcode)
+    item = await get_item_by_barcode(db, barcode, shop_id=context.shop.id)
     if item is None:
         raise HTTPException(status_code=404, detail="No item found with this barcode")
     return item
 
 
 @router.get("/latest", response_model=ItemOut)
-async def get_latest(db: AsyncSession = Depends(get_db)):
-    item = await get_latest_item(db)
+async def get_latest(
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await get_latest_item(db, shop_id=context.shop.id)
     if item is None:
         raise HTTPException(status_code=404, detail="No items found")
     return item
@@ -103,13 +112,18 @@ async def get_latest(db: AsyncSession = Depends(get_db)):
 @router.get("/pos/scan/{barcode}", response_model=ItemPOSWithPrice)
 async def pos_scan(
     barcode: str,
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await get_item_for_pos_by_barcode(db, barcode)
+    item = await get_item_for_pos_by_barcode(db, barcode, shop_id=context.shop.id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found or is out of stock")
 
-    base_rate = await get_latest_metal_rate(db, metal=item.metal)
+    base_rate = await get_latest_metal_rate(
+        db,
+        shop_id=context.shop.id,
+        metal=item.metal,
+    )
     if base_rate is None:
         raise HTTPException(status_code=400, detail="Metal rate not configured for this item")
 
@@ -134,9 +148,10 @@ async def pos_scan(
 @router.get("/labels/all")
 async def print_labels_for_all_items(
     output_format: str = Query("xlsx", alias="format", pattern="^(xlsx|pdf)$"),
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    items = await get_items_for_label_printing(db)
+    items = await get_items_for_label_printing(db, shop_id=context.shop.id)
     if not items:
         raise HTTPException(status_code=404, detail="No items available for label printing")
 
@@ -157,9 +172,15 @@ async def print_labels_for_all_items(
 async def print_labels_batch(
     item_ids: list[UUID] = Body(...),
     output_format: str = Query("xlsx", alias="format", pattern="^(xlsx|pdf)$"),
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Item).where(Item.id.in_(item_ids)))
+    result = await db.execute(
+        select(Item).where(
+            Item.id.in_(item_ids),
+            Item.shop_id == context.shop.id,
+        )
+    )
     items = result.scalars().all()
     if not items:
         raise HTTPException(status_code=404, detail="None of the selected items exist")
@@ -180,9 +201,10 @@ async def print_labels_batch(
 @router.get("/{item_id}", response_model=ItemOut)
 async def get_by_id(
     item_id: UUID,
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await get_item_by_id(db, item_id)
+    item = await get_item_by_id(db, item_id, shop_id=context.shop.id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item does not exist")
     return item
@@ -206,10 +228,11 @@ async def update(
 @router.delete("/{item_id}", status_code=204, dependencies=[RequireManager])
 async def delete(
     item_id: UUID,
+    context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     try:
-        await delete_item(db, item_id)
+        await delete_item(db, item_id, shop_id=context.shop.id)
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "does not exist" in message else 400

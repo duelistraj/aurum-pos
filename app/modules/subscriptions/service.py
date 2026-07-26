@@ -56,9 +56,10 @@ async def resolve_entitlement(db: AsyncSession, shop_id: UUID) -> Entitlement:
     )
 
 
-async def count_active_items(db: AsyncSession) -> int:
+async def count_active_items(db: AsyncSession, shop_id: UUID) -> int:
     value = await db.scalar(
         select(func.count(Item.id)).where(
+            Item.shop_id == shop_id,
             Item.status.in_(ACTIVE_ITEM_STATUSES),
             Item.quantity > 0,
         )
@@ -68,7 +69,7 @@ async def count_active_items(db: AsyncSession) -> int:
 
 async def get_entitlement_response(db: AsyncSession, shop_id: UUID) -> EntitlementResponse:
     entitlement = await resolve_entitlement(db, shop_id)
-    count = await count_active_items(db)
+    count = await count_active_items(db, shop_id)
     return EntitlementResponse(
         plan=entitlement.plan,
         source=entitlement.source,
@@ -84,7 +85,7 @@ async def enforce_item_activation_limit(db: AsyncSession, shop_id: UUID) -> None
     entitlement = await resolve_entitlement(db, shop_id)
     if entitlement.limit is None:
         return
-    active_count = await count_active_items(db)
+    active_count = await count_active_items(db, shop_id)
     if active_count >= entitlement.limit:
         raise HTTPException(
             status_code=409,
