@@ -11,13 +11,16 @@ from app.modules.items.schemas import ItemBase, ItemCreate, ItemUpdate
 from app.modules.subscriptions.service import enforce_item_activation_limit
 
 
-async def generate_unique_barcode(db: AsyncSession) -> str:
+async def generate_unique_barcode(db: AsyncSession, *, shop_id: UUID) -> str:
     """Generate a unique 8-digit barcode"""
     for _attempt in range(20):
         barcode = "".join(secrets.choice(string.digits) for _ in range(8))
 
         # Check if barcode already exists
-        stmt = select(Item).where(Item.barcode == barcode)
+        stmt = select(Item).where(
+            Item.shop_id == shop_id,
+            Item.barcode == barcode,
+        )
         result = await db.execute(stmt)
         if not result.scalar_one_or_none():
             return barcode
@@ -32,18 +35,19 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
 
     # Generate barcode if not provided
     if not item_data.get("barcode"):
-        item_data["barcode"] = await generate_unique_barcode(db)
+        item_data["barcode"] = await generate_unique_barcode(db, shop_id=shop_id)
 
     # If category is unique, always set net_weight to 0
     if item_data.get("category") == "unique":
         item_data["net_weight"] = 0
 
-    item = Item(**item_data)
+    item = Item(shop_id=shop_id, **item_data)
     db.add(item)
     await db.flush()
 
     await log_change(
         db,
+        shop_id=shop_id,
         entity="item",
         entity_id=item.id,
         action="create",
@@ -59,7 +63,7 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
 
 
 async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop_id: UUID) -> Item:
-    item = await get_item_by_id(db, item_id)
+    item = await get_item_by_id(db, item_id, shop_id=shop_id)
     if not item:
         raise ValueError("Item does not exist")
     if item.status != "in_stock":
@@ -135,6 +139,7 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
     if changes:
         await log_change(
             db,
+            shop_id=shop_id,
             entity="item",
             entity_id=item.id,
             action="update",
@@ -149,8 +154,8 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
     return item
 
 
-async def delete_item(db: AsyncSession, item_id: UUID) -> None:
-    item = await get_item_by_id(db, item_id)
+async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None:
+    item = await get_item_by_id(db, item_id, shop_id=shop_id)
     if not item:
         raise ValueError("Item does not exist")
     if item.status != "in_stock":
@@ -171,6 +176,7 @@ async def delete_item(db: AsyncSession, item_id: UUID) -> None:
 
     await log_change(
         db,
+        shop_id=shop_id,
         entity="item",
         entity_id=item.id,
         action="delete",
@@ -180,37 +186,60 @@ async def delete_item(db: AsyncSession, item_id: UUID) -> None:
     await db.flush()
 
 
-async def get_item_by_id(db: AsyncSession, item_id: UUID) -> Item | None:
-    stmt = select(Item).where(Item.id == item_id)
+async def get_item_by_id(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> Item | None:
+    stmt = select(Item).where(
+        Item.id == item_id,
+        Item.shop_id == shop_id,
+    )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def get_item_by_barcode(db: AsyncSession, barcode: str) -> Item | None:
-    stmt = select(Item).where(Item.barcode == barcode)
+async def get_item_by_barcode(
+    db: AsyncSession,
+    barcode: str,
+    *,
+    shop_id: UUID,
+) -> Item | None:
+    stmt = select(Item).where(
+        Item.barcode == barcode,
+        Item.shop_id == shop_id,
+    )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def list_items(db: AsyncSession) -> list[Item]:
-    stmt = select(Item).order_by(Item.updated_at.desc())
-    stmt = stmt.where(Item.status == "in_stock")
+async def list_items(db: AsyncSession, *, shop_id: UUID) -> list[Item]:
+    stmt = (
+        select(Item)
+        .where(
+            Item.shop_id == shop_id,
+            Item.status == "in_stock",
+        )
+        .order_by(Item.updated_at.desc())
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
-async def get_latest_item(db: AsyncSession) -> Item | None:
-    stmt = select(Item).order_by(Item.updated_at.desc()).limit(1)
+async def get_latest_item(db: AsyncSession, *, shop_id: UUID) -> Item | None:
+    stmt = select(Item).where(Item.shop_id == shop_id).order_by(Item.updated_at.desc()).limit(1)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def get_item_for_pos_by_barcode(db: AsyncSession, barcode: str) -> Item | None:
+async def get_item_for_pos_by_barcode(
+    db: AsyncSession,
+    barcode: str,
+    *,
+    shop_id: UUID,
+) -> Item | None:
     stmt = (
         select(Item)
         .where(
             Item.barcode == barcode,
+            Item.shop_id == shop_id,
             Item.status == "in_stock",
         )
         .limit(1)
@@ -221,9 +250,11 @@ async def get_item_for_pos_by_barcode(db: AsyncSession, barcode: str) -> Item | 
 
 async def get_items_for_label_printing(
     db: AsyncSession,
+    *,
+    shop_id: UUID,
     only_in_stock: bool = True,
 ):
-    stmt = select(Item)
+    stmt = select(Item).where(Item.shop_id == shop_id)
 
     if only_in_stock:
         stmt = stmt.where(Item.status == "in_stock")
@@ -234,6 +265,8 @@ async def get_items_for_label_printing(
 
 async def list_items_paginated(
     db: AsyncSession,
+    *,
+    shop_id: UUID,
     page: int = 1,
     limit: int = 10,
     search: str | None = None,
@@ -241,7 +274,7 @@ async def list_items_paginated(
     status: str | None = None,
     metal: str | None = None,
 ) -> tuple[list[Item], int]:
-    stmt = select(Item).order_by(Item.updated_at.desc())
+    stmt = select(Item).where(Item.shop_id == shop_id).order_by(Item.updated_at.desc())
 
     # Filter by search
     if search:
@@ -278,10 +311,14 @@ async def list_items_paginated(
     return items, total
 
 
-async def get_items_summary(db: AsyncSession) -> dict:
+async def get_items_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
     from app.modules.sales.models import SaleItem
 
-    sold_items = select(func.coalesce(func.sum(SaleItem.quantity), 0)).scalar_subquery()
+    sold_items = (
+        select(func.coalesce(func.sum(SaleItem.quantity), 0))
+        .where(SaleItem.shop_id == shop_id)
+        .scalar_subquery()
+    )
     stmt = select(
         func.coalesce(func.sum(Item.quantity), 0),
         func.coalesce(
@@ -315,7 +352,7 @@ async def get_items_summary(db: AsyncSession) -> dict:
             0,
         ),
         sold_items,
-    )
+    ).where(Item.shop_id == shop_id)
     total_items, in_stock, unique_items, items_925_count, sold_count = (
         await db.execute(stmt)
     ).one()

@@ -48,7 +48,7 @@ async def create(
         if sale is None:
             raise HTTPException(status_code=409, detail="Idempotent sale result is unavailable")
     else:
-        sale = await create_sale(db, data)
+        sale = await create_sale(db, data, shop_id=context.shop.id)
         db.add(
             SaleIdempotency(
                 shop_id=context.shop.id,

@@ -79,7 +79,12 @@ async def persist_invoice_pdf(
         return sale
 
 
-async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
+async def _execute_create_sale(
+    db: AsyncSession,
+    data: SaleCreate,
+    *,
+    shop_id: UUID,
+) -> Sale:
     """Internal helper to execute sale creation operations within an active transaction"""
     # Fetch items and lock them
     item_quantities: dict[UUID, int] = {}
@@ -90,7 +95,14 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
 
     item_ids = list(item_quantities.keys())
 
-    stmt = select(Item).where(Item.id.in_(item_ids)).with_for_update()
+    stmt = (
+        select(Item)
+        .where(
+            Item.id.in_(item_ids),
+            Item.shop_id == shop_id,
+        )
+        .with_for_update()
+    )
     result = await db.execute(stmt)
     items = result.scalars().all()
 
@@ -114,6 +126,7 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
 
     # Create sale
     sale = Sale(
+        shop_id=shop_id,
         invoice_no=data.invoice_no,
         total_amount=Decimal(0),
         customer_name=data.customer_name,
@@ -131,6 +144,7 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
     rates_result = await db.execute(
         select(MetalRate)
         .where(
+            MetalRate.shop_id == shop_id,
             func.lower(MetalRate.metal).in_(metal_names),
             MetalRate.purity == Decimal("100"),
         )
@@ -172,6 +186,7 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
             for key, value in breakdown.items()
         }
         sale_item = SaleItem(
+            shop_id=shop_id,
             sale_id=sale.id,
             item_id=item.id,
             quantity=quantity_requested,
@@ -201,6 +216,7 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
 
         await log_change(
             db,
+            shop_id=shop_id,
             entity="item",
             entity_id=item.id,
             action="sold",
@@ -215,6 +231,7 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
     # Log sale summary
     await log_change(
         db,
+        shop_id=shop_id,
         entity="sale",
         entity_id=sale.id,
         action="create",
@@ -229,9 +246,9 @@ async def _execute_create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
     return sale
 
 
-async def create_sale(db: AsyncSession, data: SaleCreate) -> Sale:
+async def create_sale(db: AsyncSession, data: SaleCreate, *, shop_id: UUID) -> Sale:
     """Create a sale inside the request-scoped transaction."""
-    sale = await _execute_create_sale(db, data)
+    sale = await _execute_create_sale(db, data, shop_id=shop_id)
     await db.flush()
     await db.refresh(sale)
     return sale

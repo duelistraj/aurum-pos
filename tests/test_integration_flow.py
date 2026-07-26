@@ -213,6 +213,86 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             )
             assert item.status_code == 200, item.text
             item_id = UUID(item.json()["id"])
+            barcode = item.json()["barcode"]
+
+            second_shop_items = await client.get(
+                "/api/v1/items/",
+                headers=second_shop_headers,
+            )
+            assert second_shop_items.status_code == 200, second_shop_items.text
+            assert second_shop_items.json()["total"] == 0
+            assert second_shop_items.json()["items"] == []
+
+            second_shop_summary = await client.get(
+                "/api/v1/items/summary",
+                headers=second_shop_headers,
+            )
+            assert second_shop_summary.status_code == 200, second_shop_summary.text
+            assert second_shop_summary.json() == {
+                "total_items": 0,
+                "in_stock": 0,
+                "unique_items": 0,
+                "sold_items": 0,
+                "items_925_count": 0,
+            }
+
+            second_shop_rate = await client.get(
+                "/api/v1/metal-rates",
+                headers=second_shop_headers,
+            )
+            assert second_shop_rate.status_code == 200, second_shop_rate.text
+            assert second_shop_rate.json() == []
+
+            hidden_item = await client.get(
+                f"/api/v1/items/{item_id}",
+                headers=second_shop_headers,
+            )
+            assert hidden_item.status_code == 404
+            hidden_barcode = await client.get(
+                f"/api/v1/items/barcode/{barcode}",
+                headers=second_shop_headers,
+            )
+            assert hidden_barcode.status_code == 404
+            hidden_latest = await client.get(
+                "/api/v1/items/latest",
+                headers=second_shop_headers,
+            )
+            assert hidden_latest.status_code == 404
+            hidden_scan = await client.get(
+                f"/api/v1/items/pos/scan/{barcode}",
+                headers=second_shop_headers,
+            )
+            assert hidden_scan.status_code == 404
+            hidden_labels = await client.post(
+                "/api/v1/items/labels/batch",
+                headers=second_shop_headers,
+                json=[str(item_id)],
+            )
+            assert hidden_labels.status_code == 404
+            hidden_update = await client.patch(
+                f"/api/v1/items/{item_id}",
+                headers=second_shop_headers,
+                json={"name": "Cross-shop update"},
+            )
+            assert hidden_update.status_code == 404
+            hidden_delete = await client.delete(
+                f"/api/v1/items/{item_id}",
+                headers=second_shop_headers,
+            )
+            assert hidden_delete.status_code == 404
+            second_shop_dashboard = await client.get(
+                "/api/v1/dashboard/summary",
+                headers=second_shop_headers,
+            )
+            assert second_shop_dashboard.status_code == 200, second_shop_dashboard.text
+            assert second_shop_dashboard.json()["inventory_items"] == 0
+            assert second_shop_dashboard.json()["total_sales_amount"] == 0
+            second_shop_history = await client.get(
+                "/api/v1/change-log/history",
+                headers=second_shop_headers,
+            )
+            assert second_shop_history.status_code == 200, second_shop_history.text
+            assert second_shop_history.json() == []
 
             wrong_shop_headers = {**headers, "X-Shop-ID": str(uuid4())}
             hidden = await client.get(f"/api/v1/items/{item_id}", headers=wrong_shop_headers)

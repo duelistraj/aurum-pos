@@ -1,5 +1,6 @@
 from decimal import Decimal
 from types import MappingProxyType
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,8 @@ def calculate_effective_rate_per_gram(
 async def add_metal_rate(
     db: AsyncSession,
     data: MetalRateCreate,
+    *,
+    shop_id: UUID,
 ) -> MetalRate:
     """Add or update a metal rate. If a rate for this metal/purity exists, it will be updated."""
     metal_lower = data.metal.strip().lower()
@@ -47,6 +50,7 @@ async def add_metal_rate(
 
     # Check if rate already exists
     stmt = select(MetalRate).where(
+        MetalRate.shop_id == shop_id,
         MetalRate.metal == metal_lower,
         MetalRate.purity == data.purity,
     )
@@ -63,6 +67,7 @@ async def add_metal_rate(
         # Log the update
         await log_change(
             db,
+            shop_id=shop_id,
             entity="metal_rate",
             entity_id=existing_rate.id,
             action="update",
@@ -77,6 +82,7 @@ async def add_metal_rate(
     else:
         # Create new rate
         rate = MetalRate(
+            shop_id=shop_id,
             metal=metal_lower,
             purity=data.purity,
             rate_per_gram=data.rate_per_gram,
@@ -88,6 +94,7 @@ async def add_metal_rate(
         # Log the creation
         await log_change(
             db,
+            shop_id=shop_id,
             entity="metal_rate",
             entity_id=rate.id,
             action="create",
@@ -109,11 +116,14 @@ async def get_available_metals(db: AsyncSession) -> dict[str, list[float]]:
     return {metal: list(purities) for metal, purities in SUPPORTED_METALS.items()}
 
 
-async def get_all_metal_rates(db: AsyncSession) -> list[MetalRate]:
+async def get_all_metal_rates(db: AsyncSession, *, shop_id: UUID) -> list[MetalRate]:
     """Get all metal rates from the database"""
     stmt = (
         select(MetalRate)
-        .where(MetalRate.purity == RATE_PURITY)
+        .where(
+            MetalRate.shop_id == shop_id,
+            MetalRate.purity == RATE_PURITY,
+        )
         .order_by(MetalRate.metal, MetalRate.purity)
     )
     result = await db.execute(stmt)
@@ -123,11 +133,13 @@ async def get_all_metal_rates(db: AsyncSession) -> list[MetalRate]:
 async def get_latest_metal_rate(
     db,
     *,
+    shop_id: UUID,
     metal: str,
 ):
     stmt = (
         select(MetalRate)
         .where(
+            MetalRate.shop_id == shop_id,
             MetalRate.metal == metal.strip().lower(),
             MetalRate.purity == RATE_PURITY,
         )

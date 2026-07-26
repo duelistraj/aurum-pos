@@ -16,15 +16,19 @@ Evidence:
 
 ### Tenant request boundary
 
-Business APIs live under `/api/v1`. Authenticated requests identify a database
-session, registered device, and selected shop. Membership roles are read from
-PostgreSQL. The shop dependency sets transaction-local tenant/user settings;
-items, metal rates, sales, sale lines, change logs, subscriptions, and sale
-idempotency use shop-scoped constraints and forced RLS.
+Business APIs live under `/api/v1`.
+Authenticated requests identify a database session, registered device, and selected shop.
+Membership roles are read from PostgreSQL.
+The shop dependency sets transaction-local tenant/user settings.
+Tenant-aware service queries also carry an explicit `shop_id` predicate instead of relying on session state alone.
+Items, metal rates, sales, sale lines, change logs, subscriptions, and sale idempotency use shop-scoped constraints and forced RLS.
+Production API and worker connections use a restricted `NOBYPASSRLS` login, while Alembic receives a separate administrator URL only for the migration container.
 
 Evidence:
 - `app/modules/auth/dependencies.py::get_auth_context`
 - `app/modules/auth/dependencies.py::get_shop_context`
+- `app/modules/items/service.py::get_item_by_id`
+- `app/modules/dashboard/service.py::get_dashboard_summary`
 - `alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py::TENANT_TABLES`
 - `alembic/versions/d4e5f6a7b8c9_add_deletion_and_idempotency.py::upgrade`
 
