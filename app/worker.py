@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import anyio
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy import delete, func, or_, select, text
 
 from app.core.config import settings
@@ -44,12 +45,22 @@ async def deliver_email(outbox_id) -> None:
                 await anyio.to_thread.run_sync(send)
             message.status = "sent"
             message.sent_at = datetime.now(UTC)
-        except Exception:
+        except Exception as exc:
             message.attempts += 1
             message.next_attempt_at = datetime.now(UTC) + timedelta(
                 minutes=min(60, 2**message.attempts)
             )
-            LOGGER.exception("Email delivery failed for outbox %s", message.id)
+            if isinstance(exc, ClientError):
+                error_code = str(exc.response.get("Error", {}).get("Code", "ClientError"))
+            elif isinstance(exc, BotoCoreError):
+                error_code = type(exc).__name__
+            else:
+                error_code = type(exc).__name__
+            LOGGER.error(
+                "Email delivery failed for outbox %s: %s",
+                message.id,
+                error_code,
+            )
 
 
 async def process_email_batch() -> None:

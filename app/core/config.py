@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     google_play_pubsub_service_account_email: str | None = None
     billing_token_encryption_key: str | None = None
     email_from: str = "Aurum POS <noreply@aurumpos.net>"
-    ses_region: str = "ap-south-1"
+    ses_region: str = "ap-southeast-1"
     aws_region: str
     s3_invoice_bucket: str
     s3_invoice_prefix: str = "shops"

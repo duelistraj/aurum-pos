@@ -31,6 +31,14 @@ class RegisterRequest(EmailModel, DeviceInfo):
     full_name: str = Field(min_length=1, max_length=100)
     shop_name: str = Field(min_length=1, max_length=150)
 
+    @field_validator("full_name", "shop_name")
+    @classmethod
+    def validate_nonblank_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
+
 
 class LoginRequest(EmailModel, DeviceInfo):
     password: str = Field(min_length=1, max_length=256)
@@ -41,6 +49,16 @@ class GoogleAuthRequest(DeviceInfo):
     nonce: str = Field(min_length=16, max_length=256)
     shop_name: str | None = Field(None, min_length=1, max_length=150)
     invitation_token: str | None = None
+
+    @field_validator("shop_name")
+    @classmethod
+    def validate_optional_shop_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
 
 
 class GoogleAuthProviderResponse(BaseModel):
@@ -75,6 +93,10 @@ class RefreshRequest(BaseModel):
 
 class VerifyEmailRequest(BaseModel):
     token: str
+
+
+class VerificationResendRequest(EmailModel):
+    pass
 
 
 class ForgotPasswordRequest(EmailModel):

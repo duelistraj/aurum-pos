@@ -39,6 +39,11 @@ const ERROR_MESSAGES: Record<number, string> = {
   502: 'Bad gateway. The server is temporarily unavailable.',
   503: 'Service unavailable. Please try again later.',
 };
+const CREDENTIAL_ENDPOINTS = new Set([
+  '/auth/google',
+  '/auth/invitations/accept',
+  '/auth/login',
+]);
 
 client.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
@@ -81,13 +86,15 @@ interface ValidationIssue {
 interface StructuredErrorDetail {
   code?: string;
   message?: string;
+  email?: string;
+  full_name?: string;
 }
 
 interface ApiErrorBody {
   detail?: string | ValidationIssue[] | StructuredErrorDetail;
 }
 
-interface TokenResponse {
+export interface TokenResponse {
   access_token: string;
   refresh_token: string;
   full_name: string;
@@ -124,6 +131,27 @@ interface AuthProvidersResponse {
   };
 }
 
+export class ApiError extends Error {
+  readonly status?: number;
+  readonly code?: string;
+  readonly detail?: StructuredErrorDetail;
+
+  constructor(
+    message: string,
+    options: {
+      status?: number;
+      code?: string;
+      detail?: StructuredErrorDetail;
+    } = {},
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = options.status;
+    this.code = options.code;
+    this.detail = options.detail;
+  }
+}
+
 interface InvitationAcceptPayload extends LoginPayload {
   token: string;
   full_name: string;
@@ -156,7 +184,15 @@ client.interceptors.response.use(
   (error: AxiosError<ApiErrorBody>) => {
     const originalRequest = error.config as RetriableRequest | undefined;
 
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && originalRequest.url !== '/auth/login') {
+    const isCredentialEndpoint = originalRequest?.url
+      ? CREDENTIAL_ENDPOINTS.has(originalRequest.url)
+      : false;
+    if (
+      error.response?.status === 401
+      && originalRequest
+      && !originalRequest._retry
+      && !isCredentialEndpoint
+    ) {
       if (isRefreshing) {
         return new Promise<string>((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -224,7 +260,18 @@ client.interceptors.response.use(
       errorMessage = 'No response from server. Please check your connection and backend API URL.';
     }
 
-    const customError = new Error(errorMessage);
+    const structuredDetail = error.response?.data?.detail;
+    const customError = new ApiError(errorMessage, {
+      status: error.response?.status,
+      code: structuredDetail && !Array.isArray(structuredDetail)
+        && typeof structuredDetail !== 'string'
+        ? structuredDetail.code
+        : undefined,
+      detail: structuredDetail && !Array.isArray(structuredDetail)
+        && typeof structuredDetail !== 'string'
+        ? structuredDetail
+        : undefined,
+    });
     return Promise.reject(customError);
   }
 );
@@ -268,6 +315,14 @@ export const apiClient = {
 
   async verifyEmail(token: string) {
     const { data } = await client.post<{ message: string }>('/auth/verify-email', { token });
+    return data;
+  },
+
+  async resendVerification(email: string) {
+    const { data } = await client.post<{ message: string }>(
+      '/auth/verification/resend',
+      { email },
+    );
     return data;
   },
 
