@@ -43,8 +43,6 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
     fetchConfig();
-    window.addEventListener('api-url-changed', fetchConfig);
-    return () => window.removeEventListener('api-url-changed', fetchConfig);
   }, []);
 
   useEffect(() => {

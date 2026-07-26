@@ -1,3 +1,5 @@
+from email.utils import parseaddr
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -70,6 +72,22 @@ class Settings(BaseSettings):
         normalized = value.strip().strip("/")
         if not normalized:
             raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("email_from")
+    @classmethod
+    def validate_email_from(cls, value: str) -> str:
+        normalized = value.strip()
+        _display_name, address = parseaddr(normalized)
+        local_part, separator, domain = address.rpartition("@")
+        if (
+            not normalized
+            or not local_part
+            or separator != "@"
+            or "." not in domain
+            or any(character.isspace() for character in address)
+        ):
+            raise ValueError("must contain a valid sender email address")
         return normalized
 
 

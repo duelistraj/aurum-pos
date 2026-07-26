@@ -16,6 +16,8 @@ the loopback-only API port, and Certbot manages TLS.
 - Configure SES DKIM/SPF/DMARC for `aurumpos.net`, Google service credentials,
   Pub/Sub authenticated push (including the exact OIDC service-account email),
   and `api.aurumpos.net` DNS before deployment.
+- Set `EMAIL_FROM` to the verified SES mailbox or display-name form used for verification, password-reset, invitation, and deletion email.
+- Set `GOOGLE_WEB_CLIENT_ID` to the Web OAuth client ID used both for server-side token verification and public Android provider discovery.
 - Keep `aurum-pos-prod-duelistraj` private in `ap-southeast-1` with Block Public Access enabled.
 - Set `AWS_REGION=ap-southeast-1`, `S3_INVOICE_BUCKET=aurum-pos-prod-duelistraj`, `S3_INVOICE_PREFIX=shops`, and `S3_PRESIGNED_URL_EXPIRY_SECONDS=600` in the runtime environment.
 

@@ -43,6 +43,15 @@ class GoogleAuthRequest(DeviceInfo):
     invitation_token: str | None = None
 
 
+class GoogleAuthProviderResponse(BaseModel):
+    enabled: bool
+    client_id: str | None
+
+
+class AuthProvidersResponse(BaseModel):
+    google: GoogleAuthProviderResponse
+
+
 class MembershipResponse(BaseModel):
     shop_id: uuid.UUID
     shop_name: str

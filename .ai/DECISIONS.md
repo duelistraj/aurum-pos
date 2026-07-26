@@ -32,9 +32,11 @@ Evidence:
 Recorded: 2026-07-21
 Status: accepted
 Basis: user-confirmed
-Decision: Official Android builds use package `com.duelistraj.aurumpos` and fixed API `https://api.aurumpos.net`; self-hosted builds configure their own app ID and backend URL.
+Decision: Official Android builds use package `com.duelistraj.aurumpos` and fixed API `https://api.aurumpos.net`; self-hosted builds configure their own app ID and backend URL at build time.
 Rationale: The user explicitly limited the official service to Android and required one cloud endpoint while retaining free self-hosting.
-Consequences: Cloud builds hide API setup and ignore saved URLs. Self-hosted builds keep runtime endpoint configuration and unlimited entitlements.
+Consequences: Cloud builds hide API setup and ignore saved URLs.
+Self-hosted builds require `VITE_API_URL`, do not support runtime backend switching, and retain unlimited entitlements.
+The backend exposes the public Google provider ID from `GOOGLE_WEB_CLIENT_ID`; debug APKs omit Google Sign-In and signed Play builds enable it.
 
 Evidence:
 - `README.md::Distribution builds`

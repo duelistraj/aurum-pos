@@ -31,6 +31,7 @@ Evidence:
 ### Identity, membership, and deletion
 
 Owners register with verified email/password or Android Google ID tokens.
+The unauthenticated auth-provider endpoint exposes only the public Google Web client ID and enabled state, keeping the backend environment as the authoritative Google audience configuration.
 Staff join through hashed, expiring shop invitations. Access JWTs contain user
 and session identity but no role; opaque hashed refresh tokens rotate in the
 database. Roles are OWNER, ADMIN, MANAGER, and CASHIER. Confirmed account
@@ -97,7 +98,8 @@ The React root supplies TanStack Query and shop contexts. Axios adds API prefix,
 tokens, device UUID, and shop ID, and serializes refresh retries. Query keys are
 shop-namespaced and switching shops clears cached server state. Official cloud
 builds ignore saved URLs and use `https://api.aurumpos.net`; self-hosted builds
-retain runtime API configuration.
+require a build-time API URL and do not support runtime backend switching.
+Debug APKs omit Google Sign-In, while signed Play builds discover the public Google client ID from the backend.
 
 Evidence:
 - `frontend/src/main.tsx::ShopProvider`

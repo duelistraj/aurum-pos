@@ -3,9 +3,7 @@ import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'r
 import { Header } from './components/Header';
 import { Navbar } from './components/Navbar';
 import { ConfigProvider } from './context/ConfigContext';
-import { ApiSetup } from './pages/ApiSetup';
 import { getAccessToken } from './utils/auth';
-import { hasConfiguredApiUrl } from './utils/apiConfig';
 import { getLocalValue, setLocalValue } from './utils/storage';
 import './index.css';
 
@@ -71,24 +69,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 function App() {
-  const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    void hasConfiguredApiUrl().then(setApiConfigured);
-  }, []);
-
-  if (apiConfigured === null) return <PageLoader />;
-
-  if (!apiConfigured) {
-    return (
-      <ConfigProvider>
-        <Suspense fallback={<PageLoader />}>
-          <ApiSetup onConfigured={() => setApiConfigured(true)} />
-        </Suspense>
-      </ConfigProvider>
-    );
-  }
-
   return (
     <ConfigProvider>
       <Router>
