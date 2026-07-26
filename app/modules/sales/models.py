@@ -53,6 +53,7 @@ class Sale(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
         server_default=func.now(),
     )
 
@@ -186,4 +187,6 @@ class SaleIdempotency(Base):
     sale_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sales.id", ondelete="CASCADE"), nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )

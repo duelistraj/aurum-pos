@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     free_active_item_limit: int = 50
     source_repository_url: str = "https://github.com/duelistraj/aurum-pos"
     git_sha: str = "development"
+    aurum_image_digest: str = "development"
+    aurum_config_revision: str = "development"
     google_web_client_id: str | None = None
     google_play_package_name: str = "com.duelistraj.aurumpos"
     google_play_product_id: str = "aurum_cloud_pro"

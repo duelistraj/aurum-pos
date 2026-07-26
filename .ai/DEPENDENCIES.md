@@ -16,8 +16,8 @@ Evidence:
 
 ### Database and local service
 
-PostgreSQL is required persistence; Alembic owns schema migrations and forced
-tenant RLS. Local Compose provides PostgreSQL 16 with a named volume.
+PostgreSQL is required persistence; Alembic owns schema migrations and forced tenant RLS.
+Local Compose provides PostgreSQL 16 with a named volume.
 
 Evidence:
 - `alembic/env.py::run_migrations_online`
@@ -51,12 +51,14 @@ Evidence:
 
 ### Verification toolchain
 
-Ruff, Mypy, Pytest, pytest-asyncio, and pytest-cov verify Python. ESLint,
-TypeScript, Vitest, Testing Library, and Vite verify the client. CI migrates a
-fresh PostgreSQL service before integration tests; Android workflows use JDK 21.
+Ruff, Mypy, Pytest, pytest-asyncio, and pytest-cov verify Python.
+ESLint, TypeScript, Vitest, Testing Library, and Vite verify the client.
+CI migrates a fresh PostgreSQL service, verifies `alembic check`, and scans changed migration upgrades for unsafe schema operations before integration tests.
+Android workflows use JDK 21.
 
 Evidence:
 - `pyproject.toml::dependency-groups.dev`
+- `scripts/check_migration_safety.py::analyze_migration`
 - `frontend/package.json::scripts`
 - `.github/workflows/ci.yml::jobs`
 - `.github/workflows/build-android.yml::Set up JDK 21`

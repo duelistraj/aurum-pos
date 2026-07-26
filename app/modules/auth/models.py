@@ -11,6 +11,7 @@ from app.core.database import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("email"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
@@ -18,9 +19,11 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), nullable=True, server_default=func.now(), onupdate=func.now()
     )
 
     identities = relationship("UserIdentity", back_populates="user", cascade="all, delete-orphan")
@@ -39,7 +42,9 @@ class UserIdentity(Base):
     provider: Mapped[str] = mapped_column(String(30), nullable=False)
     provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
     email_snapshot: Mapped[str] = mapped_column(String(320), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
 
     user = relationship("User", back_populates="identities")
 
@@ -55,9 +60,11 @@ class AuthSession(Base):
     device_uuid: Mapped[str] = mapped_column(String(100), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
     last_used_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), nullable=True, server_default=func.now()
     )
 
     user = relationship("User", back_populates="sessions")
@@ -74,7 +81,9 @@ class AuthToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
 
 
 class GoogleNonce(Base):
@@ -82,7 +91,7 @@ class GoogleNonce(Base):
 
     nonce_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     consumed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), nullable=True, server_default=func.now()
     )
 
 
@@ -100,7 +109,9 @@ class AccountDeletionRequest(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     execute_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
 
 
 class Device(Base):
@@ -117,8 +128,10 @@ class Device(Base):
     app_version: Mapped[str] = mapped_column(String(20), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), nullable=True, server_default=func.now()
     )
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
 
     user = relationship("User", back_populates="devices")

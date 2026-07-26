@@ -42,10 +42,10 @@ Evidence:
 
 ### Verification commands
 
-Backend gates are `uv lock --check`, Ruff check/format, `uv run mypy app`, and
-`uv run pytest`. Frontend gates are lint, typecheck, Vitest, and production
-build. PostgreSQL integration tests require `RUN_INTEGRATION=1` and a migrated
-isolated database.
+Backend gates are `uv lock --check`, Ruff check/format, `uv run mypy app`, and `uv run pytest`.
+Migration verification runs `alembic upgrade head` followed by `alembic check` against an isolated PostgreSQL database.
+Frontend gates are lint, typecheck, Vitest, and production build.
+PostgreSQL integration tests require `RUN_INTEGRATION=1` and a migrated isolated database.
 
 Evidence:
 - `.github/workflows/ci.yml::jobs`
