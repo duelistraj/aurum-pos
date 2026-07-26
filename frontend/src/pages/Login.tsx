@@ -6,8 +6,13 @@ import { apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
 import { AurumGoogleAuth, createNonce } from '../native/googleAuth';
 import { getAccessToken, setAuthData } from '../utils/auth';
+import { isCloudDistribution } from '../utils/apiConfig';
 import { getDeviceInfo, getDeviceUUID } from '../utils/device';
 import { safeReturnPath } from '../utils/navigation';
+
+type GoogleProviderState =
+  | { status: 'disabled' | 'loading' | 'unavailable'; clientId: null }
+  | { status: 'enabled'; clientId: string };
 
 export const Login: React.FC = () => {
   const [mode, setMode] = React.useState<'login' | 'register' | 'staff'>('login');
@@ -23,7 +28,13 @@ export const Login: React.FC = () => {
   const location = useLocation();
   const returnPath = safeReturnPath(location.state);
   const { reload } = useShop();
-  const googleClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
+  const isAndroid = Capacitor.getPlatform() === 'android';
+  const supportsGoogleAuth =
+    isAndroid && import.meta.env.VITE_GOOGLE_AUTH_ENABLED === 'true';
+  const [googleProvider, setGoogleProvider] = React.useState<GoogleProviderState>({
+    status: supportsGoogleAuth ? 'loading' : 'disabled',
+    clientId: null,
+  });
 
   React.useEffect(() => {
     const token = new URLSearchParams(location.search).get('token');
@@ -35,6 +46,26 @@ export const Login: React.FC = () => {
       if (token) navigate(returnPath, { replace: true });
     });
   }, [navigate, location.search, returnPath]);
+
+  React.useEffect(() => {
+    if (!supportsGoogleAuth) return;
+    let active = true;
+    void apiClient.authProviders()
+      .then(({ google }) => {
+        if (!active) return;
+        setGoogleProvider(
+          google.enabled && google.client_id
+            ? { status: 'enabled', clientId: google.client_id }
+            : { status: 'unavailable', clientId: null },
+        );
+      })
+      .catch(() => {
+        if (active) setGoogleProvider({ status: 'unavailable', clientId: null });
+      });
+    return () => {
+      active = false;
+    };
+  }, [supportsGoogleAuth]);
 
   const devicePayload = async () => {
     const deviceInfo = getDeviceInfo();
@@ -95,12 +126,15 @@ export const Login: React.FC = () => {
   };
 
   const handleGoogle = async () => {
-    if (!googleClientId) return;
+    if (googleProvider.status !== 'enabled') return;
     setLoading(true);
     setError('');
     try {
       const nonce = createNonce();
-      const credential = await AurumGoogleAuth.signIn({ serverClientId: googleClientId, nonce });
+      const credential = await AurumGoogleAuth.signIn({
+        serverClientId: googleProvider.clientId,
+        nonce,
+      });
       const response = await apiClient.googleAuth({
         id_token: credential.idToken,
         nonce,
@@ -122,6 +156,12 @@ export const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const googleButtonLabel = mode === 'login'
+    ? 'Sign in with Google'
+    : mode === 'register'
+      ? 'Sign up with Google'
+      : 'Join with Google';
 
   const fields = [
     ...(mode === 'register' || mode === 'staff' ? [
@@ -196,17 +236,27 @@ export const Login: React.FC = () => {
           </button>
         </form>
 
-        {googleClientId && Capacitor.getPlatform() === 'android' && (
+        {supportsGoogleAuth && (
           <button
             type="button"
             disabled={loading
+              || googleProvider.status !== 'enabled'
               || (mode === 'register' && !shopName)
               || (mode === 'staff' && !invitationToken)}
             onClick={() => void handleGoogle()}
             className="w-full rounded-app-control border border-slate-300 bg-white py-3 font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            Continue with Google
+            {googleProvider.status === 'loading'
+              ? 'Loading Google Sign-In…'
+              : googleProvider.status === 'unavailable'
+                ? 'Google Sign-In unavailable'
+                : googleButtonLabel}
           </button>
+        )}
+        {isAndroid && isCloudDistribution && !supportsGoogleAuth && (
+          <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+            Google Sign-In is available in Play test and release builds.
+          </p>
         )}
 
         <button

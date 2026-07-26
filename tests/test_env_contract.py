@@ -16,7 +16,7 @@ FRONTEND_KEYS = frozenset(
     {
         "VITE_API_URL",
         "VITE_DISTRIBUTION",
-        "VITE_GOOGLE_WEB_CLIENT_ID",
+        "VITE_GOOGLE_AUTH_ENABLED",
     }
 )
 

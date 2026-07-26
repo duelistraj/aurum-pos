@@ -2,6 +2,7 @@ import pytest
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.main import app
 
@@ -71,3 +72,44 @@ async def test_version_reports_deployment_identity() -> None:
     assert response.json()["revision"] == "development"
     assert response.json()["image_digest"] == "development"
     assert response.json()["config_revision"] == "development"
+
+
+@pytest.mark.asyncio
+async def test_auth_providers_expose_only_public_google_configuration() -> None:
+    previous_client_id = settings.google_web_client_id
+    settings.google_web_client_id = " google-client.apps.googleusercontent.com "
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/v1/auth/providers")
+    finally:
+        settings.google_web_client_id = previous_client_id
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "google": {
+            "enabled": True,
+            "client_id": "google-client.apps.googleusercontent.com",
+        }
+    }
+    assert "service_account" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_auth_providers_disable_google_when_client_id_is_absent() -> None:
+    previous_client_id = settings.google_web_client_id
+    settings.google_web_client_id = None
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/v1/auth/providers")
+    finally:
+        settings.google_web_client_id = previous_client_id
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "google": {
+            "enabled": False,
+            "client_id": None,
+        }
+    }

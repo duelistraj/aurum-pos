@@ -56,14 +56,18 @@ npm run build
 
 ### Environment Variables
 
-For local development, `VITE_API_URL` should point to the backend. It can be left
-blank for generic Android/web builds, where users enter the URL on first launch.
+For local development and self-hosted builds, `VITE_API_URL` must point to the backend.
+Backend URLs are immutable build inputs and cannot be changed from inside the application.
 
 ```env
 VITE_API_URL=http://localhost:8080
 VITE_DISTRIBUTION=self_hosted
-VITE_GOOGLE_WEB_CLIENT_ID=
+VITE_GOOGLE_AUTH_ENABLED=false
 ```
+
+Cloud builds ignore `VITE_API_URL` and always use `https://api.aurumpos.net`.
+The cloud debug APK intentionally keeps `VITE_GOOGLE_AUTH_ENABLED=false`.
+Signed Play test and release builds set it to `true` and obtain the public Google Web client ID from the backend auth-provider endpoint.
 
 ## Project Structure
 

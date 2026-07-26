@@ -32,9 +32,11 @@ from app.modules.auth.models import (
 from app.modules.auth.schemas import (
     AccountDeletionConfirm,
     AccountDeletionStart,
+    AuthProvidersResponse,
     DeviceResponse,
     DeviceUpdate,
     ForgotPasswordRequest,
+    GoogleAuthProviderResponse,
     GoogleAuthRequest,
     InvitationAcceptRequest,
     LoginRequest,
@@ -92,6 +94,17 @@ async def _accept_invitation(db: AsyncSession, *, token: str, user: User) -> Sho
         db.add(existing)
     invitation.accepted_at = datetime.now(UTC)
     return existing
+
+
+@router.get("/providers", response_model=AuthProvidersResponse)
+async def auth_providers() -> AuthProvidersResponse:
+    client_id = settings.google_web_client_id.strip() if settings.google_web_client_id else None
+    return AuthProvidersResponse(
+        google=GoogleAuthProviderResponse(
+            enabled=bool(client_id),
+            client_id=client_id,
+        )
+    )
 
 
 @router.post("/register", status_code=201)

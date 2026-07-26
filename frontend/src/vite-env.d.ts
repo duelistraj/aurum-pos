@@ -3,7 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
   readonly VITE_DISTRIBUTION?: 'cloud' | 'self_hosted';
-  readonly VITE_GOOGLE_WEB_CLIENT_ID?: string;
+  readonly VITE_GOOGLE_AUTH_ENABLED?: 'true' | 'false';
 }
 
 interface DetectedBarcode {

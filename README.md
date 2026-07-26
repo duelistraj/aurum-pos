@@ -71,15 +71,29 @@ The official Play build uses:
 
 ```env
 VITE_DISTRIBUTION=cloud
-VITE_API_URL=https://api.aurumpos.net
+VITE_GOOGLE_AUTH_ENABLED=true
 CAPACITOR_APP_ID=com.duelistraj.aurumpos
 ANDROID_APPLICATION_ID=com.duelistraj.aurumpos
 ```
 
-It is HTTPS-only, hides backend URL configuration, and includes native Google
-Credential Manager and Play Billing bridges. Self-hosters leave the distribution
-as `self_hosted`, configure their own HTTPS endpoint, application ID, signing key,
-and Play listing if desired.
+It is HTTPS-only, always uses `https://api.aurumpos.net`, and has no runtime backend URL configuration.
+The signed AAB enables Google Credential Manager and Play Billing and must be tested through Google Play Internal Testing so the Play App Signing certificate is used.
+The debug APK is only a cloud UI and email/password smoke-test artifact, and it intentionally does not offer Google Sign-In.
+The Google Web client ID comes from the backend `GOOGLE_WEB_CLIENT_ID` environment value through the public auth-provider metadata endpoint.
+
+Self-hosted builds use:
+
+```env
+VITE_DISTRIBUTION=self_hosted
+VITE_API_URL=https://pos.example.com
+VITE_GOOGLE_AUTH_ENABLED=false
+```
+
+`VITE_API_URL` is mandatory for self-hosted production builds and cannot be changed from inside the application.
+Self-hosters that enable Google authentication must configure their own backend Google Web client ID, Android OAuth client, package name, and signing certificate.
+
+The manually triggered signed-AAB workflow requires `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` as encrypted GitHub secrets.
+Its monotonically increasing version code supports repeated uploads to the existing Play Internal Testing track.
 
 ## Entitlement administration
 

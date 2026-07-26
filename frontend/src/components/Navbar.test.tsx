@@ -17,7 +17,6 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
-vi.mock('../utils/apiConfig', () => ({ isCloudDistribution: false }));
 
 const memberships = [
   { shop_id: 'shop-1', shop_name: 'Demo Shop', shop_slug: 'demo', role: 'OWNER' as const },
@@ -137,7 +136,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('menu', { name: 'Account and settings' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Upgrade to Pro/ })).toHaveAttribute('href', '/subscription');
     expect(screen.getByRole('menuitem', { name: 'Manage staff' })).toHaveAttribute('href', '/staff');
-    expect(screen.getByRole('menuitem', { name: 'Connect backend' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Connect backend' })).not.toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'View source on GitHub' })).toHaveAttribute(
       'href',
       'https://github.com/duelistraj/aurum-pos/tree/abc123',

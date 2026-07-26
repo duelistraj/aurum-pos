@@ -14,7 +14,6 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
-  Server,
   Settings,
   ShoppingCart,
   Store,
@@ -26,8 +25,6 @@ import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
-import { ApiSetup } from '../pages/ApiSetup';
-import { isCloudDistribution } from '../utils/apiConfig';
 import { BrandLockup } from './Brand';
 
 type OpenMenu = 'shop' | 'account' | null;
@@ -77,7 +74,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     staleTime: Infinity,
   });
   const [openMenu, setOpenMenu] = React.useState<OpenMenu>(null);
-  const [showApiSetup, setShowApiSetup] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const menuAreaRef = React.useRef<HTMLDivElement>(null);
   const shopTriggerRef = React.useRef<HTMLButtonElement>(null);
@@ -328,20 +324,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>Manage staff</span>
                   </Link>
                 ) : null}
-                {!isCloudDistribution ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setOpenMenu(null);
-                      setShowApiSetup(true);
-                    }}
-                    className="sidebar__menu-option"
-                  >
-                    <Server className="sidebar__menu-icon" />
-                    <span>Connect backend</span>
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   role="menuitem"
@@ -379,11 +361,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
       </aside>
-      {showApiSetup ? (
-        <div className="fixed inset-0 z-[70]">
-          <ApiSetup onConfigured={() => setShowApiSetup(false)} onCancel={() => setShowApiSetup(false)} />
-        </div>
-      ) : null}
     </>
   );
 };

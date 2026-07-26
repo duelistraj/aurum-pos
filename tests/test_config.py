@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 
@@ -38,3 +39,22 @@ def test_invoice_storage_defaults_and_prefix_normalization() -> None:
     assert settings.s3_invoice_bucket == "invoice-bucket"
     assert settings.s3_invoice_prefix == "shops"
     assert settings.s3_presigned_url_expiry_seconds == 600
+
+
+def test_email_sender_accepts_display_name_and_address() -> None:
+    settings = Settings(
+        database_url="postgresql+asyncpg://example",
+        jwt_secret_key="test-secret-key",
+        email_from=" Aurum POS <noreply@aurumpos.net> ",
+    )
+
+    assert settings.email_from == "Aurum POS <noreply@aurumpos.net>"
+
+
+def test_email_sender_rejects_invalid_address() -> None:
+    with pytest.raises(ValidationError, match="valid sender email address"):
+        Settings(
+            database_url="postgresql+asyncpg://example",
+            jwt_secret_key="test-secret-key",
+            email_from="not-an-email",
+        )

@@ -117,6 +117,13 @@ interface GoogleAuthPayload extends Omit<LoginPayload, 'email' | 'password'> {
   invitation_token?: string;
 }
 
+interface AuthProvidersResponse {
+  google: {
+    enabled: boolean;
+    client_id: string | null;
+  };
+}
+
 interface InvitationAcceptPayload extends LoginPayload {
   token: string;
   full_name: string;
@@ -228,6 +235,14 @@ type SaleCreatePayload = Omit<Sale, 'id'> & {
 
 export const apiClient = {
   // Auth
+  async authProviders() {
+    const apiBaseUrl = await getApiBaseUrl();
+    const { data } = await axios.get<AuthProvidersResponse>(
+      `${apiBaseUrl}/api/v1/auth/providers`,
+    );
+    return data;
+  },
+
   async login(payload: LoginPayload) {
     const { data } = await client.post<TokenResponse>('/auth/login', payload);
     return data;

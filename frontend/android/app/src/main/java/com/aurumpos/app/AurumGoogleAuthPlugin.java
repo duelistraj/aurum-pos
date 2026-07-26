@@ -16,7 +16,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 
 @CapacitorPlugin(name = "AurumGoogleAuth")
@@ -30,10 +30,9 @@ public class AurumGoogleAuthPlugin extends Plugin {
             return;
         }
 
-        GetGoogleIdOption googleOption = new GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(serverClientId)
-            .setAutoSelectEnabled(false)
+        GetSignInWithGoogleOption googleOption = new GetSignInWithGoogleOption.Builder(
+            serverClientId
+        )
             .setNonce(nonce)
             .build();
         GetCredentialRequest request = new GetCredentialRequest.Builder()
