@@ -2,6 +2,7 @@ import pytest
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 
+from app.core.database import get_db
 from app.main import app
 
 
@@ -34,3 +35,39 @@ def test_static_item_routes_precede_uuid_route() -> None:
     paths = [route.path for route in app.routes if isinstance(route, APIRoute)]
     assert paths.index("/api/v1/items/labels/all") < paths.index("/api/v1/items/{item_id}")
     assert "/api/v1/sales/{sale_id}/invoice" in paths
+
+
+@pytest.mark.asyncio
+async def test_readiness_checks_database_connectivity() -> None:
+    statements: list[str] = []
+
+    class ReadyDatabase:
+        async def execute(self, statement) -> None:
+            statements.append(str(statement))
+
+    async def ready_database():
+        yield ReadyDatabase()
+
+    app.dependency_overrides[get_db] = ready_database
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/health/ready")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+    assert statements == ["SELECT 1"]
+
+
+@pytest.mark.asyncio
+async def test_version_reports_deployment_identity() -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/version")
+
+    assert response.status_code == 200
+    assert response.json()["revision"] == "development"
+    assert response.json()["image_digest"] == "development"
+    assert response.json()["config_revision"] == "development"

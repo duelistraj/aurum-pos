@@ -80,6 +80,17 @@ Evidence:
 - `app/modules/sales/storage.py::InvoiceStorage`
 - `app/modules/sales/routes.py::invoice`
 
+### Production release health
+
+The production API exposes a database-free liveness endpoint, a database-backed readiness endpoint, and a version endpoint that reports the source revision, immutable image reference, and non-secret runtime configuration revision.
+The private operations repository refreshes runtime configuration from SSM, migrates before API replacement, verifies the new API before starting the worker, and serializes host changes with a deployment lock.
+
+Evidence:
+- `app/main.py::health`
+- `app/main.py::readiness`
+- `app/main.py::version`
+- `tests/test_app_contracts.py::test_readiness_checks_database_connectivity`
+
 ### Client boot and shop state
 
 The React root supplies TanStack Query and shop contexts. Axios adds API prefix,

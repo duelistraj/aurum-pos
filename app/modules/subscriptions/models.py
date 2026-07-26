@@ -24,9 +24,11 @@ class Subscription(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     external_reference: Mapped[str | None] = mapped_column(String(255), unique=True)
     notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), nullable=True, server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -58,4 +60,6 @@ class BillingEvent(Base):
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )

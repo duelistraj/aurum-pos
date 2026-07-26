@@ -1,1 +1,13 @@
 Generic single-database configuration.
+
+Production migrations must follow expand-and-contract and remain compatible with the currently running application and the immediately previous immutable image.
+
+Add new tables and nullable columns first, deploy code that can use both schema versions, backfill separately, and remove old columns or constraints only in a later release after all application instances have stopped using them.
+
+Do not rely on database downgrade during normal rollback.
+If a schema change is not backward-compatible, prefer a forward-fix migration
+and a corrected application image.
+
+CI runs `alembic upgrade head` and `alembic check` against PostgreSQL.
+It also examines newly changed migration upgrades for dropped tables or columns, unsafe non-null additions, in-place type changes, and destructive raw SQL.
+An exceptional operation requires an adjacent `# migration-safety: allow <reason>` marker and explicit review.

@@ -80,16 +80,13 @@ Evidence:
 Recorded: 2026-07-23
 Status: accepted
 Basis: user-confirmed
-Decision: Successful public CI publishes an immutable GHCR image; a private
-operations repository promotes an approved digest to production through AWS
-OIDC and SSM. Production uses host Nginx and Certbot in front of the
-loopback-only API.
-Rationale: The user selected private operations CD, digest promotion by pull
-request, and host Nginx while keeping production authority outside the
-open-source repository.
+Decision: Successful public CI publishes an immutable GHCR image; a private operations repository promotes an approved digest to production through AWS OIDC and SSM.
+Production uses host Nginx and Certbot in front of the loopback-only API.
+Rationale: The user selected private operations CD, digest promotion by pull request, and host Nginx while keeping production authority outside the open-source repository.
 Consequences: Public pull requests cannot access production credentials.
-Production changes are auditable digest updates, and mutable image tags are
-never deployment inputs.
+Production changes are auditable digest updates, and mutable image tags are never deployment inputs.
+Every deployment refreshes the validated runtime file from SSM, uses both workflow and host concurrency controls, pauses the worker before migration, keeps the old API running until migration succeeds, and verifies the public immutable image and configuration revisions.
+Application rollback redeploys an earlier immutable digest without automatically downgrading the database.
 
 Evidence:
 - `.github/workflows/ci.yml::publish-image`

@@ -37,7 +37,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
 
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -54,6 +56,25 @@ jobs:
 
       - name: Run migrations
         run: uv run alembic upgrade head
+
+      - name: Check schema matches SQLAlchemy metadata
+        run: uv run alembic check
+
+      - name: Check changed migrations for unsafe operations
+        env:
+          MIGRATION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -Eeuo pipefail
+          BASE_SHA="${MIGRATION_BASE_SHA:-}"
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]] ||
+             ! git cat-file -e "${BASE_SHA}^{commit}"; then
+            BASE_SHA="${GITHUB_SHA}^"
+          fi
+          mapfile -t MIGRATIONS < <(
+            git diff --diff-filter=ACMR --name-only \
+              "$BASE_SHA" "$GITHUB_SHA" -- "alembic/versions/*.py"
+          )
+          uv run python scripts/check_migration_safety.py "${MIGRATIONS[@]}"
 
       - name: Lint backend
         run: >-
@@ -80,10 +101,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm

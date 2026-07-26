@@ -83,6 +83,8 @@ async def version() -> dict[str, str]:
     return {
         "version": app.version,
         "revision": revision,
+        "image_digest": settings.aurum_image_digest,
+        "config_revision": settings.aurum_config_revision,
         "license": "AGPL-3.0-only",
         "source": source,
         "deployment_mode": settings.deployment_mode,
