@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -11,11 +21,29 @@ from app.core.database import Base
 
 class Shop(Base):
     __tablename__ = "shops"
-    __table_args__ = (UniqueConstraint("slug"),)
+    __table_args__ = (
+        UniqueConstraint("slug"),
+        CheckConstraint(
+            "tax_rate_percent >= 0 AND tax_rate_percent <= 100",
+            name="shops_tax_rate_percent_check",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    legal_name: Mapped[str | None] = mapped_column(String(200))
+    tax_id: Mapped[str | None] = mapped_column(String(30))
+    address: Mapped[str | None] = mapped_column(String(500))
+    state: Mapped[str | None] = mapped_column(String(100))
+    state_code: Mapped[str | None] = mapped_column(String(10))
+    invoice_prefix: Mapped[str | None] = mapped_column(String(20))
+    tax_rate_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        default=Decimal("3.00"),
+        server_default="3.00",
+        nullable=False,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     next_invoice_sequence: Mapped[int] = mapped_column(
         BigInteger, default=1, server_default="1", nullable=False

@@ -1,12 +1,18 @@
+import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import engine, get_db
+from app.core.health import WorkerHeartbeat
+from app.core.logging import configure_logging
 from app.modules.auth.dependencies import RequireCashier
 from app.modules.auth.routes import router as auth_router
 from app.modules.billing.routes import router as billing_router
@@ -25,11 +31,55 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await engine.dispose()
 
 
+configure_logging()
+LOGGER = logging.getLogger("aurum.api")
+
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def request_observability(request: Request, call_next):
+    supplied_request_id = request.headers.get("X-Request-ID")
+    request_id = (
+        supplied_request_id
+        if supplied_request_id and len(supplied_request_id) <= 128
+        else str(uuid4())
+    )
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        LOGGER.exception(
+            "request_failed",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": 500,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
+        raise
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    response.headers["X-Request-ID"] = request_id
+    if request.url.path.startswith(API_PREFIX):
+        response.headers["Cache-Control"] = "no-store"
+    LOGGER.info(
+        "request_completed",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+    return response
+
 
 # Configure CORS
 app.add_middleware(
@@ -70,6 +120,25 @@ async def health() -> dict[str, str]:
 async def readiness(db=Depends(get_db)) -> dict[str, str]:
     await db.execute(text("SELECT 1"))
     return {"status": "ready"}
+
+
+@app.get("/health/worker", tags=["Health"])
+async def worker_readiness(db=Depends(get_db)) -> dict[str, str]:
+    heartbeat = await db.get(WorkerHeartbeat, "primary")
+    if (
+        heartbeat is None
+        or heartbeat.status != "running"
+        or heartbeat.last_seen_at < datetime.now(UTC) - timedelta(seconds=60)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Worker heartbeat is stale",
+        )
+    return {
+        "status": "ready",
+        "revision": heartbeat.revision,
+        "last_seen_at": heartbeat.last_seen_at.isoformat(),
+    }
 
 
 @app.get(f"{API_PREFIX}/version", tags=["About"])

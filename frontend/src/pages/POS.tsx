@@ -269,7 +269,10 @@ export const POS: React.FC = () => {
     0
   );
   const subtotalBeforeTax = subtotal + makingCharges;
-  const gstAmount = parseFloat((subtotalBeforeTax * 0.03).toFixed(2));
+  const taxRatePercent = cart[0]?.tax_rate_percent ?? 0;
+  const gstAmount = parseFloat(
+    (subtotalBeforeTax * taxRatePercent / 100).toFixed(2),
+  );
   const totalWithGst = parseFloat((subtotalBeforeTax + gstAmount).toFixed(2));
 
   const handleCheckout = async (e: React.FormEvent) => {
@@ -461,7 +464,7 @@ export const POS: React.FC = () => {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500 dark:text-slate-400 font-medium">GST (3%):</span>
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">GST ({taxRatePercent}%):</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200 text-base">
                       {formatCurrency(gstAmount)}
                     </span>
@@ -571,7 +574,7 @@ export const POS: React.FC = () => {
                   <span className="font-bold text-slate-800 dark:text-slate-200">{totalUnits}</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
-                  <span>GST (3%):</span>
+                  <span>GST ({taxRatePercent}%):</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {formatCurrency(gstAmount)}
                   </span>

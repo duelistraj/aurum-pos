@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -27,6 +28,18 @@ class Sale(Base):
         UniqueConstraint("shop_id", "invoice_no", name="uq_sales_shop_invoice"),
         UniqueConstraint("shop_id", "id", name="uq_sales_shop_id"),
         Index("ix_sales_shop_created_at", "shop_id", "created_at"),
+        CheckConstraint(
+            "invoice_pdf_status IN ('pending', 'processing', 'ready', 'failed')",
+            name="sales_invoice_pdf_status_check",
+        ),
+        Index(
+            "ix_sales_pending_invoice_pdf",
+            "invoice_pdf_next_attempt_at",
+            "created_at",
+            postgresql_where=text(
+                "s3_object_key IS NULL AND invoice_pdf_status IN ('pending', 'processing')"
+            ),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -86,6 +99,13 @@ class Sale(Base):
         default="19",
     )
 
+    seller_name: Mapped[str | None] = mapped_column(String(200))
+    seller_tax_id: Mapped[str | None] = mapped_column(String(30))
+    seller_address: Mapped[str | None] = mapped_column(String(500))
+    seller_state: Mapped[str | None] = mapped_column(String(100))
+    seller_state_code: Mapped[str | None] = mapped_column(String(10))
+    tax_rate_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+
     s3_object_key: Mapped[str | None] = mapped_column(
         String(1024),
         nullable=True,
@@ -100,6 +120,15 @@ class Sale(Base):
         String(64),
         nullable=True,
     )
+    invoice_pdf_status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", nullable=False
+    )
+    invoice_pdf_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    invoice_pdf_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invoice_pdf_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invoice_pdf_last_error_code: Mapped[str | None] = mapped_column(String(100))
 
     items = relationship(
         "SaleItem",
@@ -183,7 +212,14 @@ class SaleItem(Base):
 
 class SaleIdempotency(Base):
     __tablename__ = "sale_idempotency"
-    __table_args__ = (UniqueConstraint("shop_id", "idempotency_key"),)
+    __table_args__ = (
+        UniqueConstraint("shop_id", "idempotency_key"),
+        ForeignKeyConstraint(
+            ("shop_id", "sale_id"),
+            ("sales.shop_id", "sales.id"),
+            ondelete="CASCADE",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id: Mapped[uuid.UUID] = mapped_column(
@@ -195,9 +231,42 @@ class SaleIdempotency(Base):
     )
     idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    sale_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("sales.id", ondelete="CASCADE"), nullable=False
-    )
+    sale_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
+
+
+class InvoiceJob(Base):
+    __tablename__ = "invoice_jobs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ("shop_id", "sale_id"),
+            ("sales.shop_id", "sales.id"),
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("shop_id", "sale_id", name="uq_invoice_jobs_shop_sale"),
+        Index(
+            "ix_invoice_jobs_pending",
+            "next_attempt_at",
+            "created_at",
+            postgresql_where=text("status IN ('pending', 'processing')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    sale_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", nullable=False
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

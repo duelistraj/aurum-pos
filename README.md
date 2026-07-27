@@ -13,8 +13,10 @@ self-hosting from the same public source tree.
 - Owners can use verified email/password or Google. Staff join only through a
   shop invitation. Roles and entitlements are loaded from PostgreSQL.
 
-Every tenant business table has a `shop_id`, shop-scoped constraints, and
-forced PostgreSQL row-level security. Clients select a shop with `X-Shop-ID`.
+Every tenant-facing business table has a `shop_id`, shop-scoped constraints, and forced PostgreSQL row-level security.
+Global durable-job control tables use composite tenant foreign keys and are accessed only by trusted backend code.
+Clients select a shop with `X-Shop-ID`.
+Owners can deactivate access immediately and transfer shop ownership atomically to another active member.
 
 When an existing self-hosted database is upgraded in place, legacy item rows
 are retained under the `legacy-import` shop. Attach its first owner after the
@@ -52,6 +54,8 @@ Invoice PDFs are stored in the private S3 bucket configured by `AWS_REGION` and 
 For local AWS access, use the normal SDK credential chain through `aws configure`, `AWS_PROFILE`, or temporary credentials exported in the shell.
 Do not commit local AWS credentials or add them to the application settings.
 Invoice numbers are assigned by the server, and checkout retries reuse a durable client operation key.
+Sale requests commit a durable invoice job; the worker generates and uploads the PDF after the sale transaction completes.
+The download endpoint reports a temporary pending state until the exact PostgreSQL-indexed object is ready.
 
 In another terminal:
 
@@ -131,13 +135,12 @@ environment.
 
 ## Production
 
-`compose.cloud.yml` is the lean single-EC2 topology: a loopback-only API and a
-reliable worker behind host Nginx, with Aiven PostgreSQL. `AURUM_IMAGE` must be
-a GHCR digest. Create an untracked `.env` from `.env.example`, assign the
-runtime values, and provision it securely on the host. Compose loads that file
-into the application containers. See
-[`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES,
-private invoice storage, Google RTDN, provider-managed recovery, and scaling gates.
+`compose.cloud.yml` is the lean single-EC2 topology: a loopback-only two-process API and a reliable worker behind host Nginx, with Aiven PostgreSQL.
+`AURUM_IMAGE` must be a GHCR digest.
+Create an untracked `.env` from `.env.example`, assign the runtime values, and provision it securely on the host.
+Compose loads that file into the application containers.
+Database pool and bounded worker concurrency settings are explicit so the current host can be tuned without changing application code as traffic grows.
+See [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES, private invoice storage, Google RTDN, provider-managed recovery, and scaling gates.
 
 Aurum Cloud uses the private `aurum-pos-prod-duelistraj` bucket in `ap-southeast-1`.
 The application automatically uses temporary credentials from the EC2 instance role and never requires static AWS access keys in production.
@@ -149,12 +152,13 @@ Public privacy, terms, source, and account-deletion pages are published from
 
 ```bash
 uv run ruff check app tests scripts
+uv run ruff format --check app tests scripts
 uv run mypy app
 uv run pytest
 cd frontend && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
-Set `RUN_INTEGRATION=1` to run the migrated PostgreSQL tenant flow.
+Set `RUN_INTEGRATION=1` after `uv run alembic upgrade head` to run the migrated PostgreSQL tenant, durable-job, ownership-transfer, and lifecycle flows.
 
 ## Source and license
 

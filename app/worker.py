@@ -13,6 +13,9 @@ from sqlalchemy import delete, func, or_, select, text, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.core.health import WorkerHeartbeat
+from app.core.logging import configure_logging
+from app.jobs.invoices import process_invoice_jobs
 from app.modules.auth.models import (
     AccountDeletionRequest,
     AuthRateLimit,
@@ -22,7 +25,11 @@ from app.modules.auth.models import (
     User,
 )
 from app.modules.billing.google_play import GooglePlayClient
-from app.modules.billing.service import decrypt_purchase_token, verify_play_purchase
+from app.modules.billing.service import (
+    apply_play_purchase,
+    decrypt_purchase_token,
+    fetch_play_purchase,
+)
 from app.modules.notifications.models import EmailOutbox
 from app.modules.sales.models import Sale
 from app.modules.sales.storage import get_invoice_storage
@@ -31,7 +38,7 @@ from app.modules.subscriptions.models import BillingEvent, PlaySubscription
 
 LOGGER = logging.getLogger("aurum.worker")
 EMAIL_LEASE = timedelta(minutes=10)
-DELETION_LEASE = timedelta(minutes=30)
+DELETION_LEASE = timedelta(hours=2)
 RECONCILIATION_LEASE = timedelta(minutes=10)
 
 
@@ -214,16 +221,22 @@ async def _claim_play_reconciliation() -> list[PlayTarget]:
 
 async def _reconcile_play_target(target: PlayTarget) -> None:
     try:
+        purchase, _play_client = await fetch_play_purchase(
+            shop_id=target.shop_id,
+            purchase_token=target.purchase_token,
+            product_id=target.product_id,
+        )
         async with AsyncSessionLocal.begin() as session:
             await session.execute(
                 text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
                 {"shop_id": str(target.shop_id)},
             )
-            await verify_play_purchase(
+            await apply_play_purchase(
                 session,
                 shop_id=target.shop_id,
                 purchase_token=target.purchase_token,
                 product_id=target.product_id,
+                purchase=purchase,
             )
             row = await session.get(PlaySubscription, target.subscription_id)
             if row is not None:
@@ -278,19 +291,20 @@ async def _claim_account_deletions() -> list[UUID]:
         return [request.id for request in requests]
 
 
-async def _sole_owned_shop_ids(target: DeletionTarget) -> list[UUID]:
-    if not target.delete_owned_shops:
-        return []
+async def _claim_owned_shops_for_deletion(target: DeletionTarget) -> list[UUID]:
     async with AsyncSessionLocal.begin() as session:
         memberships = await session.execute(
-            select(ShopMembership).where(
+            select(ShopMembership, Shop)
+            .join(Shop, Shop.id == ShopMembership.shop_id)
+            .where(
                 ShopMembership.user_id == target.user_id,
                 ShopMembership.role == "OWNER",
                 ShopMembership.is_active.is_(True),
             )
+            .with_for_update()
         )
         sole_owned: list[UUID] = []
-        for membership in memberships.scalars():
+        for membership, shop in memberships:
             other_owners = await session.scalar(
                 select(func.count(ShopMembership.id)).where(
                     ShopMembership.shop_id == membership.shop_id,
@@ -301,10 +315,23 @@ async def _sole_owned_shop_ids(target: DeletionTarget) -> list[UUID]:
             )
             if not other_owners:
                 sole_owned.append(membership.shop_id)
+                if target.delete_owned_shops:
+                    shop.is_active = False
         return sole_owned
 
 
-async def _cleanup_shop_external_data(shop_id: UUID) -> set[str]:
+async def _renew_deletion_lease(request_id: UUID) -> None:
+    async with AsyncSessionLocal.begin() as session:
+        request = await session.get(AccountDeletionRequest, request_id)
+        if request is not None and request.completed_at is None:
+            request.cleanup_started_at = datetime.now(UTC)
+
+
+async def _cleanup_shop_external_data(
+    shop_id: UUID,
+    *,
+    request_id: UUID | None = None,
+) -> set[str]:
     async with AsyncSessionLocal.begin() as session:
         play_rows = await session.execute(
             select(PlaySubscription).where(
@@ -338,7 +365,9 @@ async def _cleanup_shop_external_data(shop_id: UUID) -> set[str]:
         )
         object_keys = [key for key in result.scalars() if key]
     storage = get_invoice_storage()
-    for object_key in object_keys:
+    for index, object_key in enumerate(object_keys):
+        if request_id is not None and index % 50 == 0:
+            await _renew_deletion_lease(request_id)
         await storage.delete_pdf(object_key=object_key)
     return set(object_keys)
 
@@ -370,10 +399,16 @@ async def _process_account_deletion(request_id: UUID) -> None:
                 user_id=request.user_id,
                 delete_owned_shops=request.delete_owned_shops,
             )
-        shop_ids = await _sole_owned_shop_ids(target)
-        deleted_keys_by_shop = {
-            shop_id: await _cleanup_shop_external_data(shop_id) for shop_id in shop_ids
-        }
+        shop_ids = await _claim_owned_shops_for_deletion(target)
+        if shop_ids and not target.delete_owned_shops:
+            raise RuntimeError("Owned shops must be transferred before account deletion")
+        deleted_keys_by_shop = {}
+        for shop_id in shop_ids:
+            await _renew_deletion_lease(request_id)
+            deleted_keys_by_shop[shop_id] = await _cleanup_shop_external_data(
+                shop_id,
+                request_id=request_id,
+            )
 
         async with AsyncSessionLocal.begin() as session:
             request = await session.scalar(
@@ -389,6 +424,31 @@ async def _process_account_deletion(request_id: UUID) -> None:
             ):
                 return
             for shop_id in shop_ids:
+                shop = await session.scalar(
+                    select(Shop).where(Shop.id == shop_id).with_for_update()
+                )
+                owner = await session.scalar(
+                    select(ShopMembership)
+                    .where(
+                        ShopMembership.shop_id == shop_id,
+                        ShopMembership.user_id == target.user_id,
+                        ShopMembership.role == "OWNER",
+                        ShopMembership.is_active.is_(True),
+                    )
+                    .with_for_update()
+                )
+                other_owners = await session.scalar(
+                    select(func.count(ShopMembership.id)).where(
+                        ShopMembership.shop_id == shop_id,
+                        ShopMembership.user_id != target.user_id,
+                        ShopMembership.role == "OWNER",
+                        ShopMembership.is_active.is_(True),
+                    )
+                )
+                if shop is None:
+                    continue
+                if shop.is_active or owner is None or other_owners:
+                    raise RuntimeError("Shop ownership changed during account deletion")
                 await session.execute(
                     text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
                     {"shop_id": str(shop_id)},
@@ -473,16 +533,24 @@ async def cleanup_expired_records() -> None:
         await session.execute(
             update(EmailOutbox)
             .where(
-                EmailOutbox.status == "sent",
-                EmailOutbox.sent_at < now - timedelta(days=1),
+                or_(
+                    (
+                        (EmailOutbox.status == "sent")
+                        & (EmailOutbox.sent_at < now - timedelta(days=1))
+                    ),
+                    (
+                        (EmailOutbox.status == "failed")
+                        & (EmailOutbox.created_at < now - timedelta(days=1))
+                    ),
+                ),
                 EmailOutbox.text_body != "[redacted]",
             )
             .values(text_body="[redacted]", template_data={})
         )
         await session.execute(
             delete(EmailOutbox).where(
-                EmailOutbox.status == "sent",
-                EmailOutbox.sent_at < now - timedelta(days=30),
+                EmailOutbox.status.in_(("sent", "failed")),
+                EmailOutbox.created_at < now - timedelta(days=30),
             )
         )
         await session.execute(
@@ -490,28 +558,64 @@ async def cleanup_expired_records() -> None:
         )
 
 
-async def run_once(*, reconcile: bool) -> None:
+async def _record_worker_heartbeat(
+    *,
+    details: dict[str, bool] | None = None,
+) -> None:
+    async with AsyncSessionLocal.begin() as session:
+        heartbeat = await session.get(WorkerHeartbeat, "primary")
+        if heartbeat is None:
+            session.add(
+                WorkerHeartbeat(
+                    worker_name="primary",
+                    revision=settings.git_sha,
+                    status="running",
+                    last_seen_at=datetime.now(UTC),
+                    details=details,
+                )
+            )
+        else:
+            heartbeat.revision = settings.git_sha
+            heartbeat.status = "running"
+            heartbeat.last_seen_at = datetime.now(UTC)
+            heartbeat.details = details
+
+
+async def run_once(*, reconcile: bool, cleanup: bool = False) -> None:
+    await _record_worker_heartbeat(details={"reconcile": reconcile, "cleanup": cleanup})
     await process_email_batch()
+    await process_invoice_jobs()
     await process_account_deletions()
     if reconcile:
         await reconcile_play_subscriptions()
+    if cleanup:
         await cleanup_expired_records()
 
 
 async def run_forever() -> None:
-    reconcile_counter = 0
-    while True:
-        await run_once(reconcile=reconcile_counter == 0)
-        reconcile_counter = (reconcile_counter + 1) % 360
-        await asyncio.sleep(10)
+    cleanup_counter = 0
+
+    async def heartbeat_loop() -> None:
+        while True:
+            await _record_worker_heartbeat()
+            await asyncio.sleep(20)
+
+    heartbeat_task = asyncio.create_task(heartbeat_loop())
+    try:
+        while True:
+            await run_once(reconcile=True, cleanup=cleanup_counter == 0)
+            cleanup_counter = (cleanup_counter + 1) % 360
+            await asyncio.sleep(10)
+    finally:
+        heartbeat_task.cancel()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(run_once(reconcile=True) if args.once else run_forever())
+    configure_logging()
+    asyncio.run(run_once(reconcile=True, cleanup=True) if args.once else run_forever())
 
 
 if __name__ == "__main__":

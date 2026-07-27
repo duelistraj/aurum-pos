@@ -18,6 +18,11 @@ from app.modules.auth.security import (
 from app.modules.notifications.service import queue_email
 from app.modules.shops.service import list_memberships
 
+DUMMY_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$J8T4f29NifF+b80Zw3hvzQ"
+    "$W1P/iBod38/Abb6FMhfcc4V+T65wmaV1UK6zaH5IwdI"
+)
+
 VERIFICATION_RESEND_COOLDOWN = timedelta(minutes=5)
 
 
@@ -133,11 +138,11 @@ async def build_token_response(
 
 async def authenticate_user(db: AsyncSession, login_data: LoginRequest) -> TokenResponse:
     user = await db.scalar(select(User).where(User.email == login_data.email))
-    if (
-        user is None
-        or user.password_hash is None
-        or not await check_password(login_data.password, user.password_hash)
-    ):
+    candidate_hash = (
+        user.password_hash if user is not None and user.password_hash else DUMMY_PASSWORD_HASH
+    )
+    password_matches = await check_password(login_data.password, candidate_hash)
+    if user is None or user.password_hash is None or not password_matches:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User is inactive")

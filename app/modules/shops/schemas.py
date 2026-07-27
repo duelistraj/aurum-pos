@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -11,6 +12,47 @@ class ShopResponse(BaseModel):
     name: str
     slug: str
     role: str
+    legal_name: str | None = None
+    tax_id: str | None = None
+    address: str | None = None
+    state: str | None = None
+    state_code: str | None = None
+    invoice_prefix: str | None = None
+    tax_rate_percent: Decimal
+
+
+class ShopUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    legal_name: str | None = Field(default=None, min_length=1, max_length=200)
+    tax_id: str | None = Field(default=None, max_length=30)
+    address: str | None = Field(default=None, max_length=500)
+    state: str | None = Field(default=None, min_length=1, max_length=100)
+    state_code: str | None = Field(default=None, min_length=1, max_length=10)
+    invoice_prefix: str | None = Field(default=None, min_length=1, max_length=20)
+    tax_rate_percent: Decimal | None = Field(default=None, ge=0, le=100)
+
+    @field_validator(
+        "name",
+        "legal_name",
+        "tax_id",
+        "address",
+        "state",
+        "state_code",
+        "invoice_prefix",
+    )
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @field_validator("invoice_prefix")
+    @classmethod
+    def validate_invoice_prefix(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.upper()
+        if not normalized.replace("-", "").isalnum():
+            raise ValueError("Invoice prefix may contain only letters, numbers, and hyphens")
+        return normalized
 
 
 class ShopCreate(BaseModel):
@@ -58,3 +100,17 @@ class MembershipUpdate(BaseModel):
         if normalized not in ALLOWED_INVITE_ROLES:
             raise ValueError("Role must be ADMIN, MANAGER, or CASHIER")
         return normalized
+
+
+class OwnershipTransfer(BaseModel):
+    target_membership_id: uuid.UUID
+
+
+class MembershipResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    email: str
+    full_name: str
+    role: str
+    is_active: bool
+    created_at: datetime

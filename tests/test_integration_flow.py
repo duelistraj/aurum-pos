@@ -1,24 +1,29 @@
+import asyncio
 import hashlib
 import os
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.main import app
 from app.modules.auth.models import User
+from app.modules.dashboard.service import _rates_at
 from app.modules.items.models import Item
-from app.modules.sales.models import Sale
+from app.modules.metal_rates.models import MetalRate, MetalRateHistory
+from app.modules.sales.models import InvoiceJob, Sale
 from app.modules.sales.storage import (
     InvoiceStorageError,
     InvoiceUploadMetadata,
     get_invoice_storage,
 )
 from app.modules.shops.models import Shop
+from app.worker import process_invoice_jobs
 
 pytestmark = [
     pytest.mark.integration,
@@ -51,7 +56,7 @@ class FakeInvoiceStorage:
 
 
 @pytest.mark.asyncio
-async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
+async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> None:
     suffix = uuid4().hex[:10]
     email = f"integration-{suffix}@example.com"
     device_uuid = f"device-{suffix}"
@@ -61,6 +66,8 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
     second_shop_id: UUID | None = None
     second_user_id: UUID | None = None
     invoice_storage = FakeInvoiceStorage(failed_uploads=2)
+    monkeypatch.setattr(settings, "worker_email_max_attempts", 1)
+    monkeypatch.setattr(settings, "worker_invoice_max_attempts", 3)
     app.dependency_overrides[get_invoice_storage] = lambda: invoice_storage
 
     transport = ASGITransport(app=app)
@@ -210,6 +217,55 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
                 "X-Device-UUID": second_device,
                 "X-Shop-ID": str(second_shop_id),
             }
+            second_primary_headers = {
+                **second_shop_headers,
+                "X-Shop-ID": str(shop_id),
+            }
+            staff = await client.get(
+                f"/api/v1/shops/{shop_id}/members",
+                headers=headers,
+            )
+            assert staff.status_code == 200, staff.text
+            second_membership = next(
+                member for member in staff.json() if member["email"] == second_email
+            )
+            deactivated = await client.patch(
+                f"/api/v1/shops/{shop_id}/members/{second_membership['id']}",
+                headers=headers,
+                json={"is_active": False},
+            )
+            assert deactivated.status_code == 200, deactivated.text
+            assert deactivated.json()["is_active"] is False
+            revoked_access = await client.get(
+                "/api/v1/items/",
+                headers=second_primary_headers,
+            )
+            assert revoked_access.status_code == 404
+            reactivated = await client.patch(
+                f"/api/v1/shops/{shop_id}/members/{second_membership['id']}",
+                headers=headers,
+                json={"is_active": True},
+            )
+            assert reactivated.status_code == 200, reactivated.text
+            restored_access = await client.get(
+                "/api/v1/items/",
+                headers=second_primary_headers,
+            )
+            assert restored_access.status_code == 200, restored_access.text
+
+            shop_profile = await client.patch(
+                f"/api/v1/shops/{shop_id}",
+                headers=headers,
+                json={
+                    "legal_name": "Integration Jewellers Private Limited",
+                    "tax_id": "19ABCDE1234F1Z5",
+                    "address": "Kolkata",
+                    "state": "West Bengal",
+                    "state_code": "19",
+                    "invoice_prefix": "TEST",
+                },
+            )
+            assert shop_profile.status_code == 200, shop_profile.text
 
             rate = await client.post(
                 "/api/v1/metal-rates/",
@@ -344,13 +400,27 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             )
             assert sale.status_code == 200, sale.text
             sale_id = UUID(sale.json()["id"])
-            assert sale.json()["invoice_no"].startswith("INV-")
+            assert sale.json()["invoice_no"].startswith("TEST-")
 
             unavailable_invoice = await client.get(
                 f"/api/v1/sales/{sale_id}/invoice",
                 headers=headers,
             )
-            assert unavailable_invoice.status_code == 503
+            assert unavailable_invoice.status_code == 202
+            assert unavailable_invoice.json()["status"] == "pending"
+
+            for attempt in range(3):
+                await process_invoice_jobs(storage=invoice_storage)
+                if attempt < 2:
+                    async with AsyncSessionLocal.begin() as session:
+                        await session.execute(
+                            update(InvoiceJob)
+                            .where(
+                                InvoiceJob.shop_id == shop_id,
+                                InvoiceJob.sale_id == sale_id,
+                            )
+                            .values(status="pending", next_attempt_at=None)
+                        )
 
             replay = await client.post(
                 "/api/v1/sales/",
@@ -403,8 +473,85 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
                 assert persisted_sale.pdf_generated_at is not None
                 assert persisted_sale.pdf_checksum_sha256 is not None
                 assert not hasattr(persisted_sale, "presigned_url")
+                assert persisted_sale.seller_name == "Integration Jewellers Private Limited"
+                assert persisted_sale.seller_tax_id == "19ABCDE1234F1Z5"
                 assert persisted_sale.items[0].item_name == "Integration Ring"
                 assert persisted_sale.items[0].item_sku == f"SKU-{suffix}"
+
+            historical_boundary = datetime.now(UTC)
+            await asyncio.sleep(0.01)
+            updated_rate = await client.post(
+                "/api/v1/metal-rates/",
+                headers=headers,
+                json={"metal": metal, "purity": 100, "rate_per_gram": 200},
+            )
+            assert updated_rate.status_code == 200, updated_rate.text
+            async with AsyncSessionLocal.begin() as session:
+                await session.execute(
+                    text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+                    {"shop_id": str(shop_id)},
+                )
+                assert (
+                    await session.scalar(
+                        select(func.count(MetalRate.id)).where(
+                            MetalRate.shop_id == shop_id,
+                            MetalRate.metal == metal.lower(),
+                        )
+                    )
+                    == 1
+                )
+                assert (
+                    await session.scalar(
+                        select(func.count(MetalRateHistory.id)).where(
+                            MetalRateHistory.shop_id == shop_id,
+                            MetalRateHistory.metal == metal.lower(),
+                        )
+                    )
+                    == 2
+                )
+                historical_rates = await _rates_at(
+                    session,
+                    shop_id=shop_id,
+                    timestamp=historical_boundary,
+                )
+                assert historical_rates[metal.lower()] == 100
+
+            multi_quantity_item = await client.post(
+                "/api/v1/items/",
+                headers=headers,
+                json={
+                    "sku": f"MULTI-{suffix}",
+                    "name": "Multi quantity item",
+                    "category": "ring",
+                    "metal": metal,
+                    "purity": 92.5,
+                    "net_weight": 1,
+                    "making_charge": 5,
+                    "quantity": 2,
+                },
+            )
+            assert multi_quantity_item.status_code == 200, multi_quantity_item.text
+            multi_item_id = multi_quantity_item.json()["id"]
+            partial_sale = await client.post(
+                "/api/v1/sales/",
+                headers={**headers, "Idempotency-Key": f"partial-{suffix}"},
+                json={
+                    "items": [{"item_id": multi_item_id, "quantity": 1}],
+                    "customer_name": "Partial Sale Customer",
+                    "customer_phone": "9999999999",
+                },
+            )
+            assert partial_sale.status_code == 200, partial_sale.text
+            archived = await client.delete(
+                f"/api/v1/items/{multi_item_id}",
+                headers=headers,
+            )
+            assert archived.status_code == 204, archived.text
+            archived_lookup = await client.get(
+                f"/api/v1/items/{multi_item_id}",
+                headers=headers,
+            )
+            assert archived_lookup.status_code == 404
 
             previous_mode = settings.deployment_mode
             settings.deployment_mode = "hosted"
@@ -450,6 +597,34 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
                 assert limited.json()["detail"]["code"] == "ITEM_LIMIT_REACHED"
             finally:
                 settings.deployment_mode = previous_mode
+
+            transferred = await client.post(
+                f"/api/v1/shops/{shop_id}/ownership",
+                headers=headers,
+                json={"target_membership_id": second_membership["id"]},
+            )
+            assert transferred.status_code == 200, transferred.text
+            assert transferred.json()["role"] == "OWNER"
+            old_owner_cannot_transfer = await client.post(
+                f"/api/v1/shops/{shop_id}/ownership",
+                headers=headers,
+                json={"target_membership_id": second_membership["id"]},
+            )
+            assert old_owner_cannot_transfer.status_code == 403
+            new_owner_staff = await client.get(
+                f"/api/v1/shops/{shop_id}/members",
+                headers=second_primary_headers,
+            )
+            assert new_owner_staff.status_code == 200, new_owner_staff.text
+            original_owner = next(
+                member for member in new_owner_staff.json() if member["email"] == email
+            )
+            transferred_back = await client.post(
+                f"/api/v1/shops/{shop_id}/ownership",
+                headers=second_primary_headers,
+                json={"target_membership_id": original_owner["id"]},
+            )
+            assert transferred_back.status_code == 200, transferred_back.text
     finally:
         app.dependency_overrides.pop(get_invoice_storage, None)
         async with AsyncSessionLocal.begin() as session:

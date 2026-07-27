@@ -22,6 +22,22 @@ def test_price_calculation_uses_decimal_and_half_up_rounding() -> None:
     assert pricing["final_price"] == Decimal("113.87")
 
 
+def test_locked_sale_price_uses_the_shop_tax_rate() -> None:
+    pricing = lock_price_at_sale(
+        metal="gold",
+        category="ring",
+        purity=100,
+        net_weight=1,
+        rate_per_gram=100,
+        making_charge=10,
+        tax_rate_percent=5,
+    )
+
+    assert pricing["gst_rate_percent"] == Decimal("5")
+    assert pricing["gst_amount"] == Decimal("5.50")
+    assert pricing["final_price"] == Decimal("115.50")
+
+
 def test_unique_item_price_is_only_the_fixed_making_charge() -> None:
     pricing = calculate_suggested_price(
         category="unique",

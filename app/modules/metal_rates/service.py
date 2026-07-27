@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import MappingProxyType
 from uuid import UUID
@@ -40,7 +41,7 @@ async def add_metal_rate(
     *,
     shop_id: UUID,
 ) -> MetalRate:
-    """Add or update a metal rate. If a rate for this metal/purity exists, it will be updated."""
+    """Append a metal rate so historical pricing remains reproducible."""
     metal_lower = data.metal.strip().lower()
     supported_metals = {metal.lower() for metal in SUPPORTED_METALS}
     if metal_lower not in supported_metals:
@@ -48,39 +49,17 @@ async def add_metal_rate(
     if data.purity != RATE_PURITY:
         raise ValueError("Metal rates must be recorded at 100% purity.")
 
-    # Check if rate already exists
-    stmt = select(MetalRate).where(
-        MetalRate.shop_id == shop_id,
-        MetalRate.metal == metal_lower,
-        MetalRate.purity == data.purity,
-    )
-    result = await db.execute(stmt)
-    existing_rate = result.scalar_one_or_none()
-
-    if existing_rate:
-        # Update existing rate
-        old_rate = existing_rate.rate_per_gram
-        existing_rate.rate_per_gram = data.rate_per_gram
-        await db.flush()
-        await db.refresh(existing_rate)
-
-        # Log the update
-        await log_change(
-            db,
-            shop_id=shop_id,
-            entity="metal_rate",
-            entity_id=existing_rate.id,
-            action="update",
-            payload={
-                "metal": existing_rate.metal,
-                "purity": float(existing_rate.purity),
-                "before": float(old_rate),
-                "after": float(existing_rate.rate_per_gram),
-            },
+    existing_rate = await db.scalar(
+        select(MetalRate)
+        .where(
+            MetalRate.shop_id == shop_id,
+            MetalRate.metal == metal_lower,
+            MetalRate.purity == data.purity,
         )
-        return existing_rate
-    else:
-        # Create new rate
+        .with_for_update()
+    )
+    old_rate = existing_rate.rate_per_gram if existing_rate is not None else None
+    if existing_rate is None:
         rate = MetalRate(
             shop_id=shop_id,
             metal=metal_lower,
@@ -88,23 +67,26 @@ async def add_metal_rate(
             rate_per_gram=data.rate_per_gram,
         )
         db.add(rate)
-        await db.flush()
-        await db.refresh(rate)
-
-        # Log the creation
-        await log_change(
-            db,
-            shop_id=shop_id,
-            entity="metal_rate",
-            entity_id=rate.id,
-            action="create",
-            payload={
-                "metal": rate.metal,
-                "purity": float(rate.purity),
-                "rate_per_gram": float(rate.rate_per_gram),
-            },
-        )
-        return rate
+    else:
+        rate = existing_rate
+        rate.rate_per_gram = data.rate_per_gram
+        rate.effective_from = datetime.now(UTC)
+    await db.flush()
+    await db.refresh(rate)
+    await log_change(
+        db,
+        shop_id=shop_id,
+        entity="metal_rate",
+        entity_id=rate.id,
+        action="create" if old_rate is None else "update",
+        payload={
+            "metal": rate.metal,
+            "purity": float(rate.purity),
+            "rate_per_gram": float(rate.rate_per_gram),
+            "before": float(old_rate) if old_rate is not None else None,
+        },
+    )
+    return rate
 
 
 async def get_available_metals(db: AsyncSession) -> dict[str, list[float]]:
@@ -118,12 +100,24 @@ async def get_available_metals(db: AsyncSession) -> dict[str, list[float]]:
 
 async def get_all_metal_rates(db: AsyncSession, *, shop_id: UUID) -> list[MetalRate]:
     """Get all metal rates from the database"""
-    stmt = (
-        select(MetalRate)
+    latest_ids = (
+        select(MetalRate.id)
         .where(
             MetalRate.shop_id == shop_id,
             MetalRate.purity == RATE_PURITY,
         )
+        .distinct(MetalRate.metal, MetalRate.purity)
+        .order_by(
+            MetalRate.metal,
+            MetalRate.purity,
+            MetalRate.effective_from.desc(),
+            MetalRate.created_at.desc(),
+        )
+        .subquery()
+    )
+    stmt = (
+        select(MetalRate)
+        .join(latest_ids, latest_ids.c.id == MetalRate.id)
         .order_by(MetalRate.metal, MetalRate.purity)
     )
     result = await db.execute(stmt)

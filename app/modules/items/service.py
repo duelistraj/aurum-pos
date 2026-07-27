@@ -1,14 +1,35 @@
 import secrets
 import string
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.service import log_change
-from app.modules.items.models import Item
+from app.modules.items.models import Item, ItemHistory
 from app.modules.items.schemas import ItemBase, ItemCreate, ItemUpdate
 from app.modules.subscriptions.service import enforce_item_activation_limit
+
+
+def record_item_history(db: AsyncSession, item: Item, *, event_type: str) -> None:
+    """Append an immutable inventory snapshot in the caller's transaction."""
+    db.add(
+        ItemHistory(
+            shop_id=item.shop_id,
+            item_id=item.id,
+            event_type=event_type,
+            sku=item.sku,
+            category=item.category,
+            metal=item.metal,
+            purity=item.purity,
+            net_weight=item.net_weight,
+            making_charge=item.making_charge,
+            quantity=item.quantity,
+            status=item.status,
+            effective_from=datetime.now(UTC),
+        )
+    )
 
 
 async def generate_unique_barcode(db: AsyncSession, *, shop_id: UUID) -> str:
@@ -44,6 +65,7 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
     item = Item(shop_id=shop_id, **item_data)
     db.add(item)
     await db.flush()
+    record_item_history(db, item, event_type="create")
 
     await log_change(
         db,
@@ -134,6 +156,7 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
     # Apply changes to the item
     for field, value in item_data.items():
         setattr(item, field, value)
+    record_item_history(db, item, event_type="update")
 
     # Only log if there are actual changes (excluding status)
     if changes:
@@ -182,7 +205,10 @@ async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None
         action="delete",
         payload=payload,
     )
-    await db.delete(item)
+    item.quantity = 0
+    item.status = "archived"
+    item.archived_at = datetime.now(UTC)
+    record_item_history(db, item, event_type="archive")
     await db.flush()
 
 
@@ -196,6 +222,7 @@ async def get_item_by_id(
     stmt = select(Item).where(
         Item.id == item_id,
         Item.shop_id == shop_id,
+        Item.archived_at.is_(None),
     )
     if for_update:
         stmt = stmt.with_for_update()
@@ -212,6 +239,7 @@ async def get_item_by_barcode(
     stmt = select(Item).where(
         Item.barcode == barcode,
         Item.shop_id == shop_id,
+        Item.archived_at.is_(None),
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
@@ -223,6 +251,7 @@ async def list_items(db: AsyncSession, *, shop_id: UUID) -> list[Item]:
         .where(
             Item.shop_id == shop_id,
             Item.status == "in_stock",
+            Item.archived_at.is_(None),
         )
         .order_by(Item.updated_at.desc())
     )
@@ -232,7 +261,12 @@ async def list_items(db: AsyncSession, *, shop_id: UUID) -> list[Item]:
 
 
 async def get_latest_item(db: AsyncSession, *, shop_id: UUID) -> Item | None:
-    stmt = select(Item).where(Item.shop_id == shop_id).order_by(Item.updated_at.desc()).limit(1)
+    stmt = (
+        select(Item)
+        .where(Item.shop_id == shop_id, Item.archived_at.is_(None))
+        .order_by(Item.updated_at.desc())
+        .limit(1)
+    )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -249,6 +283,7 @@ async def get_item_for_pos_by_barcode(
             Item.barcode == barcode,
             Item.shop_id == shop_id,
             Item.status == "in_stock",
+            Item.archived_at.is_(None),
         )
         .limit(1)
     )
@@ -263,7 +298,7 @@ async def get_items_for_label_printing(
     only_in_stock: bool = True,
     max_items: int = 501,
 ):
-    stmt = select(Item).where(Item.shop_id == shop_id)
+    stmt = select(Item).where(Item.shop_id == shop_id, Item.archived_at.is_(None))
 
     if only_in_stock:
         stmt = stmt.where(Item.status == "in_stock")
@@ -284,15 +319,20 @@ async def list_items_paginated(
     status: str | None = None,
     metal: str | None = None,
 ) -> tuple[list[Item], int]:
-    stmt = select(Item).where(Item.shop_id == shop_id).order_by(Item.updated_at.desc())
+    stmt = (
+        select(Item)
+        .where(Item.shop_id == shop_id, Item.archived_at.is_(None))
+        .order_by(Item.updated_at.desc())
+    )
 
     # Filter by search
     if search:
-        search_filter = f"%{search}%"
+        normalized_search = search.strip().lower()
+        search_filter = f"%{normalized_search}%"
         stmt = stmt.where(
-            Item.sku.ilike(search_filter)
-            | Item.name.ilike(search_filter)
-            | Item.barcode.like(search_filter)
+            func.lower(Item.sku).like(search_filter)
+            | func.lower(Item.name).like(search_filter)
+            | Item.barcode.startswith(search.strip())
         )
 
     # Filter by category
@@ -307,7 +347,22 @@ async def list_items_paginated(
         stmt = stmt.where(func.lower(Item.metal) == metal.lower())
 
     # Count matching items
-    count_stmt = select(func.count()).select_from(stmt.subquery())
+    count_stmt = select(func.count(Item.id)).where(
+        Item.shop_id == shop_id,
+        Item.archived_at.is_(None),
+    )
+    if search:
+        count_stmt = count_stmt.where(
+            func.lower(Item.sku).like(search_filter)
+            | func.lower(Item.name).like(search_filter)
+            | Item.barcode.startswith(search.strip())
+        )
+    if category and category.lower() != "all":
+        count_stmt = count_stmt.where(Item.category == category.lower())
+    if status and status.lower() != "all":
+        count_stmt = count_stmt.where(Item.status == status.lower())
+    if metal and metal.lower() != "all":
+        count_stmt = count_stmt.where(func.lower(Item.metal) == metal.lower())
     total_result = await db.execute(count_stmt)
     total = total_result.scalar_one() or 0
 

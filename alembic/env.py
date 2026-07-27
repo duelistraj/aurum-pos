@@ -1,7 +1,8 @@
-from app.modules.items.models import Item  # noqa
-from app.modules.sales.models import Sale, SaleIdempotency, SaleItem  # noqa
+from app.modules.items.models import Item, ItemHistory  # noqa
+from app.modules.sales.models import InvoiceJob, Sale, SaleIdempotency, SaleItem  # noqa
 from app.core.changelog.models import ChangeLog  # noqa
-from app.modules.metal_rates.models import MetalRate  # noqa
+from app.core.health import WorkerHeartbeat  # noqa
+from app.modules.metal_rates.models import MetalRate, MetalRateHistory  # noqa
 from app.modules.auth.models import AccountDeletionRequest, AuthSession, AuthToken, Device, GoogleNonce, User, UserIdentity  # noqa
 from app.modules.notifications.models import EmailOutbox  # noqa
 from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, ShopMembership  # noqa

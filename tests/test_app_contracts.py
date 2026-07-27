@@ -66,9 +66,14 @@ async def test_readiness_checks_database_connectivity() -> None:
 async def test_version_reports_deployment_identity() -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/v1/version")
+        response = await client.get(
+            "/api/v1/version",
+            headers={"X-Request-ID": "x" * 129},
+        )
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert len(response.headers["x-request-id"]) == 36
     assert response.json()["revision"] == "development"
     assert response.json()["image_digest"] == "development"
     assert response.json()["config_revision"] == "development"

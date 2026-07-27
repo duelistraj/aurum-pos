@@ -160,3 +160,107 @@ async def test_confirmed_deletion_removes_user_and_sole_owned_shop(monkeypatch) 
         await session.execute(
             delete(AccountDeletionRequest).where(AccountDeletionRequest.id == request_id)
         )
+
+
+@pytest.mark.asyncio
+async def test_account_deletion_revalidates_ownership_after_external_cleanup(monkeypatch) -> None:
+    owner_id = uuid4()
+    replacement_id = uuid4()
+    shop_id = uuid4()
+    request_id = uuid4()
+
+    async with AsyncSessionLocal.begin() as session:
+        session.add_all(
+            [
+                User(
+                    id=owner_id,
+                    email=f"deleting-{owner_id}@example.com",
+                    full_name="Deleting Owner",
+                ),
+                User(
+                    id=replacement_id,
+                    email=f"replacement-{replacement_id}@example.com",
+                    full_name="Replacement Owner",
+                ),
+                Shop(id=shop_id, name="Transfer Race Shop", slug=f"race-{shop_id}"),
+            ]
+        )
+        await session.flush()
+        session.add_all(
+            [
+                ShopMembership(
+                    shop_id=shop_id,
+                    user_id=owner_id,
+                    role="OWNER",
+                    is_active=True,
+                ),
+                ShopMembership(
+                    shop_id=shop_id,
+                    user_id=replacement_id,
+                    role="MANAGER",
+                    is_active=True,
+                ),
+                AccountDeletionRequest(
+                    id=request_id,
+                    user_id=owner_id,
+                    email_hash="c" * 64,
+                    token_hash=uuid4().hex + uuid4().hex,
+                    delete_owned_shops=True,
+                    confirmed_at=datetime.now(UTC) - timedelta(days=31),
+                    execute_after=datetime.now(UTC) - timedelta(days=1),
+                    cleanup_started_at=datetime.now(UTC),
+                    cleanup_attempts=1,
+                ),
+            ]
+        )
+
+    async def transfer_during_cleanup(
+        _shop_id,
+        *,
+        request_id=None,
+    ) -> set[str]:
+        assert request_id is not None
+        async with AsyncSessionLocal.begin() as session:
+            owner = await session.get(User, owner_id)
+            replacement = await session.get(User, replacement_id)
+            assert owner is not None
+            assert replacement is not None
+            memberships = (
+                await session.execute(
+                    ShopMembership.__table__.select().where(ShopMembership.shop_id == shop_id)
+                )
+            ).mappings()
+            by_user = {row["user_id"]: row["id"] for row in memberships}
+            await session.execute(
+                ShopMembership.__table__.update()
+                .where(ShopMembership.id == by_user[owner_id])
+                .values(role="ADMIN")
+            )
+            await session.execute(
+                ShopMembership.__table__.update()
+                .where(ShopMembership.id == by_user[replacement_id])
+                .values(role="OWNER")
+            )
+        return set()
+
+    monkeypatch.setattr(worker, "_cleanup_shop_external_data", transfer_during_cleanup)
+
+    try:
+        await worker._process_account_deletion(request_id)
+
+        async with AsyncSessionLocal.begin() as session:
+            assert await session.get(User, owner_id) is not None
+            shop = await session.get(Shop, shop_id)
+            assert shop is not None
+            assert shop.is_active is False
+            request = await session.get(AccountDeletionRequest, request_id)
+            assert request is not None
+            assert request.completed_at is None
+            assert request.cleanup_last_error_code == "RuntimeError"
+    finally:
+        async with AsyncSessionLocal.begin() as session:
+            await session.execute(
+                delete(AccountDeletionRequest).where(AccountDeletionRequest.id == request_id)
+            )
+            await session.execute(delete(Shop).where(Shop.id == shop_id))
+            await session.execute(delete(User).where(User.id.in_((owner_id, replacement_id))))

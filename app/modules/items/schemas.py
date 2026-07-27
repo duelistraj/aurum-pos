@@ -95,3 +95,4 @@ class ItemPOS(BaseModel):
 
 class ItemPOSWithPrice(ItemPOS):
     pricing: PricingBreakdown
+    tax_rate_percent: float

@@ -54,18 +54,22 @@ async def get_auth_context(
     except (TypeError, ValueError) as exc:
         raise credentials_exception from exc
 
-    session = await db.scalar(
-        select(AuthSession).where(
-            AuthSession.id == session_id,
-            AuthSession.user_id == user_id,
-            AuthSession.revoked_at.is_(None),
-            AuthSession.expires_at > datetime.now(UTC),
+    auth_row = (
+        await db.execute(
+            select(AuthSession, User)
+            .join(User, User.id == AuthSession.user_id)
+            .where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(UTC),
+                User.is_active.is_(True),
+            )
         )
-    )
-    user = await db.get(User, user_id) if session else None
-    if user is None or not user.is_active:
+    ).one_or_none()
+    if auth_row is None:
         raise credentials_exception
-    assert session is not None
+    session, user = auth_row
     return AuthContext(
         user=user,
         session_id=session_id,
@@ -105,16 +109,22 @@ async def get_shop_context(
     db: AsyncSession = Depends(get_db),
 ) -> ShopContext:
     await db.execute(
-        text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-        {"shop_id": str(x_shop_id)},
-    )
-    await db.execute(
-        text("SELECT set_config('app.current_user_id', :user_id, true)"),
-        {"user_id": str(context.user.id)},
+        text(
+            """
+            SELECT set_config('app.current_shop_id', :shop_id, true),
+                   set_config('app.current_user_id', :user_id, true)
+            """
+        ),
+        {"shop_id": str(x_shop_id), "user_id": str(context.user.id)},
     )
     result = await db.execute(
-        select(ShopMembership, Shop)
+        select(ShopMembership, Shop, ShopDeviceAccess)
         .join(Shop, Shop.id == ShopMembership.shop_id)
+        .outerjoin(
+            ShopDeviceAccess,
+            (ShopDeviceAccess.shop_id == ShopMembership.shop_id)
+            & (ShopDeviceAccess.device_id == device.id),
+        )
         .where(
             ShopMembership.shop_id == x_shop_id,
             ShopMembership.user_id == context.user.id,
@@ -125,14 +135,7 @@ async def get_shop_context(
     membership_row = result.one_or_none()
     if membership_row is None:
         raise HTTPException(status_code=404, detail="Shop membership not found")
-    membership, shop = membership_row
-
-    device_access = await db.scalar(
-        select(ShopDeviceAccess).where(
-            ShopDeviceAccess.shop_id == x_shop_id,
-            ShopDeviceAccess.device_id == device.id,
-        )
-    )
+    membership, shop, device_access = membership_row
     if device_access is None:
         device_access = ShopDeviceAccess(shop_id=x_shop_id, device_id=device.id)
         db.add(device_access)

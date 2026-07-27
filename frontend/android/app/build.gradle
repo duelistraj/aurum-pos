@@ -3,6 +3,9 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.duelistraj.aurumpos"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig = true
+    }
     defaultConfig {
         applicationId System.getenv("ANDROID_APPLICATION_ID") ?: "com.duelistraj.aurumpos"
         minSdkVersion rootProject.ext.minSdkVersion

@@ -9,13 +9,14 @@ from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token as google_id_token
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.modules.auth.dependencies import RequireOwner, ShopContext, get_shop_context
-from app.modules.billing.google_play import GooglePlayClient
-from app.modules.billing.service import verify_play_purchase
+from app.modules.billing.google_play import GooglePlayClient, GooglePlayError
+from app.modules.billing.service import apply_play_purchase, fetch_play_purchase
 from app.modules.subscriptions.models import BillingEvent, PlaySubscription, Subscription
 from app.modules.subscriptions.schemas import PlayPurchaseRequest, PlayPurchaseResponse
 from app.modules.subscriptions.service import get_entitlement_response
@@ -29,14 +30,33 @@ async def submit_purchase(
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    _subscription, state = await verify_play_purchase(
-        db,
-        shop_id=context.shop.id,
+    shop_id = context.shop.id
+    await db.commit()
+    purchase, play_client = await fetch_play_purchase(
+        shop_id=shop_id,
         purchase_token=data.purchase_token,
         product_id=data.product_id,
     )
+    async with AsyncSessionLocal.begin() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+            {"shop_id": str(shop_id)},
+        )
+        _subscription, state, needs_acknowledgement = await apply_play_purchase(
+            session,
+            shop_id=shop_id,
+            purchase_token=data.purchase_token,
+            product_id=data.product_id,
+            purchase=purchase,
+        )
+        entitlement = await get_entitlement_response(session, shop_id)
+    if needs_acknowledgement:
+        try:
+            await play_client.acknowledge(data.purchase_token)
+        except GooglePlayError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
     return PlayPurchaseResponse(
-        entitlement=await get_entitlement_response(db, context.shop.id),
+        entitlement=entitlement,
         subscription_state=state,
     )
 
@@ -45,7 +65,6 @@ async def submit_purchase(
 async def receive_rtdn(
     body: dict,
     authorization: str | None = Header(None),
-    db: AsyncSession = Depends(get_db),
 ):
     if settings.env != "local":
         if not (
@@ -76,8 +95,6 @@ async def receive_rtdn(
     encoded_data = message.get("data")
     if not message_id or not encoded_data:
         raise HTTPException(status_code=400, detail="Invalid Pub/Sub message")
-    if await db.scalar(select(BillingEvent.id).where(BillingEvent.provider_event_id == message_id)):
-        return None
     payload_bytes = base64.b64decode(encoded_data)
     payload = json.loads(payload_bytes)
     notification = payload.get("subscriptionNotification") or {}
@@ -85,30 +102,64 @@ async def receive_rtdn(
     if not purchase_token:
         return None
     token_digest = hashlib.sha256(purchase_token.encode()).hexdigest()
-    play = await db.scalar(
-        select(PlaySubscription).where(PlaySubscription.purchase_token_hash == token_digest)
-    )
-    if play is None:
-        return None
-    await db.execute(
-        text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-        {"shop_id": str(play.shop_id)},
-    )
-    subscription = await db.get(Subscription, play.subscription_id)
-    if subscription is None:
-        return None
-    event = BillingEvent(
-        provider_event_id=message_id,
-        event_type=str(notification.get("notificationType") or "unknown"),
-        payload_digest=hashlib.sha256(payload_bytes).hexdigest(),
-    )
-    db.add(event)
-    await verify_play_purchase(
-        db,
-        shop_id=play.shop_id,
+    async with AsyncSessionLocal.begin() as session:
+        await session.execute(
+            pg_insert(BillingEvent)
+            .values(
+                provider_event_id=message_id,
+                event_type=str(notification.get("notificationType") or "unknown"),
+                payload_digest=hashlib.sha256(payload_bytes).hexdigest(),
+            )
+            .on_conflict_do_nothing(index_elements=[BillingEvent.provider_event_id])
+        )
+        event = await session.scalar(
+            select(BillingEvent)
+            .where(BillingEvent.provider_event_id == message_id)
+            .with_for_update()
+        )
+        if event is not None and event.processed_at is not None:
+            return None
+        play = await session.scalar(
+            select(PlaySubscription).where(PlaySubscription.purchase_token_hash == token_digest)
+        )
+        if play is None:
+            if event is not None:
+                event.processed_at = datetime.now(UTC)
+            return None
+        shop_id = play.shop_id
+        subscription_id = play.subscription_id
+
+    purchase, play_client = await fetch_play_purchase(
+        shop_id=shop_id,
         purchase_token=purchase_token,
         product_id=settings.google_play_product_id,
         client=GooglePlayClient(),
     )
-    event.processed_at = datetime.now(UTC)
+    async with AsyncSessionLocal.begin() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+            {"shop_id": str(shop_id)},
+        )
+        if await session.get(Subscription, subscription_id) is None:
+            return None
+        _subscription, _state, needs_acknowledgement = await apply_play_purchase(
+            session,
+            shop_id=shop_id,
+            purchase_token=purchase_token,
+            product_id=settings.google_play_product_id,
+            purchase=purchase,
+        )
+    if needs_acknowledgement:
+        try:
+            await play_client.acknowledge(purchase_token)
+        except GooglePlayError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    async with AsyncSessionLocal.begin() as session:
+        event = await session.scalar(
+            select(BillingEvent)
+            .where(BillingEvent.provider_event_id == message_id)
+            .with_for_update()
+        )
+        if event is not None:
+            event.processed_at = datetime.now(UTC)
     return None

@@ -2,7 +2,7 @@
 # Builder Stage
 #############################################
 
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Keep the uv version aligned with pyproject.toml and CI.
-COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa /uv /uvx /bin/
 
 # Install production dependencies in a cacheable layer.
 COPY pyproject.toml uv.lock LICENSE README.md ./
@@ -33,7 +33,7 @@ COPY alembic.ini .
 # Runtime Stage
 #############################################
 
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS runtime
 
 ARG VCS_REF=development
 
@@ -67,4 +67,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=127.0.0.1"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers=2", "--proxy-headers", "--forwarded-allow-ips=*", "--no-access-log"]

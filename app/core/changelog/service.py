@@ -20,5 +20,7 @@ async def log_change(
         entity_id=entity_id,
         action=action,
         payload=payload,
+        barcode=payload.get("barcode"),
+        invoice_no=payload.get("invoice_no"),
     )
     db.add(entry)

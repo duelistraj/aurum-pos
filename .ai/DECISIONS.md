@@ -7,12 +7,12 @@ Status: accepted
 Basis: user-confirmed
 Decision: Store invoice PDFs in a private S3 bucket under UUID-based tenant keys while PostgreSQL remains the authoritative invoice index and authorization boundary.
 Rationale: The user explicitly required private object storage, EC2 instance-role credentials, database-backed tenant authorization, and no bucket listing in the normal invoice flow.
-Consequences: Sale creation commits before its retryable PDF upload, presigned URLs are short-lived and never persisted, and production IAM needs object-scoped GetObject and PutObject permissions.
+Consequences: Sale creation commits a durable database job before returning, the worker generates and retries the PDF under an expiring lease, presigned URLs are short-lived and never persisted, and production IAM needs object-scoped GetObject and PutObject permissions.
 Confirmed account deletion is the only object deletion path and additionally needs object-scoped DeleteObject so exact PostgreSQL-indexed invoice keys can be removed before shop deletion.
 
 Evidence:
 - `app/modules/sales/storage.py::InvoiceStorage`
-- `app/modules/sales/service.py::persist_invoice_pdf`
+- `app/jobs/invoices.py::process_invoice_jobs`
 - `alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py::upgrade`
 
 ### Standardize Python dependency management on uv

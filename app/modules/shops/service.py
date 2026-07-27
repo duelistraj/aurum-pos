@@ -19,11 +19,7 @@ def slugify(value: str) -> str:
 
 async def create_shop(db: AsyncSession, *, name: str, owner_id) -> Shop:
     base_slug = slugify(name)
-    slug = base_slug
-    suffix = 1
-    while await db.scalar(select(Shop.id).where(Shop.slug == slug)):
-        suffix += 1
-        slug = f"{base_slug[:70]}-{suffix}"
+    slug = f"{base_slug[:80]}-{str(owner_id).replace('-', '')[:8]}"
     shop = Shop(name=name.strip(), slug=slug)
     db.add(shop)
     await db.flush()

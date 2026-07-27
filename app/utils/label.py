@@ -98,12 +98,12 @@ def _draw_pdf_batch_label(c, item):
         weight_text = "unique"
     else:
         net_weight = getattr(item, "net_weight", None)
-        weight_text = f"{net_weight} g" if net_weight is not None else "—"
+        weight_text = f"{net_weight} g" if net_weight is not None else "-"
 
     purity_val = getattr(item, "purity", None)
     purity_text = f"{purity_val}%" if purity_val not in (None, 0.0, 0, 0.00) else ""
     making_charge = getattr(item, "making_charge", None)
-    mc_text = f"MC: {making_charge}" if making_charge is not None else "MC: —"
+    mc_text = f"MC: {making_charge}" if making_charge is not None else "MC: -"
 
     second_line_parts = [weight_text, mc_text]
     if purity_text:

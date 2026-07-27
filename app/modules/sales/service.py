@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+import anyio
 from fastapi import HTTPException
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,10 +13,11 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
+from app.modules.items.service import record_item_history
 from app.modules.metal_rates.models import MetalRate
 from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 from app.modules.sales.invoice import generate_invoice_pdf
-from app.modules.sales.models import Sale, SaleItem
+from app.modules.sales.models import InvoiceJob, Sale, SaleItem
 from app.modules.sales.schemas import SaleCreate
 from app.modules.sales.storage import (
     InvoiceStorage,
@@ -64,7 +66,7 @@ async def persist_invoice_pdf(
         if sale is None or sale.s3_object_key is not None:
             return sale
 
-        pdf = generate_invoice_pdf(sale)
+        pdf = await anyio.to_thread.run_sync(generate_invoice_pdf, sale)
         generated_at = datetime.now(UTC)
         object_key = build_invoice_object_key(
             prefix=settings.s3_invoice_prefix,
@@ -91,6 +93,9 @@ async def persist_invoice_pdf(
                 sale.s3_object_key = object_key
                 sale.pdf_generated_at = generated_at
                 sale.pdf_checksum_sha256 = metadata.checksum_sha256
+                sale.invoice_pdf_status = "ready"
+                sale.invoice_pdf_last_error_code = None
+                sale.invoice_pdf_lease_until = None
             return sale
 
     await storage.delete_pdf(object_key=object_key)
@@ -143,12 +148,13 @@ async def _execute_create_sale(
             )
 
     shop = await db.scalar(select(Shop).where(Shop.id == shop_id).with_for_update())
-    if shop is None:
+    if shop is None or not shop.is_active:
         raise HTTPException(404, "Shop does not exist")
     invoice_sequence = shop.next_invoice_sequence
     invoice_year = datetime.now(UTC).year
     while True:
-        invoice_no = f"INV-{invoice_year}-{invoice_sequence:06d}"
+        invoice_prefix = (shop.invoice_prefix or "INV").strip().upper()
+        invoice_no = f"{invoice_prefix}-{invoice_year}-{invoice_sequence:06d}"
         if not await db.scalar(
             select(Sale.id).where(
                 Sale.shop_id == shop_id,
@@ -167,11 +173,19 @@ async def _execute_create_sale(
         customer_name=data.customer_name,
         customer_phone=data.customer_phone,
         customer_address=data.customer_address,
-        customer_state="West Bengal",
-        customer_state_code="19",
+        customer_state=shop.state or "West Bengal",
+        customer_state_code=shop.state_code or "19",
+        seller_name=shop.legal_name or shop.name,
+        seller_tax_id=shop.tax_id,
+        seller_address=shop.address,
+        seller_state=shop.state or "West Bengal",
+        seller_state_code=shop.state_code or "19",
+        tax_rate_percent=shop.tax_rate_percent,
+        invoice_pdf_status="pending",
     )
     db.add(sale)
     await db.flush()  # get sale.id
+    db.add(InvoiceJob(shop_id=shop_id, sale_id=sale.id))
 
     sale_items: list[SaleItem] = []
 
@@ -213,6 +227,7 @@ async def _execute_create_sale(
             net_weight=item.net_weight,
             rate_per_gram=effective_rate,
             making_charge=item.making_charge,
+            tax_rate_percent=shop.tax_rate_percent,
         )
 
         line_total = Decimal(str(breakdown["final_price"])) * quantity_requested
@@ -255,6 +270,7 @@ async def _execute_create_sale(
             item.status = "sold"
         else:
             item.status = "in_stock"
+        record_item_history(db, item, event_type="sale")
 
         await log_change(
             db,
@@ -280,7 +296,6 @@ async def _execute_create_sale(
         payload={
             "invoice_no": sale.invoice_no,
             "total": float(sale.total_amount),
-            "customer_phone": sale.customer_phone,
             "state_code": sale.customer_state_code,
         },
     )

@@ -84,6 +84,9 @@ jobs:
           alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py
           alembic/versions/a8c9d0e1f2g3_assign_bmr_items.py
           alembic/versions/k2l3m4n5o6p7_harden_runtime_workflows.py
+          alembic/versions/l3m4n5o6p7q8_scale_and_tenant_hardening.py
+          alembic/versions/m3n4o5p6q7r8_configurable_shop_tax.py
+          alembic/versions/n4o5p6q7r8s9_preserve_metal_rate_contract.py
 
       - name: Check backend formatting
         run: >-
@@ -93,12 +96,15 @@ jobs:
           alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py
           alembic/versions/a8c9d0e1f2g3_assign_bmr_items.py
           alembic/versions/k2l3m4n5o6p7_harden_runtime_workflows.py
+          alembic/versions/l3m4n5o6p7q8_scale_and_tenant_hardening.py
+          alembic/versions/m3n4o5p6q7r8_configurable_shop_tax.py
+          alembic/versions/n4o5p6q7r8s9_preserve_metal_rate_contract.py
 
       - name: Type-check backend
         run: uv run mypy app
 
       - name: Test backend
-        run: uv run pytest --cov=app --cov-report=term-missing
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=55
 
   frontend:
     runs-on: ubuntu-latest
@@ -121,6 +127,10 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Audit production dependencies
+        working-directory: frontend
+        run: npm run audit:production
 
       - name: Lint frontend
         working-directory: frontend

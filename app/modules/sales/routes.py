@@ -1,21 +1,24 @@
 import hashlib
-import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.modules.auth.dependencies import ShopContext, get_shop_context
-from app.modules.sales.models import SaleIdempotency
-from app.modules.sales.schemas import InvoiceDownloadOut, SaleCreate, SaleOut
-from app.modules.sales.service import create_sale, get_sale_by_id, persist_invoice_pdf
+from app.modules.sales.models import InvoiceJob, SaleIdempotency
+from app.modules.sales.schemas import (
+    InvoiceDownloadOut,
+    InvoicePendingOut,
+    SaleCreate,
+    SaleOut,
+)
+from app.modules.sales.service import create_sale, get_sale_by_id
 from app.modules.sales.storage import InvoiceStorage, InvoiceStorageError, get_invoice_storage
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
-LOGGER = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=SaleOut)
@@ -24,11 +27,10 @@ async def create(
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=100)],
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
-    storage: InvoiceStorage = Depends(get_invoice_storage),
 ):
     request_hash = hashlib.sha256(data.model_dump_json(exclude={"invoice_no"}).encode()).hexdigest()
     await db.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
         {"key": f"{context.shop.id}:{idempotency_key}"},
     )
     existing = await db.scalar(
@@ -59,14 +61,6 @@ async def create(
         )
     await db.commit()
 
-    try:
-        await persist_invoice_pdf(
-            shop_id=context.shop.id,
-            sale_id=sale.id,
-            storage=storage,
-        )
-    except Exception:
-        LOGGER.exception("Invoice PDF persistence failed for sale %s", sale.id)
     return sale
 
 
@@ -96,13 +90,17 @@ async def get_idempotent_sale(
     return sale
 
 
-@router.get("/{sale_id}/invoice", response_model=InvoiceDownloadOut)
+@router.get(
+    "/{sale_id}/invoice",
+    response_model=InvoiceDownloadOut | InvoicePendingOut,
+)
 async def invoice(
     sale_id: UUID,
+    response: Response,
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
     storage: InvoiceStorage = Depends(get_invoice_storage),
-) -> InvoiceDownloadOut:
+) -> InvoiceDownloadOut | InvoicePendingOut:
     sale = await get_sale_by_id(
         db,
         sale_id=sale_id,
@@ -112,21 +110,26 @@ async def invoice(
         raise HTTPException(status_code=404, detail="Sale does not exist")
 
     if sale.s3_object_key is None:
-        await db.commit()
-        try:
-            sale = await persist_invoice_pdf(
-                shop_id=context.shop.id,
-                sale_id=sale.id,
-                storage=storage,
+        job = await db.scalar(
+            select(InvoiceJob).where(
+                InvoiceJob.shop_id == context.shop.id,
+                InvoiceJob.sale_id == sale.id,
             )
-        except Exception as exc:
-            LOGGER.exception("Invoice PDF retry failed for sale %s", sale_id)
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Invoice storage is unavailable",
-            ) from exc
-        if sale is None:
-            raise HTTPException(status_code=404, detail="Sale does not exist")
+        )
+        if job is None:
+            db.add(InvoiceJob(shop_id=context.shop.id, sale_id=sale.id))
+        elif job.status == "failed":
+            job.status = "pending"
+            job.attempts = 0
+            job.next_attempt_at = None
+            job.last_error_code = None
+            sale.invoice_pdf_status = "pending"
+            sale.invoice_pdf_attempts = 0
+            sale.invoice_pdf_next_attempt_at = None
+            sale.invoice_pdf_last_error_code = None
+        response.status_code = status.HTTP_202_ACCEPTED
+        response.headers["Retry-After"] = "2"
+        return InvoicePendingOut()
 
     assert sale.s3_object_key is not None
     try:

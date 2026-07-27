@@ -349,7 +349,67 @@ export const apiClient = {
       name: string;
       slug: string;
       role: string;
+      legal_name: string | null;
+      tax_id: string | null;
+      address: string | null;
+      state: string | null;
+      state_code: string | null;
+      invoice_prefix: string | null;
+      tax_rate_percent: number;
     }>>('/shops');
+    return data;
+  },
+
+  async updateShop(
+    shopId: string,
+    payload: {
+      name?: string;
+      legal_name?: string;
+      tax_id?: string;
+      address?: string;
+      state?: string;
+      state_code?: string;
+      invoice_prefix?: string;
+      tax_rate_percent?: number;
+    },
+  ) {
+    const { data } = await client.patch(`/shops/${shopId}`, payload);
+    return data;
+  },
+
+  async listStaff(shopId: string) {
+    const { data } = await client.get<Array<{
+      id: string;
+      user_id: string;
+      email: string;
+      full_name: string;
+      role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'CASHIER';
+      is_active: boolean;
+      created_at: string;
+    }>>(`/shops/${shopId}/members`);
+    return data;
+  },
+
+  async updateStaff(
+    shopId: string,
+    membershipId: string,
+    payload: {
+      role?: 'ADMIN' | 'MANAGER' | 'CASHIER';
+      is_active?: boolean;
+    },
+  ) {
+    const { data } = await client.patch(
+      `/shops/${shopId}/members/${membershipId}`,
+      payload,
+    );
+    return data;
+  },
+
+  async transferShopOwnership(shopId: string, targetMembershipId: string) {
+    const { data } = await client.post(
+      `/shops/${shopId}/ownership`,
+      { target_membership_id: targetMembershipId },
+    );
     return data;
   },
 
@@ -564,8 +624,16 @@ export const apiClient = {
 
   // Invoices
   async getInvoiceDownload(saleId: string) {
-    const { data } = await client.get<InvoiceDownload>(`/sales/${saleId}/invoice`);
-    return data;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const { data } = await client.get<
+        InvoiceDownload | { status: 'pending'; retry_after_seconds: number }
+      >(`/sales/${saleId}/invoice`);
+      if ('url' in data) return data;
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, Math.max(1, data.retry_after_seconds) * 1000);
+      });
+    }
+    throw new Error('Invoice is still being prepared. You can download it from History shortly.');
   },
 };
 

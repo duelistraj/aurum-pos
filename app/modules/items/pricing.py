@@ -61,6 +61,7 @@ def lock_price_at_sale(
     net_weight: DecimalLike,
     rate_per_gram: DecimalLike,
     making_charge: DecimalLike,
+    tax_rate_percent: DecimalLike | None = None,
 ) -> dict[str, str | Decimal | None]:
     normalized_category = category.strip().lower()
     normalized_metal = metal.strip().lower()
@@ -86,7 +87,11 @@ def lock_price_at_sale(
         )
         subtotal = metal_value + making
         tax = get_tax_profile(metal=metal, category=category)
-        gst_rate = tax["gst_rate_percent"]
+        gst_rate = (
+            as_decimal(tax_rate_percent)
+            if tax_rate_percent is not None
+            else tax["gst_rate_percent"]
+        )
         gst_amount = quantize_money(subtotal * gst_rate / HUNDRED)
         hsn = tax["hsn"]
 

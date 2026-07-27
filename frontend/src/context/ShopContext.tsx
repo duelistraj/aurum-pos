@@ -1,10 +1,12 @@
 import React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '../api/client';
 import {
   getActiveShopId,
   getUserInfo,
   MembershipInfo,
   setActiveShopId as persistActiveShopId,
+  setUserInfo,
   UserInfo,
 } from '../utils/auth';
 
@@ -26,8 +28,31 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const reload = React.useCallback(async () => {
     const [savedUser, savedShopId] = await Promise.all([getUserInfo(), getActiveShopId()]);
-    setUser(savedUser);
-    setActiveShopId(savedShopId ?? savedUser?.memberships[0]?.shop_id ?? null);
+    let currentUser = savedUser;
+    if (savedUser) {
+      try {
+        const shops = await apiClient.listShops();
+        currentUser = {
+          ...savedUser,
+          memberships: shops.map((shop) => ({
+            shop_id: shop.id,
+            shop_name: shop.name,
+            shop_slug: shop.slug,
+            role: shop.role as MembershipInfo['role'],
+          })),
+        };
+        await setUserInfo(currentUser);
+      } catch {
+        // Cached memberships keep the app usable during a transient API outage.
+      }
+    }
+    setUser(currentUser);
+    const selectedShopId = currentUser?.memberships.some(
+      ({ shop_id }) => shop_id === savedShopId,
+    )
+      ? savedShopId
+      : currentUser?.memberships[0]?.shop_id ?? null;
+    setActiveShopId(selectedShopId);
   }, []);
 
   React.useEffect(() => {

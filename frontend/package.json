@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "build": "npm run typecheck && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "audit:production": "node scripts/check-production-audit.mjs",
     "test": "vitest run",
     "preview": "vite preview"
   },
@@ -30,7 +31,7 @@
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.30.4"
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.1",

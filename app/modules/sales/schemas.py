@@ -27,3 +27,8 @@ class SaleOut(BaseModel):
 class InvoiceDownloadOut(BaseModel):
     url: str
     expires_in_seconds: int
+
+
+class InvoicePendingOut(BaseModel):
+    status: str = "pending"
+    retry_after_seconds: int = 2

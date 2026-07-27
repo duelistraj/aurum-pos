@@ -81,7 +81,9 @@ async def get_entitlement_response(db: AsyncSession, shop_id: UUID) -> Entitleme
 
 
 async def enforce_item_activation_limit(db: AsyncSession, shop_id: UUID) -> None:
-    await db.scalar(select(Shop.id).where(Shop.id == shop_id).with_for_update())
+    shop = await db.scalar(select(Shop).where(Shop.id == shop_id).with_for_update())
+    if shop is None or not shop.is_active:
+        raise HTTPException(status_code=404, detail="Shop does not exist")
     entitlement = await resolve_entitlement(db, shop_id)
     if entitlement.limit is None:
         return

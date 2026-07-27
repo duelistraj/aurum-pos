@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     google_play_pubsub_audience: str | None = None
     google_play_pubsub_service_account_email: str | None = None
     billing_token_encryption_key: str | None = None
+    billing_token_encryption_previous_keys: str = ""
     email_from: str = "Aurum POS <noreply@aurumpos.net>"
     ses_region: str = "ap-southeast-1"
     aws_region: str
@@ -53,6 +54,9 @@ class Settings(BaseSettings):
     worker_email_concurrency: int = Field(default=5, ge=1, le=20)
     worker_reconciliation_batch_size: int = Field(default=100, ge=1, le=1000)
     worker_reconciliation_concurrency: int = Field(default=5, ge=1, le=20)
+    worker_invoice_max_attempts: int = Field(default=8, ge=1, le=50)
+    worker_invoice_batch_size: int = Field(default=20, ge=1, le=200)
+    worker_invoice_concurrency: int = Field(default=2, ge=1, le=8)
     public_site_url: str = "https://aurumpos.net"
 
     model_config = SettingsConfigDict(

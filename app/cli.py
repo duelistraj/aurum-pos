@@ -21,6 +21,17 @@ from app.modules.shops.service import create_shop
 from app.modules.subscriptions.models import Subscription
 
 SUBSCRIPTION_SOURCES = ("play", "trial", "complimentary", "admin_grant")
+TENANT_TABLES = (
+    "change_log",
+    "item_history",
+    "items",
+    "metal_rates",
+    "metal_rate_history",
+    "sale_idempotency",
+    "sale_items",
+    "sales",
+    "subscriptions",
+)
 CLI_MAPPER_TYPES = (Item, SaleItem)
 ITEM_FIELDS = (
     "id",
@@ -163,6 +174,45 @@ async def import_items(args: argparse.Namespace) -> None:
         print(f"Imported {len(items)} items into {shop.slug}; sha256={actual_digest}")
 
 
+async def validate_runtime_db(_args: argparse.Namespace) -> None:
+    async with AsyncSessionLocal.begin() as session:
+        ssl_enabled = await session.scalar(text("SHOW ssl"))
+        if ssl_enabled != "on":
+            raise RuntimeError("PostgreSQL TLS is not enabled")
+        role = (
+            await session.execute(
+                text(
+                    """
+                    SELECT rolname, rolsuper, rolbypassrls
+                    FROM pg_roles
+                    WHERE rolname = current_user
+                    """
+                )
+            )
+        ).one()
+        if role.rolsuper or role.rolbypassrls:
+            raise RuntimeError("Runtime database role must not bypass row-level security")
+        table_rows = await session.execute(
+            text(
+                """
+                SELECT relname, relrowsecurity, relforcerowsecurity
+                FROM pg_class
+                WHERE relname = ANY(:table_names)
+                """
+            ),
+            {"table_names": list(TENANT_TABLES)},
+        )
+        state = {row.relname: (row.relrowsecurity, row.relforcerowsecurity) for row in table_rows}
+        invalid = [
+            name for name in TENANT_TABLES if name not in state or state[name] != (True, True)
+        ]
+        if invalid:
+            raise RuntimeError(
+                f"Tenant tables missing forced row-level security: {', '.join(invalid)}"
+            )
+        print(f"Runtime database role {role.rolname} and tenant RLS are valid")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Aurum POS operator commands")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -195,6 +245,9 @@ def build_parser() -> argparse.ArgumentParser:
     importer.add_argument("--shop", required=True)
     importer.add_argument("--file", required=True)
     importer.set_defaults(handler=import_items)
+
+    runtime_check = commands.add_parser("validate-runtime-db")
+    runtime_check.set_defaults(handler=validate_runtime_db)
     return parser
 
 

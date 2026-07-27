@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -20,16 +21,50 @@ ENTITLED_PLAY_STATES = frozenset(
 )
 
 
-def _encrypt_token(token: str) -> str:
+def _token_cipher() -> MultiFernet:
     if not settings.billing_token_encryption_key:
         raise HTTPException(status_code=503, detail="Billing token encryption is not configured")
-    return Fernet(settings.billing_token_encryption_key.encode()).encrypt(token.encode()).decode()
+    keys = [settings.billing_token_encryption_key]
+    keys.extend(
+        key.strip()
+        for key in settings.billing_token_encryption_previous_keys.split(",")
+        if key.strip()
+    )
+    return MultiFernet([Fernet(key.encode()) for key in keys])
+
+
+def _encrypt_token(token: str) -> str:
+    return _token_cipher().encrypt(token.encode()).decode()
 
 
 def decrypt_purchase_token(token: str) -> str:
-    if not settings.billing_token_encryption_key:
-        raise RuntimeError("Billing token encryption is not configured")
-    return Fernet(settings.billing_token_encryption_key.encode()).decrypt(token.encode()).decode()
+    try:
+        return _token_cipher().decrypt(token.encode()).decode()
+    except HTTPException as exc:
+        raise RuntimeError("Billing token encryption is not configured") from exc
+
+
+async def fetch_play_purchase(
+    *,
+    shop_id: UUID,
+    purchase_token: str,
+    product_id: str,
+    client: GooglePlayClient | None = None,
+) -> tuple[dict[str, Any], GooglePlayClient]:
+    if product_id != settings.google_play_product_id:
+        raise HTTPException(status_code=400, detail="Unknown subscription product")
+    play_client = client or GooglePlayClient()
+    try:
+        purchase = await play_client.get_subscription(purchase_token)
+    except GooglePlayError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    line_items = purchase.get("lineItems") or []
+    if not any(item.get("productId") == product_id for item in line_items):
+        raise HTTPException(status_code=400, detail="Purchase product does not match")
+    identifiers = purchase.get("externalAccountIdentifiers") or {}
+    if identifiers.get("obfuscatedExternalProfileId") != hash_token(str(shop_id)):
+        raise HTTPException(status_code=400, detail="Purchase is not linked to this shop")
+    return purchase, play_client
 
 
 async def verify_play_purchase(
@@ -40,23 +75,42 @@ async def verify_play_purchase(
     product_id: str,
     client: GooglePlayClient | None = None,
 ) -> tuple[Subscription, str]:
-    if product_id != settings.google_play_product_id:
-        raise HTTPException(status_code=400, detail="Unknown subscription product")
-    play_client = client or GooglePlayClient()
-    try:
-        purchase = await play_client.get_subscription(purchase_token)
-    except GooglePlayError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    purchase, play_client = await fetch_play_purchase(
+        shop_id=shop_id,
+        purchase_token=purchase_token,
+        product_id=product_id,
+        client=client,
+    )
+    subscription, state, needs_acknowledgement = await apply_play_purchase(
+        db,
+        shop_id=shop_id,
+        purchase_token=purchase_token,
+        product_id=product_id,
+        purchase=purchase,
+    )
+    if needs_acknowledgement:
+        try:
+            await play_client.acknowledge(purchase_token)
+        except GooglePlayError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return subscription, state
 
+
+async def apply_play_purchase(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    purchase_token: str,
+    product_id: str,
+    purchase: dict[str, Any],
+) -> tuple[Subscription, str, bool]:
     line_items = purchase.get("lineItems") or []
-    if not any(item.get("productId") == product_id for item in line_items):
-        raise HTTPException(status_code=400, detail="Purchase product does not match")
-    identifiers = purchase.get("externalAccountIdentifiers") or {}
-    expected_profile = hash_token(str(shop_id))
-    if identifiers.get("obfuscatedExternalProfileId") != expected_profile:
-        raise HTTPException(status_code=400, detail="Purchase is not linked to this shop")
 
     token_digest = hash_token(purchase_token)
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:token_digest, 0))"),
+        {"token_digest": token_digest},
+    )
     existing_play = await db.scalar(
         select(PlaySubscription).where(PlaySubscription.purchase_token_hash == token_digest)
     )
@@ -102,6 +156,7 @@ async def verify_play_purchase(
         assert existing_play is not None
         subscription.status = "active" if entitled else "expired"
         subscription.expires_at = expiry
+        existing_play.purchase_token = _encrypt_token(purchase_token)
         existing_play.state = state
         existing_play.last_verified_at = datetime.now(UTC)
     base_plan = next(
@@ -118,9 +173,5 @@ async def verify_play_purchase(
         item.get("autoRenewingPlan", {}).get("autoRenewEnabled") is True for item in line_items
     )
 
-    if purchase.get("acknowledgementState") == "ACKNOWLEDGEMENT_STATE_PENDING":
-        try:
-            await play_client.acknowledge(purchase_token)
-        except GooglePlayError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return subscription, state
+    needs_acknowledgement = purchase.get("acknowledgementState") == "ACKNOWLEDGEMENT_STATE_PENDING"
+    return subscription, state, needs_acknowledgement

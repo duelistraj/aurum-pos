@@ -62,6 +62,9 @@ export const getUserInfo = async (): Promise<UserInfo | null> => {
   }
 };
 
+export const setUserInfo = (userInfo: UserInfo): Promise<void> =>
+  setPreference(AUTH_KEYS.USER_INFO, JSON.stringify(userInfo));
+
 export const clearAuthData = async (): Promise<void> => {
   await Promise.all([
     removeSecureValue(AUTH_KEYS.ACCESS_TOKEN),

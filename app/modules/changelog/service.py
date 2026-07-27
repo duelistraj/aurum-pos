@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
@@ -29,9 +29,9 @@ async def get_change_log_history(
     if action:
         filters.append(ChangeLog.action == action)
     if barcode:
-        filters.append(cast(ChangeLog.payload["barcode"], String).ilike(f"%{barcode}%"))
+        filters.append(ChangeLog.barcode.startswith(barcode.strip()))
     if invoice_no:
-        filters.append(cast(ChangeLog.payload["invoice_no"], String).ilike(f"%{invoice_no}%"))
+        filters.append(ChangeLog.invoice_no.startswith(invoice_no.strip().upper()))
 
     if filters:
         stmt = stmt.where(*filters)

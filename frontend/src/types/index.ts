@@ -24,6 +24,7 @@ export interface ItemPOSWithPrice {
   net_weight: number;
   quantity: number;
   status: string;
+  tax_rate_percent: number;
   pricing: {
     metal_value: number;
     making_charge: number;

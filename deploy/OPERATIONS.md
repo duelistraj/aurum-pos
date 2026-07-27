@@ -49,7 +49,9 @@ remain backward-compatible after the initial clean-database SaaS cutover. The
 legacy BMR rollback is its isolated old deployment, not an application rollback
 against the new schema.
 
-The worker uses expiring PostgreSQL leases for email, subscription reconciliation, and account deletion work.
+The worker uses expiring PostgreSQL leases for email, invoice generation, subscription reconciliation, and account deletion work.
+Invoice PDFs are generated off the async event loop, retried with a stable object key, and exposed only after successful S3 upload metadata commits.
+Invoice delivery stops automatic retries after `WORKER_INVOICE_MAX_ATTEMPTS`; an authenticated download request requeues a failed job.
 Email delivery stops retrying after `WORKER_EMAIL_MAX_ATTEMPTS` and leaves the row in `failed` state for operator review.
 Account deletion cancels active Play renewals and removes exact S3 invoice objects before deleting a sole-owned shop.
 Do not manually delete a scheduled account while its cleanup is in progress.
@@ -66,7 +68,6 @@ application-managed backup jobs.
 
 ## Scale triggers
 
-Start Terraform and an ALB/multi-instance design before adding a second host or
-when sustained CPU exceeds 60%, memory exceeds 70%, API p95 exceeds 500 ms, or
-single-host availability is no longer acceptable. The API is stateless; session,
-outbox, and entitlement state live in PostgreSQL.
+Start Terraform and an ALB/multi-instance design before adding a second host or when sustained CPU exceeds 60%, memory exceeds 70%, API p95 exceeds 500 ms, or single-host availability is no longer acceptable.
+The API is stateless; session, durable jobs, outbox, entitlement, and worker-lease state live in PostgreSQL.
+Before raising API worker counts, keep the sum of every process's `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` below the Aiven connection limit with room for migrations and operations.

@@ -17,6 +17,20 @@ class ChangeLog(Base):
             "shop_id",
             text("created_at DESC"),
         ),
+        Index(
+            "ix_change_log_shop_barcode_created",
+            "shop_id",
+            "barcode",
+            text("created_at DESC"),
+            postgresql_where=text("barcode IS NOT NULL"),
+        ),
+        Index(
+            "ix_change_log_shop_invoice_created",
+            "shop_id",
+            "invoice_no",
+            text("created_at DESC"),
+            postgresql_where=text("invoice_no IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -53,6 +67,8 @@ class ChangeLog(Base):
         JSON,
         nullable=False,
     )
+    barcode: Mapped[str | None] = mapped_column(String(100))
+    invoice_no: Mapped[str | None] = mapped_column(String(50))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

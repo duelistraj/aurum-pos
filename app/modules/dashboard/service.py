@@ -6,8 +6,8 @@ from sqlalchemy import Date, and_, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
-from app.modules.items.models import Item
-from app.modules.metal_rates.models import MetalRate
+from app.modules.items.models import Item, ItemHistory
+from app.modules.metal_rates.models import MetalRateHistory
 from app.modules.sales.models import Sale, SaleItem
 
 HUNDRED = Decimal("100")
@@ -29,13 +29,16 @@ async def _rates_at(
     timestamp: datetime,
 ) -> dict[str, Decimal]:
     rows = await db.execute(
-        select(MetalRate.metal, MetalRate.rate_per_gram)
+        select(MetalRateHistory.metal, MetalRateHistory.rate_per_gram)
         .where(
-            MetalRate.shop_id == shop_id,
-            MetalRate.effective_from <= timestamp,
-            MetalRate.purity == HUNDRED,
+            MetalRateHistory.shop_id == shop_id,
+            MetalRateHistory.effective_from <= timestamp,
+            MetalRateHistory.purity == HUNDRED,
         )
-        .order_by(MetalRate.metal, MetalRate.effective_from.desc())
+        .order_by(
+            MetalRateHistory.metal,
+            MetalRateHistory.effective_from.desc(),
+        )
     )
     rates: dict[str, Decimal] = {}
     for metal, rate in rows:
@@ -51,27 +54,30 @@ async def _inventory_metrics(
     metal: str,
 ) -> dict[str, Decimal | int]:
     rates = await _rates_at(db, shop_id=shop_id, timestamp=timestamp)
-    sold_after = (
+    inventory_at = (
         select(
-            SaleItem.item_id.label("item_id"),
-            func.coalesce(func.sum(SaleItem.quantity), 0).label("quantity"),
-        )
-        .join(
-            Sale,
-            and_(
-                Sale.id == SaleItem.sale_id,
-                Sale.shop_id == SaleItem.shop_id,
-            ),
+            ItemHistory.item_id,
+            ItemHistory.category,
+            ItemHistory.metal,
+            ItemHistory.purity,
+            ItemHistory.net_weight,
+            ItemHistory.making_charge,
+            ItemHistory.quantity,
         )
         .where(
-            SaleItem.shop_id == shop_id,
-            Sale.created_at > timestamp,
+            ItemHistory.shop_id == shop_id,
+            ItemHistory.effective_from <= timestamp,
         )
-        .group_by(SaleItem.item_id)
+        .distinct(ItemHistory.item_id)
+        .order_by(
+            ItemHistory.item_id,
+            ItemHistory.effective_from.desc(),
+            ItemHistory.id.desc(),
+        )
         .subquery()
     )
-    quantity_at_timestamp = Item.quantity + func.coalesce(sold_after.c.quantity, 0)
-    normalized_metal = func.lower(Item.metal)
+    quantity_at_timestamp = inventory_at.c.quantity
+    normalized_metal = func.lower(inventory_at.c.metal)
     base_rate = (
         case(
             *((normalized_metal == name, rate) for name, rate in rates.items()),
@@ -82,41 +88,24 @@ async def _inventory_metrics(
     )
     effective_rate = case(
         (normalized_metal == "silver", base_rate),
-        else_=base_rate * Item.purity / HUNDRED,
+        else_=base_rate * inventory_at.c.purity / HUNDRED,
     )
-    metal_value = Item.net_weight * effective_rate
+    metal_value = inventory_at.c.net_weight * effective_rate
     making_value = case(
         (
-            func.lower(Item.category).in_(FIXED_MAKING_CATEGORIES),
-            Item.making_charge,
+            func.lower(inventory_at.c.category).in_(FIXED_MAKING_CATEGORIES),
+            inventory_at.c.making_charge,
         ),
-        else_=Item.making_charge * Item.net_weight,
+        else_=inventory_at.c.making_charge * inventory_at.c.net_weight,
     )
     suggested_value = case(
-        (func.lower(Item.category) == "unique", Item.making_charge),
+        (func.lower(inventory_at.c.category) == "unique", inventory_at.c.making_charge),
         else_=metal_value + making_value,
     )
     positive_quantity = case(
         (quantity_at_timestamp > 0, quantity_at_timestamp),
         else_=0,
     )
-    statement = (
-        select(
-            func.coalesce(func.sum(positive_quantity), 0),
-            func.coalesce(func.sum(positive_quantity * metal_value), 0),
-            func.coalesce(func.sum(positive_quantity * suggested_value), 0),
-        )
-        .select_from(Item)
-        .outerjoin(sold_after, sold_after.c.item_id == Item.id)
-        .where(
-            Item.shop_id == shop_id,
-            Item.created_at <= timestamp,
-        )
-    )
-    if metal != "all":
-        statement = statement.where(normalized_metal == metal)
-    inventory_items, total_stock_value, total_sale_value = (await db.execute(statement)).one()
-
     sold_metal = func.lower(func.coalesce(SaleItem.item_metal, Item.metal))
     sold_statement = (
         select(func.coalesce(func.sum(SaleItem.quantity), 0))
@@ -142,7 +131,17 @@ async def _inventory_metrics(
     )
     if metal != "all":
         sold_statement = sold_statement.where(sold_metal == metal)
-    sold_count = int((await db.execute(sold_statement)).scalar_one() or 0)
+    statement = select(
+        func.coalesce(func.sum(positive_quantity), 0),
+        func.coalesce(func.sum(positive_quantity * metal_value), 0),
+        func.coalesce(func.sum(positive_quantity * suggested_value), 0),
+        sold_statement.scalar_subquery(),
+    ).select_from(inventory_at)
+    if metal != "all":
+        statement = statement.where(normalized_metal == metal)
+    inventory_items, total_stock_value, total_sale_value, sold_count = (
+        await db.execute(statement)
+    ).one()
 
     return {
         "inventory_items": int(inventory_items or 0),
@@ -153,25 +152,44 @@ async def _inventory_metrics(
     }
 
 
-async def _sales_total(
+async def _sales_period_totals(
     db: AsyncSession,
     *,
     shop_id: UUID,
     start: datetime,
     end: datetime,
     metal: str,
-    include_end: bool,
-) -> Decimal:
-    end_filter = Sale.created_at <= end if include_end else Sale.created_at < end
+    previous_start: datetime,
+) -> tuple[Decimal, Decimal]:
     if metal == "all":
-        statement = select(func.coalesce(func.sum(Sale.total_amount), 0)).where(
+        amount = Sale.total_amount
+        statement = select(
+            func.coalesce(
+                func.sum(case((Sale.created_at >= start, amount), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((Sale.created_at < start, amount), else_=0)),
+                0,
+            ),
+        ).where(
             Sale.shop_id == shop_id,
-            Sale.created_at >= start,
-            end_filter,
+            Sale.created_at >= previous_start,
+            Sale.created_at <= end,
         )
     else:
+        amount = SaleItem.price
         statement = (
-            select(func.coalesce(func.sum(SaleItem.price), 0))
+            select(
+                func.coalesce(
+                    func.sum(case((Sale.created_at >= start, amount), else_=0)),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(case((Sale.created_at < start, amount), else_=0)),
+                    0,
+                ),
+            )
             .select_from(SaleItem)
             .join(
                 Sale,
@@ -189,12 +207,13 @@ async def _sales_total(
             )
             .where(
                 SaleItem.shop_id == shop_id,
-                Sale.created_at >= start,
-                end_filter,
+                Sale.created_at >= previous_start,
+                Sale.created_at <= end,
                 func.lower(func.coalesce(SaleItem.item_metal, Item.metal)) == metal,
             )
         )
-    return Decimal((await db.execute(statement)).scalar_one() or 0)
+    current, previous = (await db.execute(statement)).one()
+    return Decimal(current or 0), Decimal(previous or 0)
 
 
 async def _daily_sales(
@@ -337,21 +356,13 @@ async def get_dashboard_analytics(
     duration = to_date - from_date
     previous_start = from_date - duration
 
-    total_sales = await _sales_total(
+    total_sales, previous_sales = await _sales_period_totals(
         db,
         shop_id=shop_id,
         start=from_date,
         end=to_date,
         metal=normalized_metal,
-        include_end=True,
-    )
-    previous_sales = await _sales_total(
-        db,
-        shop_id=shop_id,
-        start=previous_start,
-        end=from_date,
-        metal=normalized_metal,
-        include_end=False,
+        previous_start=previous_start,
     )
     current_metrics = await _inventory_metrics(
         db,

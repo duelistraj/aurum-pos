@@ -32,14 +32,32 @@ def generate_invoice_pdf(sale: Sale) -> bytes:
     right_aligned = ParagraphStyle("InvoiceRight", parent=styles["Normal"], alignment=TA_RIGHT)
     created_at = sale.created_at.strftime("%Y-%m-%d %H:%M") if sale.created_at else ""
 
+    seller_name = getattr(sale, "seller_name", None) or "Aurum POS"
     story = [
-        Paragraph("Aurum POS", styles["Title"]),
+        Paragraph(escape(seller_name), styles["Title"]),
         Paragraph(f"Invoice: {escape(sale.invoice_no)}", styles["Heading2"]),
         Paragraph(f"Date: {created_at}", styles["Normal"]),
-        Spacer(1, 5 * mm),
-        Paragraph(f"Customer: {escape(sale.customer_name)}", styles["Normal"]),
-        Paragraph(f"Phone: {escape(sale.customer_phone)}", styles["Normal"]),
     ]
+    seller_tax_id = getattr(sale, "seller_tax_id", None)
+    seller_address = getattr(sale, "seller_address", None)
+    seller_state = getattr(sale, "seller_state", None)
+    seller_state_code = getattr(sale, "seller_state_code", None)
+    if seller_tax_id:
+        story.append(Paragraph(f"Tax ID: {escape(seller_tax_id)}", styles["Normal"]))
+    if seller_address:
+        story.append(Paragraph(escape(seller_address), styles["Normal"]))
+    if seller_state:
+        state = escape(seller_state)
+        if seller_state_code:
+            state = f"{state} ({escape(seller_state_code)})"
+        story.append(Paragraph(f"State: {state}", styles["Normal"]))
+    story.extend(
+        [
+            Spacer(1, 5 * mm),
+            Paragraph(f"Customer: {escape(sale.customer_name)}", styles["Normal"]),
+            Paragraph(f"Phone: {escape(sale.customer_phone)}", styles["Normal"]),
+        ]
+    )
     if sale.customer_address:
         story.append(Paragraph(f"Address: {escape(sale.customer_address)}", styles["Normal"]))
     story.append(Spacer(1, 6 * mm))

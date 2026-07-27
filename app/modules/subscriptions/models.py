@@ -1,7 +1,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -11,6 +19,7 @@ from app.core.database import Base
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
+    __table_args__ = (UniqueConstraint("shop_id", "id", name="uq_subscriptions_shop_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id: Mapped[uuid.UUID] = mapped_column(
@@ -34,10 +43,16 @@ class Subscription(Base):
 
 class PlaySubscription(Base):
     __tablename__ = "play_subscriptions"
-
-    subscription_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), primary_key=True
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ("shop_id", "subscription_id"),
+            ("subscriptions.shop_id", "subscriptions.id"),
+            ondelete="CASCADE",
+            name="fk_play_subscriptions_shop_subscription",
+        ),
     )
+
+    subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     shop_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False, index=True
     )

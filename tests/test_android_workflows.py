@@ -16,6 +16,7 @@ def test_debug_apk_excludes_google_authentication() -> None:
     assert 'VITE_GOOGLE_AUTH_ENABLED: "false"' in source
     assert "VITE_GOOGLE_WEB_CLIENT_ID" not in source
     assert "aurum-pos-cloud-smoke-debug-apk" in source
+    assert "./gradlew test lint assembleDebug" in source
 
 
 def test_signed_aab_enables_google_and_requires_stable_signing() -> None:

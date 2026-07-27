@@ -2,6 +2,7 @@ import math
 from typing import Annotated
 from uuid import UUID
 
+import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -143,6 +144,7 @@ async def pos_scan(
     return {
         **ItemPOS.model_validate(item).model_dump(),
         "pricing": pricing,
+        "tax_rate_percent": float(context.shop.tax_rate_percent),
     }
 
 
@@ -162,13 +164,15 @@ async def print_labels_for_all_items(
         )
 
     if output_format == "pdf":
+        document = await anyio.to_thread.run_sync(generate_batch_labels_pdf, items)
         return StreamingResponse(
-            iter([generate_batch_labels_pdf(items)]),
+            iter([document]),
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=all-item-labels.pdf"},
         )
+    document = await anyio.to_thread.run_sync(generate_batch_labels_xlsx, items)
     return StreamingResponse(
-        iter([generate_batch_labels_xlsx(items)]),
+        iter([document]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=all-item-labels.xlsx"},
     )
@@ -185,6 +189,7 @@ async def print_labels_batch(
         select(Item).where(
             Item.id.in_(item_ids),
             Item.shop_id == context.shop.id,
+            Item.archived_at.is_(None),
         )
     )
     items = result.scalars().all()
@@ -192,13 +197,15 @@ async def print_labels_batch(
         raise HTTPException(status_code=404, detail="None of the selected items exist")
 
     if output_format == "pdf":
+        document = await anyio.to_thread.run_sync(generate_batch_labels_pdf, items)
         return StreamingResponse(
-            iter([generate_batch_labels_pdf(items)]),
+            iter([document]),
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=jewellery-labels.pdf"},
         )
+    document = await anyio.to_thread.run_sync(generate_batch_labels_xlsx, items)
     return StreamingResponse(
-        iter([generate_batch_labels_xlsx(items)]),
+        iter([document]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=jewellery-labels.xlsx"},
     )
