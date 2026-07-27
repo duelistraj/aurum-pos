@@ -20,6 +20,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 class AuthContext:
     user: User
     session_id: UUID
+    device_uuid: str
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,12 @@ async def get_auth_context(
     user = await db.get(User, user_id) if session else None
     if user is None or not user.is_active:
         raise credentials_exception
-    return AuthContext(user=user, session_id=session_id)
+    assert session is not None
+    return AuthContext(
+        user=user,
+        session_id=session_id,
+        device_uuid=session.device_uuid,
+    )
 
 
 async def get_current_user(context: AuthContext = Depends(get_auth_context)) -> User:
@@ -76,6 +82,11 @@ async def get_current_device(
     context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> Device:
+    if x_device_uuid != context.device_uuid:
+        raise HTTPException(
+            status_code=403,
+            detail="Device does not match the authenticated session",
+        )
     device = await db.scalar(
         select(Device).where(
             Device.device_uuid == x_device_uuid,

@@ -50,6 +50,11 @@ class PlaySubscription(Base):
     state: Mapped[str] = mapped_column(String(50), nullable=False)
     auto_renewing: Mapped[bool | None] = mapped_column(Boolean)
     last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    next_verification_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    verification_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BillingEvent(Base):

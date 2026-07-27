@@ -45,10 +45,10 @@ class LoginRequest(EmailModel, DeviceInfo):
 
 
 class GoogleAuthRequest(DeviceInfo):
-    id_token: str
+    id_token: str = Field(min_length=1, max_length=8192)
     nonce: str = Field(min_length=16, max_length=256)
     shop_name: str | None = Field(None, min_length=1, max_length=150)
-    invitation_token: str | None = None
+    invitation_token: str | None = Field(default=None, max_length=256)
 
     @field_validator("shop_name")
     @classmethod
@@ -88,11 +88,12 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(min_length=32, max_length=256)
+    device_uuid: str = Field(min_length=8, max_length=100)
 
 
 class VerifyEmailRequest(BaseModel):
-    token: str
+    token: str = Field(min_length=32, max_length=256)
 
 
 class VerificationResendRequest(EmailModel):
@@ -104,7 +105,7 @@ class ForgotPasswordRequest(EmailModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    token: str
+    token: str = Field(min_length=32, max_length=256)
     password: str = Field(min_length=12, max_length=256)
 
 
@@ -113,11 +114,11 @@ class AccountDeletionStart(EmailModel):
 
 
 class AccountDeletionConfirm(BaseModel):
-    token: str
+    token: str = Field(min_length=32, max_length=256)
 
 
 class InvitationAcceptRequest(EmailModel, DeviceInfo):
-    token: str
+    token: str = Field(min_length=32, max_length=256)
     password: str = Field(min_length=12, max_length=256)
     full_name: str = Field(min_length=1, max_length=100)
 

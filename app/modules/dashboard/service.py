@@ -1,91 +1,313 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, and_, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.changelog.models import ChangeLog
 from app.modules.items.models import Item
-from app.modules.items.pricing import calculate_suggested_price
 from app.modules.metal_rates.models import MetalRate
-from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 from app.modules.sales.models import Sale, SaleItem
+
+HUNDRED = Decimal("100")
+FIXED_MAKING_CATEGORIES = ("ring", "other", "pendant")
+
+
+def _change_percentage(current: Decimal | int, previous: Decimal | int) -> float:
+    current_value = float(current)
+    previous_value = float(previous)
+    if previous_value > 0:
+        return ((current_value - previous_value) / previous_value) * 100
+    return 100.0 if current_value > 0 else 0.0
+
+
+async def _rates_at(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    timestamp: datetime,
+) -> dict[str, Decimal]:
+    rows = await db.execute(
+        select(MetalRate.metal, MetalRate.rate_per_gram)
+        .where(
+            MetalRate.shop_id == shop_id,
+            MetalRate.effective_from <= timestamp,
+            MetalRate.purity == HUNDRED,
+        )
+        .order_by(MetalRate.metal, MetalRate.effective_from.desc())
+    )
+    rates: dict[str, Decimal] = {}
+    for metal, rate in rows:
+        rates.setdefault(str(metal).lower(), Decimal(rate))
+    return rates
+
+
+async def _inventory_metrics(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    timestamp: datetime,
+    metal: str,
+) -> dict[str, Decimal | int]:
+    rates = await _rates_at(db, shop_id=shop_id, timestamp=timestamp)
+    sold_after = (
+        select(
+            SaleItem.item_id.label("item_id"),
+            func.coalesce(func.sum(SaleItem.quantity), 0).label("quantity"),
+        )
+        .join(
+            Sale,
+            and_(
+                Sale.id == SaleItem.sale_id,
+                Sale.shop_id == SaleItem.shop_id,
+            ),
+        )
+        .where(
+            SaleItem.shop_id == shop_id,
+            Sale.created_at > timestamp,
+        )
+        .group_by(SaleItem.item_id)
+        .subquery()
+    )
+    quantity_at_timestamp = Item.quantity + func.coalesce(sold_after.c.quantity, 0)
+    normalized_metal = func.lower(Item.metal)
+    base_rate = (
+        case(
+            *((normalized_metal == name, rate) for name, rate in rates.items()),
+            else_=Decimal(0),
+        )
+        if rates
+        else literal(Decimal(0))
+    )
+    effective_rate = case(
+        (normalized_metal == "silver", base_rate),
+        else_=base_rate * Item.purity / HUNDRED,
+    )
+    metal_value = Item.net_weight * effective_rate
+    making_value = case(
+        (
+            func.lower(Item.category).in_(FIXED_MAKING_CATEGORIES),
+            Item.making_charge,
+        ),
+        else_=Item.making_charge * Item.net_weight,
+    )
+    suggested_value = case(
+        (func.lower(Item.category) == "unique", Item.making_charge),
+        else_=metal_value + making_value,
+    )
+    positive_quantity = case(
+        (quantity_at_timestamp > 0, quantity_at_timestamp),
+        else_=0,
+    )
+    statement = (
+        select(
+            func.coalesce(func.sum(positive_quantity), 0),
+            func.coalesce(func.sum(positive_quantity * metal_value), 0),
+            func.coalesce(func.sum(positive_quantity * suggested_value), 0),
+        )
+        .select_from(Item)
+        .outerjoin(sold_after, sold_after.c.item_id == Item.id)
+        .where(
+            Item.shop_id == shop_id,
+            Item.created_at <= timestamp,
+        )
+    )
+    if metal != "all":
+        statement = statement.where(normalized_metal == metal)
+    inventory_items, total_stock_value, total_sale_value = (await db.execute(statement)).one()
+
+    sold_metal = func.lower(func.coalesce(SaleItem.item_metal, Item.metal))
+    sold_statement = (
+        select(func.coalesce(func.sum(SaleItem.quantity), 0))
+        .select_from(SaleItem)
+        .join(
+            Sale,
+            and_(
+                Sale.id == SaleItem.sale_id,
+                Sale.shop_id == SaleItem.shop_id,
+            ),
+        )
+        .outerjoin(
+            Item,
+            and_(
+                Item.id == SaleItem.item_id,
+                Item.shop_id == SaleItem.shop_id,
+            ),
+        )
+        .where(
+            SaleItem.shop_id == shop_id,
+            Sale.created_at <= timestamp,
+        )
+    )
+    if metal != "all":
+        sold_statement = sold_statement.where(sold_metal == metal)
+    sold_count = int((await db.execute(sold_statement)).scalar_one() or 0)
+
+    return {
+        "inventory_items": int(inventory_items or 0),
+        "total_stock_value": Decimal(total_stock_value or 0),
+        "total_sale_value": Decimal(total_sale_value or 0),
+        "silver_rate_10g": rates.get("silver", Decimal(0)) * 10,
+        "sold_count": sold_count,
+    }
+
+
+async def _sales_total(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    start: datetime,
+    end: datetime,
+    metal: str,
+    include_end: bool,
+) -> Decimal:
+    end_filter = Sale.created_at <= end if include_end else Sale.created_at < end
+    if metal == "all":
+        statement = select(func.coalesce(func.sum(Sale.total_amount), 0)).where(
+            Sale.shop_id == shop_id,
+            Sale.created_at >= start,
+            end_filter,
+        )
+    else:
+        statement = (
+            select(func.coalesce(func.sum(SaleItem.price), 0))
+            .select_from(SaleItem)
+            .join(
+                Sale,
+                and_(
+                    Sale.id == SaleItem.sale_id,
+                    Sale.shop_id == SaleItem.shop_id,
+                ),
+            )
+            .outerjoin(
+                Item,
+                and_(
+                    Item.id == SaleItem.item_id,
+                    Item.shop_id == SaleItem.shop_id,
+                ),
+            )
+            .where(
+                SaleItem.shop_id == shop_id,
+                Sale.created_at >= start,
+                end_filter,
+                func.lower(func.coalesce(SaleItem.item_metal, Item.metal)) == metal,
+            )
+        )
+    return Decimal((await db.execute(statement)).scalar_one() or 0)
+
+
+async def _daily_sales(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    start: datetime,
+    end: datetime,
+    metal: str,
+) -> dict[date, Decimal]:
+    sale_day = cast(Sale.created_at, Date)
+    if metal == "all":
+        statement = (
+            select(sale_day, func.sum(Sale.total_amount))
+            .where(
+                Sale.shop_id == shop_id,
+                Sale.created_at >= start,
+                Sale.created_at <= end,
+            )
+            .group_by(sale_day)
+        )
+    else:
+        statement = (
+            select(sale_day, func.sum(SaleItem.price))
+            .select_from(SaleItem)
+            .join(
+                Sale,
+                and_(
+                    Sale.id == SaleItem.sale_id,
+                    Sale.shop_id == SaleItem.shop_id,
+                ),
+            )
+            .outerjoin(
+                Item,
+                and_(
+                    Item.id == SaleItem.item_id,
+                    Item.shop_id == SaleItem.shop_id,
+                ),
+            )
+            .where(
+                SaleItem.shop_id == shop_id,
+                Sale.created_at >= start,
+                Sale.created_at <= end,
+                func.lower(func.coalesce(SaleItem.item_metal, Item.metal)) == metal,
+            )
+            .group_by(sale_day)
+        )
+    return {row_day: Decimal(amount or 0) for row_day, amount in await db.execute(statement)}
+
+
+async def _category_sales(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    start: datetime,
+    end: datetime,
+    metal: str,
+) -> dict[str, Decimal]:
+    normalized_metal = func.lower(func.coalesce(SaleItem.item_metal, Item.metal))
+    normalized_category = func.lower(func.coalesce(SaleItem.item_category, Item.category))
+    group_expression = normalized_metal if metal == "all" else normalized_category
+    statement = (
+        select(group_expression, func.coalesce(func.sum(SaleItem.price), 0))
+        .select_from(SaleItem)
+        .join(
+            Sale,
+            and_(
+                Sale.id == SaleItem.sale_id,
+                Sale.shop_id == SaleItem.shop_id,
+            ),
+        )
+        .outerjoin(
+            Item,
+            and_(
+                Item.id == SaleItem.item_id,
+                Item.shop_id == SaleItem.shop_id,
+            ),
+        )
+        .where(
+            SaleItem.shop_id == shop_id,
+            Sale.created_at >= start,
+            Sale.created_at <= end,
+        )
+        .group_by(group_expression)
+    )
+    if metal != "all":
+        statement = statement.where(normalized_metal == metal)
+    return {str(name): Decimal(amount or 0) for name, amount in await db.execute(statement)}
 
 
 async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
-    total_sales_subquery = (
-        select(func.coalesce(func.sum(Sale.total_amount), 0))
-        .where(Sale.shop_id == shop_id)
-        .scalar_subquery()
+    now = datetime.now(UTC)
+    metrics = await _inventory_metrics(
+        db,
+        shop_id=shop_id,
+        timestamp=now,
+        metal="all",
     )
-    stmt = select(
-        func.coalesce(func.sum(Item.quantity), 0),
-        total_sales_subquery,
-    ).where(
-        Item.shop_id == shop_id,
-        Item.status == "in_stock",
+    total_sales_amount = await db.scalar(
+        select(func.coalesce(func.sum(Sale.total_amount), 0)).where(Sale.shop_id == shop_id)
     )
-    inventory_count, total_sales_amount = (await db.execute(stmt)).one()
-    inventory_count = int(inventory_count or 0)
-    total_sales_amount = Decimal(total_sales_amount or 0)
-
-    rates_stmt = (
-        select(MetalRate)
-        .where(
-            MetalRate.shop_id == shop_id,
-            MetalRate.purity == Decimal("100"),
-        )
-        .order_by(MetalRate.effective_from.desc())
-    )
-    rates_result = await db.execute(rates_stmt)
-    rate_by_key: dict[tuple[str, Decimal], Decimal] = {}
-    for rate in rates_result.scalars():
-        rate_by_key.setdefault((rate.metal.lower(), rate.purity), rate.rate_per_gram)
-
-    silver_rate_per_gram = rate_by_key.get(("silver", Decimal("100")), Decimal(0))
-    silver_rate_per_10g = silver_rate_per_gram * 10
-    total_stock_value = Decimal(0)
-
-    items_stmt = select(Item).where(
-        Item.shop_id == shop_id,
-        Item.status == "in_stock",
-    )
-    total_sale_value = Decimal(0)
-    for item in (await db.execute(items_stmt)).scalars():
-        metal_lower = item.metal.lower()
-        base_rate = rate_by_key.get((metal_lower, Decimal("100")), Decimal(0))
-        effective_rate = calculate_effective_rate_per_gram(
-            metal=item.metal,
-            purity=item.purity,
-            base_rate_per_gram=base_rate,
-        )
-        total_stock_value += item.net_weight * effective_rate * item.quantity
-        pricing = calculate_suggested_price(
-            category=item.category,
-            net_weight=item.net_weight,
-            rate_per_gram=effective_rate,
-            making_charge=item.making_charge,
-        )
-        total_sale_value += Decimal(str(pricing["suggested_price"])) * item.quantity
-
-    # Recent changelog entries
-    activity_stmt = (
+    activity_result = await db.execute(
         select(ChangeLog)
         .where(ChangeLog.shop_id == shop_id)
         .order_by(ChangeLog.created_at.desc())
         .limit(5)
     )
-    activity_result = await db.execute(activity_stmt)
-    recent_activity = activity_result.scalars().all()
-
     return {
-        "inventory_items": inventory_count,
-        "total_stock_value": float(total_stock_value),
-        "Silver_rate_per_10g": float(silver_rate_per_10g),
-        "total_sales_amount": float(total_sales_amount),
-        "total_sale_value": float(total_sale_value),
+        "inventory_items": metrics["inventory_items"],
+        "total_stock_value": float(metrics["total_stock_value"]),
+        "Silver_rate_per_10g": float(metrics["silver_rate_10g"]),
+        "total_sales_amount": float(total_sales_amount or 0),
+        "total_sale_value": float(metrics["total_sale_value"]),
         "recent_activity": [
             {
                 "id": str(entry.id),
@@ -94,7 +316,7 @@ async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
                 "payload": entry.payload,
                 "created_at": entry.created_at.isoformat() if entry.created_at else None,
             }
-            for entry in recent_activity
+            for entry in activity_result.scalars()
         ],
     }
 
@@ -107,324 +329,150 @@ async def get_dashboard_analytics(
     *,
     shop_id: UUID,
 ) -> dict:
-    # Ensure timezone awareness
     if from_date.tzinfo is None:
         from_date = from_date.replace(tzinfo=UTC)
     if to_date.tzinfo is None:
         to_date = to_date.replace(tzinfo=UTC)
-
+    normalized_metal = metal.strip().lower()
     duration = to_date - from_date
-    prev_start = from_date - duration
-    prev_end = from_date
+    previous_start = from_date - duration
 
-    # 1. Total Sales (Revenue)
-    # Current period sales
-    curr_sales_stmt = (
-        select(Sale)
-        .where(
-            Sale.shop_id == shop_id,
-            Sale.created_at >= from_date,
-            Sale.created_at <= to_date,
-        )
-        .options(selectinload(Sale.items).selectinload(SaleItem.item))
+    total_sales = await _sales_total(
+        db,
+        shop_id=shop_id,
+        start=from_date,
+        end=to_date,
+        metal=normalized_metal,
+        include_end=True,
     )
-    curr_sales_result = await db.execute(curr_sales_stmt)
-    current_sales = curr_sales_result.scalars().all()
-
-    if metal.lower() == "all":
-        total_sales = sum(float(s.total_amount) for s in current_sales)
-    else:
-        total_sales = sum(
-            float(si.price)
-            for s in current_sales
-            for si in s.items
-            if si.item and si.item.metal.lower() == metal.lower()
-        )
-
-    # Previous period sales
-    prev_sales_stmt = (
-        select(Sale)
-        .where(
-            Sale.shop_id == shop_id,
-            Sale.created_at >= prev_start,
-            Sale.created_at < from_date,
-        )
-        .options(selectinload(Sale.items).selectinload(SaleItem.item))
+    previous_sales = await _sales_total(
+        db,
+        shop_id=shop_id,
+        start=previous_start,
+        end=from_date,
+        metal=normalized_metal,
+        include_end=False,
     )
-    prev_sales_result = await db.execute(prev_sales_stmt)
-    prev_sales = prev_sales_result.scalars().all()
+    current_metrics = await _inventory_metrics(
+        db,
+        shop_id=shop_id,
+        timestamp=to_date,
+        metal=normalized_metal,
+    )
+    previous_metrics = await _inventory_metrics(
+        db,
+        shop_id=shop_id,
+        timestamp=from_date,
+        metal=normalized_metal,
+    )
 
-    if metal.lower() == "all":
-        total_sales_prev = sum(float(s.total_amount) for s in prev_sales)
-    else:
-        total_sales_prev = sum(
-            float(si.price)
-            for s in prev_sales
-            for si in s.items
-            if si.item and si.item.metal.lower() == metal.lower()
+    totals_by_day = await _daily_sales(
+        db,
+        shop_id=shop_id,
+        start=from_date,
+        end=to_date,
+        metal=normalized_metal,
+    )
+    sales_overview = []
+    current_day = from_date.date()
+    while current_day <= to_date.date():
+        sales_overview.append(
+            {
+                "date": current_day.strftime("%b %d"),
+                "total_amount": round(float(totals_by_day.get(current_day, Decimal(0))), 2),
+            }
         )
+        current_day += timedelta(days=1)
 
-    # Sales Change Percentage
-    if total_sales_prev > 0:
-        total_sales_change_percentage = ((total_sales - total_sales_prev) / total_sales_prev) * 100
-    else:
-        total_sales_change_percentage = 100.0 if total_sales > 0 else 0.0
-
-    # Helper to calculate metrics at a given timestamp T
-    async def get_metrics_at_timestamp(T: datetime):
-        # Fetch rates active at or before T
-        rates_stmt = (
-            select(MetalRate)
-            .where(
-                MetalRate.shop_id == shop_id,
-                MetalRate.effective_from <= T,
-                MetalRate.purity == Decimal("100"),
-            )
-            .order_by(MetalRate.effective_from.desc())
-        )
-        rates_result = await db.execute(rates_stmt)
-        rates_list = rates_result.scalars().all()
-
-        rates_dict = {}
-        for r in rates_list:
-            key = (r.metal.lower(), float(r.purity))
-            if key not in rates_dict:
-                rates_dict[key] = float(r.rate_per_gram)
-
-        silver_rate_per_gram = rates_dict.get(("silver", 100.0), 0.0)
-        silver_rate_10g = silver_rate_per_gram * 10
-
-        # Reconstruct stock at T
-        sold_after_subquery = (
-            select(func.coalesce(func.sum(SaleItem.quantity), 0))
-            .join(Sale)
-            .where(
-                SaleItem.shop_id == shop_id,
-                Sale.shop_id == shop_id,
-                SaleItem.item_id == Item.id,
-                Sale.created_at > T,
-            )
-            .scalar_subquery()
-        )
-
-        stmt = select(Item, sold_after_subquery.label("sold_after")).where(
-            Item.shop_id == shop_id,
-            Item.created_at <= T,
-        )
-        if metal.lower() != "all":
-            stmt = stmt.where(Item.metal.ilike(metal))
-
-        items_result = await db.execute(stmt)
-        items_at_T = items_result.all()
-
-        inventory_items = 0
-        total_stock_value = 0.0
-        total_sale_value = 0.0
-
-        for item, sold_after in items_at_T:
-            qty_at_T = int(item.quantity) + int(sold_after)
-            if qty_at_T <= 0:
-                continue
-
-            inventory_items += qty_at_T
-            net_weight = float(item.net_weight or 0.0)
-            # Catalog value (suggested price)
-            metal_lower = item.metal.lower()
-            base_rate_per_gram = rates_dict.get((metal_lower, 100.0), 0.0)
-            rate_per_gram = float(
-                calculate_effective_rate_per_gram(
-                    metal=item.metal,
-                    purity=item.purity,
-                    base_rate_per_gram=base_rate_per_gram,
-                )
-            )
-            total_stock_value += net_weight * qty_at_T * rate_per_gram
-
-            category = str(item.category).strip().lower()
-            making_charge = float(item.making_charge or 0.0)
-
-            if category == "unique":
-                suggested_price = making_charge
-            else:
-                metal_value = net_weight * rate_per_gram
-                if category in {"ring", "other", "pendant"}:
-                    making = making_charge
-                else:
-                    making = making_charge * net_weight
-                suggested_price = metal_value + making
-
-            total_sale_value += suggested_price * qty_at_T
-
-        # Get count of items sold on or before T
-        sold_stmt = (
-            select(func.coalesce(func.sum(SaleItem.quantity), 0))
-            .join(Sale)
-            .where(
-                SaleItem.shop_id == shop_id,
-                Sale.shop_id == shop_id,
-                Sale.created_at <= T,
-            )
-        )
-        if metal.lower() != "all":
-            sold_stmt = sold_stmt.join(Item).where(Item.metal.ilike(metal))
-
-        sold_count = int((await db.execute(sold_stmt)).scalar_one() or 0)
-
-        return {
-            "inventory_items": inventory_items,
-            "total_stock_value": total_stock_value,
-            "total_sale_value": total_sale_value,
-            "silver_rate_10g": silver_rate_10g,
-            "sold_count": sold_count,
+    raw_categories = await _category_sales(
+        db,
+        shop_id=shop_id,
+        start=from_date,
+        end=to_date,
+        metal=normalized_metal,
+    )
+    if normalized_metal == "all":
+        categories = {
+            f"{name.capitalize()} Jewellery": value
+            for name, value in raw_categories.items()
+            if name in {"gold", "silver", "platinum"}
         }
-
-    # Calculate metrics for current and previous end dates
-    curr_metrics = await get_metrics_at_timestamp(to_date)
-    prev_metrics = await get_metrics_at_timestamp(from_date)
-
-    # Calculate change percentages
-    def calc_change_pct(curr_val, prev_val):
-        if prev_val > 0:
-            return ((curr_val - prev_val) / prev_val) * 100
-        return 100.0 if curr_val > 0 else 0.0
-
-    total_sale_value_change = calc_change_pct(
-        curr_metrics["total_sale_value"], prev_metrics["total_sale_value"]
-    )
-    inventory_items_change = calc_change_pct(
-        curr_metrics["inventory_items"], prev_metrics["inventory_items"]
-    )
-    silver_rate_change = calc_change_pct(
-        curr_metrics["silver_rate_10g"], prev_metrics["silver_rate_10g"]
-    )
-    total_stock_value_change = calc_change_pct(
-        curr_metrics["total_stock_value"], prev_metrics["total_stock_value"]
-    )
-
-    # 2. Sales Overview (Daily Line Chart Points)
-    day_sales = {}
-    curr_day = from_date.date()
-    end_day = to_date.date()
-    while curr_day <= end_day:
-        day_sales[curr_day] = 0.0
-        curr_day += timedelta(days=1)
-
-    for s in current_sales:
-        sale_date = s.created_at.date()
-        if sale_date in day_sales:
-            if metal.lower() == "all":
-                day_sales[sale_date] += float(s.total_amount)
-            else:
-                day_sales[sale_date] += sum(
-                    float(si.price)
-                    for si in s.items
-                    if si.item and si.item.metal.lower() == metal.lower()
-                )
-
-    sales_overview = [
-        {"date": dt.strftime("%b %d"), "total_amount": round(amt, 2)}
-        for dt, amt in sorted(day_sales.items())
+    else:
+        categories = {name.capitalize(): value for name, value in raw_categories.items()}
+    category_total = sum(categories.values(), start=Decimal(0))
+    sales_by_category: list[dict[str, str | float]] = [
+        {
+            "category": name,
+            "sales_value": round(float(value), 2),
+            "share": round(float(value / category_total * 100), 1) if category_total else 0.0,
+        }
+        for name, value in categories.items()
     ]
+    sales_by_category.sort(
+        key=lambda entry: float(entry["sales_value"]),
+        reverse=True,
+    )
 
-    # 3. Category Mapping & Sales Breakdown
-    if metal.lower() == "all":
-        cat_totals = {
-            "Gold Jewellery": 0.0,
-            "Silver Jewellery": 0.0,
-            "Platinum Jewellery": 0.0,
-        }
-        for s in current_sales:
-            for si in s.items:
-                if si.item:
-                    m = si.item.metal.lower()
-                    if m == "gold":
-                        cat_totals["Gold Jewellery"] += float(si.price)
-                    elif m == "silver":
-                        cat_totals["Silver Jewellery"] += float(si.price)
-                    elif m == "platinum":
-                        cat_totals["Platinum Jewellery"] += float(si.price)
-    else:
-        # Categories: jewellery, unique, ring, necklace, bracelet, earring, pendant, other
-        cat_totals = {
-            "Jewellery": 0.0,
-            "Unique": 0.0,
-            "Ring": 0.0,
-            "Necklace": 0.0,
-            "Bracelet": 0.0,
-            "Earring": 0.0,
-            "Pendant": 0.0,
-            "Other": 0.0,
-        }
-        for s in current_sales:
-            for si in s.items:
-                if si.item and si.item.metal.lower() == metal.lower():
-                    cat = str(si.item.category).strip().lower()
-                    cap_cat = cat.capitalize()
-                    if cap_cat in cat_totals:
-                        cat_totals[cap_cat] += float(si.price)
-                    else:
-                        cat_totals["Other"] += float(si.price)
-
-    total_cat_sales = sum(cat_totals.values())
-    sales_by_category: list[dict[str, str | float]] = []
-    for cat, val in cat_totals.items():
-        share = (val / total_cat_sales * 100) if total_cat_sales > 0 else 0.0
-        sales_by_category.append(
-            {"category": cat, "sales_value": round(val, 2), "share": round(share, 1)}
-        )
-
-    sales_by_category.sort(key=lambda entry: float(entry["sales_value"]), reverse=True)
-
-    # 4. Inventory Ratio (In Stock vs Sold) at end of period (to_date)
-    in_stock_count = curr_metrics["inventory_items"]
-    sold_count = curr_metrics["sold_count"]
+    in_stock_count = int(current_metrics["inventory_items"])
+    sold_count = int(current_metrics["sold_count"])
     total_count = in_stock_count + sold_count
-
-    if total_count > 0:
-        in_stock_percentage = (in_stock_count / total_count) * 100
-        sold_percentage = (sold_count / total_count) * 100
-    else:
-        in_stock_percentage = 0.0
-        sold_percentage = 0.0
-
     inventory_summary = {
         "in_stock_count": in_stock_count,
-        "in_stock_percentage": round(in_stock_percentage, 1),
+        "in_stock_percentage": round(in_stock_count / total_count * 100, 1) if total_count else 0.0,
         "sold_count": sold_count,
-        "sold_percentage": round(sold_percentage, 1),
+        "sold_percentage": round(sold_count / total_count * 100, 1) if total_count else 0.0,
         "total_count": total_count,
     }
 
-    # 5. Sales Trend Compare (Trend Bar Graph)
-    curr_start_str = from_date.strftime("%b %d")
-    curr_end_str = to_date.strftime("%b %d")
-    prev_start_str = prev_start.strftime("%b %d")
-    prev_end_str = prev_end.strftime("%b %d")
-
-    sales_trend = {
-        "current": {
-            "period": f"{curr_start_str} - {curr_end_str}",
-            "sales_value": round(total_sales, 2),
-        },
-        "previous": {
-            "period": f"{prev_start_str} - {prev_end_str}",
-            "sales_value": round(total_sales_prev, 2),
-        },
-    }
-
     return {
-        "total_sales": round(total_sales, 2),
-        "total_sales_change_percentage": round(total_sales_change_percentage, 2),
-        "total_sale_value": round(curr_metrics["total_sale_value"], 2),
-        "total_sale_value_change_percentage": round(total_sale_value_change, 2),
-        "inventory_items": curr_metrics["inventory_items"],
-        "inventory_items_change_percentage": round(inventory_items_change, 2),
-        "silver_rate_10g": round(curr_metrics["silver_rate_10g"], 2),
-        "silver_rate_change_percentage": round(silver_rate_change, 2),
-        "total_stock_value": round(curr_metrics["total_stock_value"], 2),
-        "total_stock_value_change_percentage": round(total_stock_value_change, 2),
+        "total_sales": round(float(total_sales), 2),
+        "total_sales_change_percentage": round(
+            _change_percentage(total_sales, previous_sales),
+            2,
+        ),
+        "total_sale_value": round(float(current_metrics["total_sale_value"]), 2),
+        "total_sale_value_change_percentage": round(
+            _change_percentage(
+                current_metrics["total_sale_value"],
+                previous_metrics["total_sale_value"],
+            ),
+            2,
+        ),
+        "inventory_items": in_stock_count,
+        "inventory_items_change_percentage": round(
+            _change_percentage(
+                in_stock_count,
+                int(previous_metrics["inventory_items"]),
+            ),
+            2,
+        ),
+        "silver_rate_10g": round(float(current_metrics["silver_rate_10g"]), 2),
+        "silver_rate_change_percentage": round(
+            _change_percentage(
+                current_metrics["silver_rate_10g"],
+                previous_metrics["silver_rate_10g"],
+            ),
+            2,
+        ),
+        "total_stock_value": round(float(current_metrics["total_stock_value"]), 2),
+        "total_stock_value_change_percentage": round(
+            _change_percentage(
+                current_metrics["total_stock_value"],
+                previous_metrics["total_stock_value"],
+            ),
+            2,
+        ),
         "sales_overview": sales_overview,
         "sales_by_category": sales_by_category,
         "inventory_summary": inventory_summary,
-        "sales_trend": sales_trend,
+        "sales_trend": {
+            "current": {
+                "period": f"{from_date:%b %d} - {to_date:%b %d}",
+                "sales_value": round(float(total_sales), 2),
+            },
+            "previous": {
+                "period": f"{previous_start:%b %d} - {from_date:%b %d}",
+                "sales_value": round(float(previous_sales), 2),
+            },
+        },
     }

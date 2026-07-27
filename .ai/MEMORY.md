@@ -22,6 +22,8 @@ forced PostgreSQL RLS. Official cloud Android builds use package
 `com.duelistraj.aurumpos` and fixed API `https://api.aurumpos.net`; self-hosted
 builds configure their own endpoint and are unlimited. Hosted free shops may
 have at most 50 active inventory rows.
+The device header must match the device bound to the authenticated session.
+Invoice numbers are assigned by the server, and Android auth tokens are encrypted through Android Keystore.
 
 Evidence:
 - `app/modules/auth/dependencies.py::get_shop_context`

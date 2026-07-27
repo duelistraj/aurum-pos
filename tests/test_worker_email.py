@@ -1,5 +1,6 @@
 import logging
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from botocore.exceptions import ClientError
@@ -7,46 +8,18 @@ from botocore.exceptions import ClientError
 from app import worker
 
 
-class FakeSession:
-    def __init__(self, message: SimpleNamespace) -> None:
-        self.message = message
-
-    async def scalar(self, _statement):
-        return self.message
-
-
-class FakeTransaction:
-    def __init__(self, message: SimpleNamespace) -> None:
-        self.session = FakeSession(message)
-
-    async def __aenter__(self) -> FakeSession:
-        return self.session
-
-    async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
-        return None
-
-
-class FakeSessionFactory:
-    def __init__(self, message: SimpleNamespace) -> None:
-        self.message = message
-
-    def begin(self) -> FakeTransaction:
-        return FakeTransaction(self.message)
-
-
 @pytest.mark.asyncio
 async def test_email_delivery_uses_configured_sender(monkeypatch) -> None:
-    message = SimpleNamespace(
-        id="email-id",
+    outbox_id = uuid4()
+    message = worker.EmailMessage(
+        id=outbox_id,
         recipient="owner@example.com",
         subject="Verify your Aurum POS email",
         text_body="Verification link",
-        status="pending",
         attempts=0,
-        next_attempt_at=None,
-        sent_at=None,
     )
     sent_messages: list[dict] = []
+    completions: list[tuple[object, str | None]] = []
 
     class FakeSesClient:
         def send_email(self, **payload) -> None:
@@ -55,17 +28,22 @@ async def test_email_delivery_uses_configured_sender(monkeypatch) -> None:
     async def run_inline(function) -> None:
         function()
 
-    monkeypatch.setattr(worker, "AsyncSessionLocal", FakeSessionFactory(message))
-    monkeypatch.setattr(worker.boto3, "client", lambda *_args, **_kwargs: FakeSesClient())
+    async def load(_outbox_id):
+        return message
+
+    async def finish(finished_id, *, error_code):
+        completions.append((finished_id, error_code))
+
+    monkeypatch.setattr(worker, "_load_email_message", load)
+    monkeypatch.setattr(worker, "_finish_email", finish)
+    monkeypatch.setattr(worker, "_ses_client", lambda: FakeSesClient())
     monkeypatch.setattr(worker.anyio.to_thread, "run_sync", run_inline)
     monkeypatch.setattr(worker.settings, "env", "production")
     monkeypatch.setattr(worker.settings, "email_from", "Aurum POS <noreply@aurumpos.net>")
-    monkeypatch.setattr(worker.settings, "ses_region", "ap-southeast-1")
 
     await worker.deliver_email(message.id)
 
-    assert message.status == "sent"
-    assert message.sent_at is not None
+    assert completions == [(outbox_id, None)]
     assert sent_messages == [
         {
             "Source": "Aurum POS <noreply@aurumpos.net>",
@@ -81,16 +59,14 @@ async def test_email_delivery_uses_configured_sender(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_email_delivery_logs_safe_error_metadata(monkeypatch, caplog) -> None:
     recipient = "private-owner@example.com"
-    message = SimpleNamespace(
-        id="email-id",
+    message = worker.EmailMessage(
+        id=uuid4(),
         recipient=recipient,
         subject="Verify your Aurum POS email",
         text_body="Sensitive verification link",
-        status="pending",
         attempts=0,
-        next_attempt_at=None,
-        sent_at=None,
     )
+    completion = SimpleNamespace(error_code=None)
 
     class FailingSesClient:
         def send_email(self, **_payload) -> None:
@@ -107,23 +83,23 @@ async def test_email_delivery_logs_safe_error_metadata(monkeypatch, caplog) -> N
     async def run_inline(function) -> None:
         function()
 
-    monkeypatch.setattr(worker, "AsyncSessionLocal", FakeSessionFactory(message))
-    monkeypatch.setattr(
-        worker.boto3,
-        "client",
-        lambda *_args, **_kwargs: FailingSesClient(),
-    )
+    async def load(_outbox_id):
+        return message
+
+    async def finish(_finished_id, *, error_code):
+        completion.error_code = error_code
+
+    monkeypatch.setattr(worker, "_load_email_message", load)
+    monkeypatch.setattr(worker, "_finish_email", finish)
+    monkeypatch.setattr(worker, "_ses_client", lambda: FailingSesClient())
     monkeypatch.setattr(worker.anyio.to_thread, "run_sync", run_inline)
     monkeypatch.setattr(worker.settings, "env", "production")
     monkeypatch.setattr(worker.settings, "email_from", "Aurum POS <noreply@aurumpos.net>")
-    monkeypatch.setattr(worker.settings, "ses_region", "ap-southeast-1")
 
     with caplog.at_level(logging.ERROR, logger="aurum.worker"):
         await worker.deliver_email(message.id)
 
-    assert message.status == "pending"
-    assert message.attempts == 1
-    assert message.next_attempt_at is not None
-    assert "Email delivery failed for outbox email-id: AccessDenied" in caplog.text
+    assert completion.error_code == "AccessDenied"
+    assert f"Email delivery failed for outbox {message.id}: AccessDenied" in caplog.text
     assert recipient not in caplog.text
     assert "Sensitive verification link" not in caplog.text

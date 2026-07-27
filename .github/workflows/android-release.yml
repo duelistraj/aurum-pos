@@ -2,10 +2,20 @@ name: Build Signed Android AAB
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Full commit SHA that already passed CI
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
 
 jobs:
   release-aab:
     runs-on: ubuntu-latest
+    environment: play-internal
     env:
       AURUM_DISTRIBUTION: cloud
       VITE_DISTRIBUTION: cloud
@@ -34,6 +44,41 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Verify immutable tested revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REF: ${{ inputs.ref }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_REF" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::ref must be a full 40-character commit SHA"
+            exit 1
+          }
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_REF" ]] || {
+            echo "::error::Checked-out revision does not match requested SHA"
+            exit 1
+          }
+          git merge-base --is-ancestor "$RELEASE_REF" origin/main || {
+            echo "::error::The requested revision is not reachable from main"
+            exit 1
+          }
+          SUCCESSFUL_RUNS="$(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow CI \
+              --commit "$RELEASE_REF" \
+              --status success \
+              --json databaseId \
+              --jq length
+          )"
+          [[ "$SUCCESSFUL_RUNS" -gt 0 ]] || {
+            echo "::error::The requested revision has no successful CI run"
+            exit 1
+          }
 
       - name: Set Android version code
         run: echo "ANDROID_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >>"$GITHUB_ENV"
@@ -70,7 +115,7 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
 
-      - name: Build signed AAB
+      - name: Test, lint, and build signed AAB
         working-directory: frontend/android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -78,11 +123,15 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease \
+          ./gradlew test lint bundleRelease \
             -Pandroid.injected.signing.store.file="$PWD/release.keystore" \
             -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+
+      - name: Record signed artifact checksum
+        working-directory: frontend/android
+        run: sha256sum app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

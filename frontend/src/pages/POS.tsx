@@ -11,7 +11,11 @@ import {
 } from '../components/UI';
 import { apiClient } from '../api/client';
 import { ItemPOSWithPrice, CustomerDetails } from '../types';
-import { downloadUrl, formatCurrency, generateInvoiceNumber } from '../utils';
+import { downloadUrl, formatCurrency } from '../utils';
+import {
+  clearCheckoutIdempotencyKey,
+  getCheckoutIdempotencyKey,
+} from '../utils/checkout';
 
 const FIXED_MAKING_CATEGORIES = new Set(['ring', 'other', 'pendant']);
 
@@ -277,15 +281,15 @@ export const POS: React.FC = () => {
 
     setLoading(true);
     try {
-      const invoiceNo = generateInvoiceNumber();
-      const sale = await apiClient.createSale({
-        invoice_no: invoiceNo,
+      const salePayload = {
         items: cart.map((item) => ({ item_id: item.id, quantity: item.cartQuantity })),
         customer_name: customerDetails.name,
         customer_phone: customerDetails.phone,
         customer_address: customerDetails.address,
         total_amount: totalWithGst,
-      });
+      };
+      const idempotencyKey = await getCheckoutIdempotencyKey(salePayload);
+      const sale = await apiClient.createSale(salePayload, idempotencyKey);
 
       // Download invoice PDF
       try {
@@ -296,6 +300,7 @@ export const POS: React.FC = () => {
       }
 
       setSuccess('Sale completed successfully!');
+      await clearCheckoutIdempotencyKey();
       setCart([]);
       setCustomerDetails({ name: '', phone: '', address: '' });
       setShowCheckout(false);

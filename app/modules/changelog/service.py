@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import String, cast, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
@@ -16,6 +16,8 @@ async def get_change_log_history(
     barcode: str | None = None,
     invoice_no: str | None = None,
     action: str | None = None,
+    page: int = 1,
+    limit: int = 50,
 ):
     stmt = select(ChangeLog).where(ChangeLog.shop_id == shop_id)
     filters = []
@@ -34,17 +36,25 @@ async def get_change_log_history(
     if filters:
         stmt = stmt.where(*filters)
 
-    stmt = stmt.order_by(ChangeLog.created_at.desc())
+    count_statement = select(func.count()).select_from(stmt.subquery())
+    total = int((await db.execute(count_statement)).scalar_one() or 0)
+    stmt = stmt.order_by(ChangeLog.created_at.desc()).offset((page - 1) * limit).limit(limit)
     result = await db.execute(stmt)
     rows = result.scalars().all()
 
-    return [
-        {
-            "id": row.id,
-            "entity": row.entity,
-            "action": row.action,
-            "payload": row.payload,
-            "created_at": row.created_at,
-        }
-        for row in rows
-    ]
+    return {
+        "entries": [
+            {
+                "id": row.id,
+                "entity": row.entity,
+                "action": row.action,
+                "payload": row.payload,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit,
+    }

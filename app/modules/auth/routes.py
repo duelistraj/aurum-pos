@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import anyio
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token as google_id_token
@@ -29,6 +29,7 @@ from app.modules.auth.models import (
     User,
     UserIdentity,
 )
+from app.modules.auth.rate_limit import enforce_auth_rate_limit
 from app.modules.auth.schemas import (
     AccountDeletionConfirm,
     AccountDeletionStart,
@@ -48,7 +49,7 @@ from app.modules.auth.schemas import (
     VerificationResendRequest,
     VerifyEmailRequest,
 )
-from app.modules.auth.security import get_password_hash, hash_token, verify_password
+from app.modules.auth.security import check_password, hash_password, hash_token
 from app.modules.auth.service import (
     authenticate_user,
     create_verification_token,
@@ -110,12 +111,13 @@ async def auth_providers() -> AuthProvidersResponse:
 
 
 @router.post("/register", status_code=201)
-async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(data: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    await enforce_auth_rate_limit(request, scope="register", account=data.email)
     if await db.scalar(select(User.id).where(User.email == data.email)):
         raise HTTPException(status_code=409, detail="An account already exists for this email")
     user = User(
         email=data.email,
-        password_hash=get_password_hash(data.password),
+        password_hash=await hash_password(data.password),
         full_name=data.full_name.strip(),
     )
     db.add(user)
@@ -129,7 +131,12 @@ async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/verify-email")
-async def verify_email(data: VerifyEmailRequest, db: AsyncSession = Depends(get_db)):
+async def verify_email(
+    data: VerifyEmailRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(request, scope="verify_email", account=hash_token(data.token))
     token = await verify_auth_token(db, token=data.token, purpose="verify_email")
     user = await db.get(User, token.user_id)
     if user is None:
@@ -141,20 +148,24 @@ async def verify_email(data: VerifyEmailRequest, db: AsyncSession = Depends(get_
 @router.post("/verification/resend", status_code=202)
 async def resend_verification(
     data: VerificationResendRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    await enforce_auth_rate_limit(request, scope="resend_verification", account=data.email)
     await resend_verification_email(db, data.email)
     return {"message": "If the account needs verification, a new email has been sent"}
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    await enforce_auth_rate_limit(request, scope="login", account=data.email)
     return await authenticate_user(db, data)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    return await refresh_access_token(db, data.refresh_token)
+async def refresh(data: RefreshRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    await enforce_auth_rate_limit(request, scope="refresh", account=hash_token(data.refresh_token))
+    return await refresh_access_token(db, data.refresh_token, device_uuid=data.device_uuid)
 
 
 @router.post("/logout")
@@ -171,19 +182,34 @@ async def me(user: User = Depends(get_current_user)):
 
 
 @router.post("/forgot-password", status_code=202)
-async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def forgot_password(
+    data: ForgotPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(request, scope="forgot_password", account=data.email)
     await request_password_reset(db, data.email)
     return {"message": "If the account exists, a reset email has been sent"}
 
 
 @router.post("/reset-password")
-async def reset_password_route(data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def reset_password_route(
+    data: ResetPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(request, scope="reset_password", account=hash_token(data.token))
     await reset_password(db, data.token, data.password)
     return {"message": "Password reset"}
 
 
 @router.post("/account-deletion/request", status_code=202)
-async def start_account_deletion(data: AccountDeletionStart, db: AsyncSession = Depends(get_db)):
+async def start_account_deletion(
+    data: AccountDeletionStart,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(request, scope="account_deletion", account=data.email)
     token = await request_account_deletion(
         db,
         email=data.email,
@@ -197,8 +223,15 @@ async def start_account_deletion(data: AccountDeletionStart, db: AsyncSession = 
 
 @router.post("/account-deletion/confirm")
 async def confirm_account_deletion(
-    data: AccountDeletionConfirm, db: AsyncSession = Depends(get_db)
+    data: AccountDeletionConfirm,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
+    await enforce_auth_rate_limit(
+        http_request,
+        scope="account_deletion_confirm",
+        account=hash_token(data.token),
+    )
     request = await db.scalar(
         select(AccountDeletionRequest)
         .where(AccountDeletionRequest.token_hash == hash_token(data.token))
@@ -233,7 +266,16 @@ async def confirm_account_deletion(
 
 
 @router.post("/account-deletion/cancel")
-async def cancel_account_deletion(data: AccountDeletionConfirm, db: AsyncSession = Depends(get_db)):
+async def cancel_account_deletion(
+    data: AccountDeletionConfirm,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(
+        http_request,
+        scope="account_deletion_cancel",
+        account=hash_token(data.token),
+    )
     request = await db.scalar(
         select(AccountDeletionRequest)
         .where(AccountDeletionRequest.token_hash == hash_token(data.token))
@@ -243,23 +285,30 @@ async def cancel_account_deletion(data: AccountDeletionConfirm, db: AsyncSession
         raise HTTPException(status_code=400, detail="Deletion token is invalid")
     if request.cancelled_at is not None:
         return {"message": "Account deletion is already cancelled"}
+    if request.cleanup_started_at is not None:
+        raise HTTPException(status_code=409, detail="Account deletion is already in progress")
     request.cancelled_at = datetime.now(UTC)
     return {"message": "Account deletion cancelled"}
 
 
 @router.post("/invitations/accept", response_model=TokenResponse)
-async def accept_invitation(data: InvitationAcceptRequest, db: AsyncSession = Depends(get_db)):
+async def accept_invitation(
+    data: InvitationAcceptRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(request, scope="invitation", account=data.email)
     user = await db.scalar(select(User).where(User.email == data.email))
     if user is None:
         user = User(
             email=data.email,
-            password_hash=get_password_hash(data.password),
+            password_hash=await hash_password(data.password),
             full_name=data.full_name.strip(),
             email_verified_at=datetime.now(UTC),
         )
         db.add(user)
         await db.flush()
-    elif user.password_hash is None or not verify_password(data.password, user.password_hash):
+    elif user.password_hash is None or not await check_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email or password is incorrect")
     await _accept_invitation(db, token=data.token, user=user)
     await register_device(db, user=user, data=data)
@@ -267,7 +316,12 @@ async def accept_invitation(data: InvitationAcceptRequest, db: AsyncSession = De
 
 
 @router.post("/google", response_model=TokenResponse)
-async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+async def google_auth(
+    data: GoogleAuthRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    await enforce_auth_rate_limit(request, scope="google")
     if not settings.google_web_client_id:
         raise HTTPException(status_code=503, detail="Google Sign-In is not configured")
 
@@ -396,4 +450,14 @@ async def update_device_status(
         raise HTTPException(status_code=404, detail="Device not found")
     access.is_active = data.is_active
     device = await db.get(Device, device_id)
+    if not data.is_active and device is not None:
+        await db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == device.user_id,
+                AuthSession.device_uuid == device.device_uuid,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC))
+        )
     return device

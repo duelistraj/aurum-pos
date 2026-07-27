@@ -4,12 +4,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import anyio
 import jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+password_work_limiter = anyio.CapacityLimiter(2)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -18,6 +20,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+
+async def check_password(plain_password: str, hashed_password: str) -> bool:
+    return await anyio.to_thread.run_sync(
+        verify_password,
+        plain_password,
+        hashed_password,
+        limiter=password_work_limiter,
+    )
+
+
+async def hash_password(password: str) -> str:
+    return await anyio.to_thread.run_sync(
+        get_password_hash,
+        password,
+        limiter=password_work_limiter,
+    )
 
 
 def generate_opaque_token() -> str:

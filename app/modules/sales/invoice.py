@@ -48,9 +48,11 @@ def generate_invoice_pdf(sale: Sale) -> bytes:
     for sale_item in sale.items:
         item = sale_item.item
         pricing = sale_item.price_breakdown or {}
-        item_label = item.name if item is not None else str(sale_item.item_id)
-        if item is not None:
-            item_label = f"{item_label} ({item.sku})"
+        item_name = getattr(sale_item, "item_name", None) or (
+            item.name if item is not None else str(sale_item.item_id)
+        )
+        item_sku = getattr(sale_item, "item_sku", None) or (item.sku if item is not None else None)
+        item_label = f"{item_name} ({item_sku})" if item_sku else item_name
         rows.append(
             [
                 Paragraph(escape(item_label), styles["BodyText"]),

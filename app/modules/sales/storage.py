@@ -20,6 +20,10 @@ SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]")
 class S3Client(Protocol):
     def put_object(self, **kwargs: object) -> dict[str, Any]: ...
 
+    def head_object(self, **kwargs: object) -> dict[str, Any]: ...
+
+    def delete_object(self, **kwargs: object) -> dict[str, Any]: ...
+
     def generate_presigned_url(
         self,
         client_method: str,
@@ -77,19 +81,41 @@ class InvoiceStorage:
         checksum_base64 = base64.b64encode(checksum).decode("ascii")
 
         def upload() -> None:
-            self._get_client().put_object(
-                Bucket=self.bucket,
-                Key=object_key,
-                Body=pdf,
-                ContentType=PDF_CONTENT_TYPE,
-                ChecksumSHA256=checksum_base64,
-            )
+            try:
+                self._get_client().put_object(
+                    Bucket=self.bucket,
+                    Key=object_key,
+                    Body=pdf,
+                    ContentType=PDF_CONTENT_TYPE,
+                    ChecksumSHA256=checksum_base64,
+                    IfNoneMatch="*",
+                )
+            except ClientError as exc:
+                error_code = str(exc.response.get("Error", {}).get("Code", ""))
+                if error_code not in {"PreconditionFailed", "412"}:
+                    raise
+                metadata = self._get_client().head_object(
+                    Bucket=self.bucket,
+                    Key=object_key,
+                    ChecksumMode="ENABLED",
+                )
+                if metadata.get("ChecksumSHA256") != checksum_base64:
+                    raise InvoiceStorageError("Existing invoice checksum does not match") from exc
 
         try:
             await anyio.to_thread.run_sync(upload)
         except (BotoCoreError, ClientError) as exc:
             raise InvoiceStorageError("Invoice upload failed") from exc
         return InvoiceUploadMetadata(checksum_sha256=checksum_hex)
+
+    async def delete_pdf(self, *, object_key: str) -> None:
+        def delete() -> None:
+            self._get_client().delete_object(Bucket=self.bucket, Key=object_key)
+
+        try:
+            await anyio.to_thread.run_sync(delete)
+        except (BotoCoreError, ClientError) as exc:
+            raise InvoiceStorageError("Invoice deletion failed") from exc
 
     async def generate_download_url(
         self,

@@ -60,6 +60,46 @@ class GooglePlayClient:
 
         await anyio.to_thread.run_sync(request)
 
+    async def cancel_subscription(self, purchase_token: str) -> None:
+        package = quote(settings.google_play_package_name, safe="")
+        token = quote(purchase_token, safe="")
+        url = (
+            "https://androidpublisher.googleapis.com/androidpublisher/v3/"
+            f"applications/{package}/purchases/subscriptionsv2/tokens/{token}:cancel"
+        )
+        body = {
+            "cancellationContext": {
+                "cancellationType": "DEVELOPER_REQUESTED_STOP_PAYMENTS",
+            }
+        }
+
+        def request() -> None:
+            response = self._session.post(url, json=body, timeout=15)
+            if response.status_code in {200, 204, 404, 410}:
+                return
+            if response.status_code == 400:
+                status_url = url.removesuffix(":cancel")
+                status_response = self._session.get(status_url, timeout=15)
+                if status_response.status_code == 200:
+                    purchase = status_response.json()
+                    state = purchase.get("subscriptionState")
+                    renewing = any(
+                        item.get("autoRenewingPlan", {}).get("autoRenewEnabled") is True
+                        for item in purchase.get("lineItems") or []
+                    )
+                    if (
+                        state
+                        in {
+                            "SUBSCRIPTION_STATE_CANCELED",
+                            "SUBSCRIPTION_STATE_EXPIRED",
+                        }
+                        and not renewing
+                    ):
+                        return
+            raise GooglePlayError(f"Google Play cancellation failed ({response.status_code})")
+
+        await anyio.to_thread.run_sync(request)
+
 
 def parse_google_time(value: str | None) -> datetime | None:
     if not value:

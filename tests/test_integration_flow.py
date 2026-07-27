@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select, text
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -55,7 +56,6 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
     email = f"integration-{suffix}@example.com"
     device_uuid = f"device-{suffix}"
     metal = "Silver"
-    invoice_no = f"INV-{suffix}"
     shop_id: UUID | None = None
     user_id: UUID | None = None
     second_shop_id: UUID | None = None
@@ -100,11 +100,32 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             login_data = login.json()
             user_id = UUID(login_data["user_id"])
             shop_id = UUID(login_data["memberships"][0]["shop_id"])
+            wrong_refresh_device = await client.post(
+                "/api/v1/auth/refresh",
+                json={
+                    "refresh_token": login_data["refresh_token"],
+                    "device_uuid": "different-device",
+                },
+            )
+            assert wrong_refresh_device.status_code == 401
+            refreshed = await client.post(
+                "/api/v1/auth/refresh",
+                json={
+                    "refresh_token": login_data["refresh_token"],
+                    "device_uuid": device_uuid,
+                },
+            )
+            assert refreshed.status_code == 200, refreshed.text
             headers = {
                 "Authorization": f"Bearer {login_data['access_token']}",
                 "X-Device-UUID": device_uuid,
                 "X-Shop-ID": str(shop_id),
             }
+            wrong_device = await client.get(
+                "/api/v1/items/",
+                headers={**headers, "X-Device-UUID": f"wrong-{device_uuid}"},
+            )
+            assert wrong_device.status_code == 403
 
             second_email = f"integration-second-{suffix}@example.com"
             second_device = f"device-second-{suffix}"
@@ -290,9 +311,22 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             second_shop_history = await client.get(
                 "/api/v1/change-log/history",
                 headers=second_shop_headers,
+                params={"page": 1, "limit": 50},
             )
             assert second_shop_history.status_code == 200, second_shop_history.text
-            assert second_shop_history.json() == []
+            assert second_shop_history.json() == {
+                "entries": [],
+                "total": 0,
+                "page": 1,
+                "limit": 50,
+                "pages": 0,
+            }
+            legacy_history = await client.get(
+                "/api/v1/change-log/history",
+                headers=second_shop_headers,
+            )
+            assert legacy_history.status_code == 200
+            assert legacy_history.json() == []
 
             wrong_shop_headers = {**headers, "X-Shop-ID": str(uuid4())}
             hidden = await client.get(f"/api/v1/items/{item_id}", headers=wrong_shop_headers)
@@ -302,7 +336,6 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
                 "/api/v1/sales/",
                 headers={**headers, "Idempotency-Key": f"sale-{suffix}"},
                 json={
-                    "invoice_no": invoice_no,
                     "items": [{"item_id": str(item_id), "quantity": 1}],
                     "customer_name": "Integration Customer",
                     "customer_phone": "9999999999",
@@ -311,6 +344,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             )
             assert sale.status_code == 200, sale.text
             sale_id = UUID(sale.json()["id"])
+            assert sale.json()["invoice_no"].startswith("INV-")
 
             unavailable_invoice = await client.get(
                 f"/api/v1/sales/{sale_id}/invoice",
@@ -322,7 +356,6 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
                 "/api/v1/sales/",
                 headers={**headers, "Idempotency-Key": f"sale-{suffix}"},
                 json={
-                    "invoice_no": invoice_no,
                     "items": [{"item_id": str(item_id), "quantity": 1}],
                     "customer_name": "Integration Customer",
                     "customer_phone": "9999999999",
@@ -331,6 +364,12 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
             )
             assert replay.status_code == 200
             assert replay.json()["id"] == str(sale_id)
+            operation_result = await client.get(
+                f"/api/v1/sales/idempotency/sale-{suffix}",
+                headers=headers,
+            )
+            assert operation_result.status_code == 200
+            assert operation_result.json()["id"] == str(sale_id)
             assert len(invoice_storage.upload_keys) == 3
             assert len(set(invoice_storage.upload_keys)) == 1
 
@@ -352,16 +391,20 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow() -> None:
                     {"shop_id": str(shop_id)},
                 )
                 persisted_sale = await session.scalar(
-                    select(Sale).where(
+                    select(Sale)
+                    .where(
                         Sale.id == sale_id,
                         Sale.shop_id == shop_id,
                     )
+                    .options(selectinload(Sale.items))
                 )
                 assert persisted_sale is not None
                 assert persisted_sale.s3_object_key == invoice_storage.upload_keys[-1]
                 assert persisted_sale.pdf_generated_at is not None
                 assert persisted_sale.pdf_checksum_sha256 is not None
                 assert not hasattr(persisted_sale, "presigned_url")
+                assert persisted_sale.items[0].item_name == "Integration Ring"
+                assert persisted_sale.items[0].item_sku == f"SKU-{suffix}"
 
             previous_mode = settings.deployment_mode
             settings.deployment_mode = "hosted"

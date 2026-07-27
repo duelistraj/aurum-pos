@@ -10,13 +10,15 @@ import {
   IndianRupee, 
   Activity, 
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   LayoutGrid,
   Check
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useShop } from '../context/ShopContext';
-import { ChangeLogEntry } from '../types';
+import { ChangeLogEntry, ChangeLogPage } from '../types';
 import { Card, Input, Button, Loader } from '../components/UI';
 import { formatDate } from '../utils';
 
@@ -168,6 +170,7 @@ export const History: React.FC = () => {
   });
   const [appliedFilters, setAppliedFilters] = React.useState(filters);
   const [expandedId, setExpandedId] = React.useState<number | string | null>(null);
+  const [page, setPage] = React.useState(1);
   const [showActionDropdown, setShowActionDropdown] = React.useState(false);
   
   const actionDropdownRef = React.useRef<HTMLDivElement>(null);
@@ -184,18 +187,20 @@ export const History: React.FC = () => {
     };
   }, []);
 
-  const historyQuery = useQuery<ChangeLogEntry[]>({
-    queryKey: queryKeys.history(shopId, appliedFilters),
+  const historyQuery = useQuery<ChangeLogPage>({
+    queryKey: queryKeys.history(shopId, { ...appliedFilters, page }),
     queryFn: () => apiClient.getChangeLogHistory({
       barcode: appliedFilters.barcode || undefined,
       invoice_no: appliedFilters.invoiceNo || undefined,
       action: appliedFilters.action || undefined,
       from_date: appliedFilters.fromDate || undefined,
       to_date: appliedFilters.toDate || undefined,
+      page,
+      limit: 50,
     }),
     enabled: Boolean(shopId),
   });
-  const entries = historyQuery.data ?? [];
+  const entries = historyQuery.data?.entries ?? [];
   const loading = historyQuery.isPending;
   const error = historyQuery.error instanceof Error ? historyQuery.error.message : '';
 
@@ -209,6 +214,7 @@ export const History: React.FC = () => {
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAppliedFilters({ ...filters });
+    setPage(1);
   };
 
   const handleReset = () => {
@@ -221,6 +227,7 @@ export const History: React.FC = () => {
     };
     setFilters(emptyFilters);
     setAppliedFilters(emptyFilters);
+    setPage(1);
   };
 
   const toggleExpand = (id: number | string) => {
@@ -363,7 +370,7 @@ export const History: React.FC = () => {
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Change Log Results</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                {entries.length} entries found.
+                {historyQuery.data?.total ?? 0} entries found.
               </p>
             </div>
           </div>
@@ -468,6 +475,33 @@ export const History: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+          {(historyQuery.data?.pages ?? 0) > 1 && (
+            <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-5 dark:border-slate-800">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="flex items-center gap-2"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                Page {page} of {historyQuery.data?.pages ?? 1}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={page >= (historyQuery.data?.pages ?? 1)}
+                onClick={() => setPage((current) => current + 1)}
+                className="flex items-center gap-2"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           )}
         </div >

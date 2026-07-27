@@ -6,16 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_valid
 
 
 class ItemBase(BaseModel):
-    sku: str
-    barcode: str | None = None
-    category: str = "jewellery"
-    name: str
-    metal: str
+    sku: str = Field(min_length=1, max_length=50)
+    barcode: str | None = Field(default=None, max_length=100)
+    category: str = Field(default="jewellery", min_length=1, max_length=20)
+    name: str = Field(min_length=1, max_length=255)
+    metal: str = Field(min_length=1, max_length=50)
     purity: Decimal = Field(ge=0, le=100)
     net_weight: Decimal = Field(ge=0)
     making_charge: Decimal = Field(ge=0)
     quantity: int = Field(1, ge=0)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=4000)
 
     @model_validator(mode="before")
     @classmethod
@@ -42,16 +42,16 @@ class ItemCreate(ItemBase):
 
 
 class ItemUpdate(BaseModel):
-    sku: str | None = None
-    barcode: str | None = None
-    category: str | None = None
-    name: str | None = None
-    metal: str | None = None
+    sku: str | None = Field(default=None, min_length=1, max_length=50)
+    barcode: str | None = Field(default=None, max_length=100)
+    category: str | None = Field(default=None, min_length=1, max_length=20)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    metal: str | None = Field(default=None, min_length=1, max_length=50)
     purity: Decimal | None = Field(None, ge=0, le=100)
     net_weight: Decimal | None = Field(None, ge=0)
     making_charge: Decimal | None = Field(None, ge=0)
     quantity: int | None = Field(None, ge=0)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=4000)
 
 
 class ItemOut(ItemBase):

@@ -1,4 +1,5 @@
 import math
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -51,11 +52,11 @@ async def create(
 @router.get("/", response_model=ItemPaginationOut)
 async def list_all(
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1),
-    search: str | None = Query(None),
-    category: str | None = Query(None),
-    status: str | None = Query(None),
-    metal: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None, max_length=100),
+    category: str | None = Query(None, max_length=20),
+    status: str | None = Query(None, max_length=20),
+    metal: str | None = Query(None, max_length=50),
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -154,6 +155,11 @@ async def print_labels_for_all_items(
     items = await get_items_for_label_printing(db, shop_id=context.shop.id)
     if not items:
         raise HTTPException(status_code=404, detail="No items available for label printing")
+    if len(items) > 500:
+        raise HTTPException(
+            status_code=422,
+            detail="All-item label exports are limited to 500 items; use a batch export",
+        )
 
     if output_format == "pdf":
         return StreamingResponse(
@@ -170,7 +176,7 @@ async def print_labels_for_all_items(
 
 @router.post("/labels/batch")
 async def print_labels_batch(
-    item_ids: list[UUID] = Body(...),
+    item_ids: Annotated[list[UUID], Body(min_length=1, max_length=200)],
     output_format: str = Query("xlsx", alias="format", pattern="^(xlsx|pdf)$"),
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),

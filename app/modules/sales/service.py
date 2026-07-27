@@ -21,6 +21,7 @@ from app.modules.sales.storage import (
     InvoiceStorage,
     build_invoice_object_key,
 )
+from app.modules.shops.models import Shop
 
 
 async def get_sale_by_id(
@@ -59,7 +60,6 @@ async def persist_invoice_pdf(
             db,
             sale_id=sale_id,
             shop_id=shop_id,
-            for_update=True,
         )
         if sale is None or sale.s3_object_key is not None:
             return sale
@@ -72,11 +72,29 @@ async def persist_invoice_pdf(
             invoice_id=sale.id,
             created_at=sale.created_at,
         )
-        metadata = await storage.upload_pdf(object_key=object_key, pdf=pdf)
-        sale.s3_object_key = object_key
-        sale.pdf_generated_at = generated_at
-        sale.pdf_checksum_sha256 = metadata.checksum_sha256
-        return sale
+
+    metadata = await storage.upload_pdf(object_key=object_key, pdf=pdf)
+
+    async with AsyncSessionLocal.begin() as db:
+        await db.execute(
+            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+            {"shop_id": str(shop_id)},
+        )
+        sale = await get_sale_by_id(
+            db,
+            sale_id=sale_id,
+            shop_id=shop_id,
+            for_update=True,
+        )
+        if sale is not None:
+            if sale.s3_object_key is None:
+                sale.s3_object_key = object_key
+                sale.pdf_generated_at = generated_at
+                sale.pdf_checksum_sha256 = metadata.checksum_sha256
+            return sale
+
+    await storage.delete_pdf(object_key=object_key)
+    return None
 
 
 async def _execute_create_sale(
@@ -124,10 +142,27 @@ async def _execute_create_sale(
                 f"Item {item.sku} only has {item.quantity} unit(s) available",
             )
 
+    shop = await db.scalar(select(Shop).where(Shop.id == shop_id).with_for_update())
+    if shop is None:
+        raise HTTPException(404, "Shop does not exist")
+    invoice_sequence = shop.next_invoice_sequence
+    invoice_year = datetime.now(UTC).year
+    while True:
+        invoice_no = f"INV-{invoice_year}-{invoice_sequence:06d}"
+        if not await db.scalar(
+            select(Sale.id).where(
+                Sale.shop_id == shop_id,
+                Sale.invoice_no == invoice_no,
+            )
+        ):
+            break
+        invoice_sequence += 1
+    shop.next_invoice_sequence = invoice_sequence + 1
+
     # Create sale
     sale = Sale(
         shop_id=shop_id,
-        invoice_no=data.invoice_no,
+        invoice_no=invoice_no,
         total_amount=Decimal(0),
         customer_name=data.customer_name,
         customer_phone=data.customer_phone,
@@ -196,6 +231,13 @@ async def _execute_create_sale(
                 "quantity": quantity_requested,
                 "line_total": float(line_total),
             },
+            item_sku=item.sku,
+            item_name=item.name,
+            item_metal=item.metal,
+            item_category=item.category,
+            item_purity=item.purity,
+            item_net_weight=item.net_weight,
+            item_making_charge=item.making_charge,
         )
 
         db.add(sale_item)
@@ -222,7 +264,7 @@ async def _execute_create_sale(
             action="sold",
             payload={
                 "barcode": item.barcode,
-                "invoice_no": data.invoice_no,
+                "invoice_no": sale.invoice_no,
                 "quantity": si.quantity,
                 "pricing": si.price_breakdown,
             },

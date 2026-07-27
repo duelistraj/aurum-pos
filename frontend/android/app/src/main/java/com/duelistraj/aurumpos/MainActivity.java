@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AurumBillingPlugin.class);
         registerPlugin(AurumGoogleAuthPlugin.class);
+        registerPlugin(AurumSecureStoragePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     jwt_audience: str = "aurum-pos-api"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    auth_rate_limit_window_seconds: int = Field(default=300, ge=60, le=3600)
+    auth_rate_limit_per_ip: int = Field(default=30, ge=1, le=1000)
+    auth_rate_limit_per_account: int = Field(default=10, ge=1, le=1000)
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     deployment_mode: str = "self_hosted"
     free_active_item_limit: int = 50
@@ -43,6 +46,13 @@ class Settings(BaseSettings):
     s3_invoice_bucket: str
     s3_invoice_prefix: str = "shops"
     s3_presigned_url_expiry_seconds: int = Field(default=600, ge=1)
+    database_pool_size: int = Field(default=5, ge=1, le=50)
+    database_max_overflow: int = Field(default=5, ge=0, le=50)
+    database_pool_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    worker_email_max_attempts: int = Field(default=8, ge=1, le=50)
+    worker_email_concurrency: int = Field(default=5, ge=1, le=20)
+    worker_reconciliation_batch_size: int = Field(default=100, ge=1, le=1000)
+    worker_reconciliation_concurrency: int = Field(default=5, ge=1, le=20)
     public_site_url: str = "https://aurumpos.net"
 
     model_config = SettingsConfigDict(

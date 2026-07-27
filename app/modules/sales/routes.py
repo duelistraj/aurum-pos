@@ -26,7 +26,7 @@ async def create(
     db: AsyncSession = Depends(get_db),
     storage: InvoiceStorage = Depends(get_invoice_storage),
 ):
-    request_hash = hashlib.sha256(data.model_dump_json().encode()).hexdigest()
+    request_hash = hashlib.sha256(data.model_dump_json(exclude={"invoice_no"}).encode()).hexdigest()
     await db.execute(
         text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
         {"key": f"{context.shop.id}:{idempotency_key}"},
@@ -67,6 +67,32 @@ async def create(
         )
     except Exception:
         LOGGER.exception("Invoice PDF persistence failed for sale %s", sale.id)
+    return sale
+
+
+@router.get("/idempotency/{idempotency_key}", response_model=SaleOut)
+async def get_idempotent_sale(
+    idempotency_key: str,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+):
+    if not 8 <= len(idempotency_key) <= 100:
+        raise HTTPException(status_code=422, detail="Invalid idempotency key")
+    existing = await db.scalar(
+        select(SaleIdempotency).where(
+            SaleIdempotency.shop_id == context.shop.id,
+            SaleIdempotency.idempotency_key == idempotency_key,
+        )
+    )
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Sale operation does not exist")
+    sale = await get_sale_by_id(
+        db,
+        sale_id=existing.sale_id,
+        shop_id=context.shop.id,
+    )
+    if sale is None:
+        raise HTTPException(status_code=404, detail="Sale result does not exist")
     return sale
 
 

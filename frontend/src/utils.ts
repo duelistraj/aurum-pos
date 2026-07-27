@@ -139,8 +139,3 @@ export const downloadUrl = async (url: string, filename: string) => {
   link.click();
   document.body.removeChild(link);
 };
-
-export const generateInvoiceNumber = (): string => {
-  const timestamp = Date.now().toString();
-  return `INV-${timestamp.slice(-8)}`;
-};

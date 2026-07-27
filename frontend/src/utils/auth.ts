@@ -1,4 +1,5 @@
 import { getPreference, removePreference, setPreference } from './storage';
+import { getSecureValue, removeSecureValue, setSecureValue } from '../native/secureStorage';
 
 export interface MembershipInfo {
   shop_id: string;
@@ -31,8 +32,8 @@ export const setAuthData = async (
     ? currentShopId
     : userInfo.memberships[0]?.shop_id ?? null;
   const writes: Array<Promise<void>> = [
-    setPreference(AUTH_KEYS.ACCESS_TOKEN, accessToken),
-    setPreference(AUTH_KEYS.REFRESH_TOKEN, refreshToken),
+    setSecureValue(AUTH_KEYS.ACCESS_TOKEN, accessToken),
+    setSecureValue(AUTH_KEYS.REFRESH_TOKEN, refreshToken),
     setPreference(AUTH_KEYS.USER_INFO, JSON.stringify(userInfo)),
   ];
   if (activeShopId) writes.push(setPreference(AUTH_KEYS.ACTIVE_SHOP_ID, activeShopId));
@@ -40,10 +41,10 @@ export const setAuthData = async (
 };
 
 export const getAccessToken = (): Promise<string | null> =>
-  getPreference(AUTH_KEYS.ACCESS_TOKEN);
+  getSecureValue(AUTH_KEYS.ACCESS_TOKEN);
 
 export const getRefreshToken = (): Promise<string | null> =>
-  getPreference(AUTH_KEYS.REFRESH_TOKEN);
+  getSecureValue(AUTH_KEYS.REFRESH_TOKEN);
 
 export const getActiveShopId = (): Promise<string | null> =>
   getPreference(AUTH_KEYS.ACTIVE_SHOP_ID);
@@ -62,5 +63,10 @@ export const getUserInfo = async (): Promise<UserInfo | null> => {
 };
 
 export const clearAuthData = async (): Promise<void> => {
-  await Promise.all(Object.values(AUTH_KEYS).map(removePreference));
+  await Promise.all([
+    removeSecureValue(AUTH_KEYS.ACCESS_TOKEN),
+    removeSecureValue(AUTH_KEYS.REFRESH_TOKEN),
+    removePreference(AUTH_KEYS.USER_INFO),
+    removePreference(AUTH_KEYS.ACTIVE_SHOP_ID),
+  ]);
 };

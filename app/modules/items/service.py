@@ -63,7 +63,7 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
 
 
 async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop_id: UUID) -> Item:
-    item = await get_item_by_id(db, item_id, shop_id=shop_id)
+    item = await get_item_by_id(db, item_id, shop_id=shop_id, for_update=True)
     if not item:
         raise ValueError("Item does not exist")
     if item.status != "in_stock":
@@ -155,7 +155,7 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
 
 
 async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None:
-    item = await get_item_by_id(db, item_id, shop_id=shop_id)
+    item = await get_item_by_id(db, item_id, shop_id=shop_id, for_update=True)
     if not item:
         raise ValueError("Item does not exist")
     if item.status != "in_stock":
@@ -186,11 +186,19 @@ async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None
     await db.flush()
 
 
-async def get_item_by_id(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> Item | None:
+async def get_item_by_id(
+    db: AsyncSession,
+    item_id: UUID,
+    *,
+    shop_id: UUID,
+    for_update: bool = False,
+) -> Item | None:
     stmt = select(Item).where(
         Item.id == item_id,
         Item.shop_id == shop_id,
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -253,12 +261,14 @@ async def get_items_for_label_printing(
     *,
     shop_id: UUID,
     only_in_stock: bool = True,
+    max_items: int = 501,
 ):
     stmt = select(Item).where(Item.shop_id == shop_id)
 
     if only_in_stock:
         stmt = stmt.where(Item.status == "in_stock")
 
+    stmt = stmt.order_by(Item.updated_at.desc()).limit(max_items)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

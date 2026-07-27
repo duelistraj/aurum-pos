@@ -2,7 +2,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -15,6 +25,12 @@ class Item(Base):
     __table_args__ = (
         UniqueConstraint("shop_id", "barcode", name="uq_items_shop_barcode"),
         UniqueConstraint("shop_id", "id", name="uq_items_shop_id"),
+        Index(
+            "ix_items_shop_status_updated_at",
+            "shop_id",
+            "status",
+            text("updated_at DESC"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

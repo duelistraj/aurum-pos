@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -11,6 +11,13 @@ from app.core.database import Base
 
 class ChangeLog(Base):
     __tablename__ = "change_log"
+    __table_args__ = (
+        Index(
+            "ix_change_log_shop_created_at",
+            "shop_id",
+            text("created_at DESC"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

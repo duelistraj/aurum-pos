@@ -40,8 +40,11 @@ Verification email resend uses a generic public response and a database-backed c
 The unauthenticated auth-provider endpoint exposes only the public Google Web client ID and enabled state, keeping the backend environment as the authoritative Google audience configuration.
 Staff join through hashed, expiring shop invitations. Access JWTs contain user
 and session identity but no role; opaque hashed refresh tokens rotate in the
-database. Roles are OWNER, ADMIN, MANAGER, and CASHIER. Confirmed account
-deletions execute after 30 days and can be cancelled with the confirmation token.
+database. Roles are OWNER, ADMIN, MANAGER, and CASHIER.
+Confirmed account deletions execute after 30 days and can be cancelled with the confirmation token until cleanup begins.
+Sensitive auth routes use both PostgreSQL-backed account/IP limits and coarse Nginx IP limits.
+Password work runs in a capacity-limited thread pool, and every authenticated request must present the device UUID bound to its session.
+Deletion cleanup cancels Play renewals and deletes exact invoice object keys before sole-owned shops and user rows are removed.
 
 Evidence:
 - `app/modules/auth/security.py::create_access_token`
@@ -55,7 +58,9 @@ Hosted entitlement belongs to a shop. Self-hosted shops are Pro/unlimited;
 hosted shops without a current Pro subscription are limited to 50 active
 inventory rows. Item activation locks the shop before counting. Sale creation
 locks inventory rows, prices with `Decimal`, stores line snapshots, decrements
-stock, and records a shop-scoped idempotency result.
+stock, assigns a server-controlled invoice sequence, and records a shop-scoped idempotency result.
+The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
+Dashboard analytics use bounded date ranges and database aggregates instead of loading sale and inventory graphs into application memory.
 
 Evidence:
 - `app/modules/subscriptions/service.py::enforce_item_activation_limit`
@@ -69,6 +74,8 @@ purchase tokens with Android Publisher, checks the obfuscated shop identifier,
 encrypts tokens at rest, acknowledges purchases, and derives entitlements from
 server state. Authenticated RTDN pushes and periodic reconciliation keep state
 current. The worker also delivers the PostgreSQL email outbox through SES.
+Email and Play work is claimed with expiring database leases, processed with bounded concurrency, and finalized in short transactions.
+Failed email delivery uses bounded attempts and a durable failed state.
 
 Evidence:
 - `frontend/android/app/src/main/java/com/aurumpos/app/AurumBillingPlugin.java`
@@ -81,6 +88,8 @@ Evidence:
 PostgreSQL sales remain the authoritative invoice index.
 After a sale commits, the API renders its immutable sale snapshot to PDF and uploads it to a private S3 object whose key contains only the configured prefix, shop UUID, year, and sale UUID.
 Authenticated shop-scoped downloads receive a ten-minute presigned URL generated from the exact database key.
+Uploads are create-only and accept an idempotent retry only when the existing object's SHA-256 checksum matches.
+The deletion worker removes only exact PostgreSQL-indexed keys and never lists the bucket.
 
 Evidence:
 - `app/modules/sales/service.py::persist_invoice_pdf`
@@ -106,6 +115,7 @@ shop-namespaced and switching shops clears cached server state. Official cloud
 builds ignore saved URLs and use `https://api.aurumpos.net`; self-hosted builds
 require a build-time API URL and do not support runtime backend switching.
 Debug APKs omit Google Sign-In, while signed Play builds discover the public Google client ID from the backend.
+Native Android access and refresh tokens are encrypted with an AES-GCM key held by Android Keystore and are excluded from device backup.
 
 Evidence:
 - `frontend/src/main.tsx::ShopProvider`

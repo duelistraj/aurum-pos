@@ -9,12 +9,12 @@ class SaleItemInput(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    invoice_no: str
-    items: list[SaleItemInput]
+    invoice_no: str | None = Field(default=None, max_length=50)
+    items: list[SaleItemInput] = Field(min_length=1, max_length=100)
 
-    customer_name: str
-    customer_phone: str
-    customer_address: str | None = None
+    customer_name: str = Field(min_length=1, max_length=100)
+    customer_phone: str = Field(min_length=5, max_length=15)
+    customer_address: str | None = Field(default=None, max_length=255)
     total_amount: float | None = None
 
 

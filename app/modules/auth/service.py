@@ -9,11 +9,11 @@ from app.core.config import settings
 from app.modules.auth.models import AccountDeletionRequest, AuthSession, AuthToken, Device, User
 from app.modules.auth.schemas import DeviceInfo, LoginRequest, MembershipResponse, TokenResponse
 from app.modules.auth.security import (
+    check_password,
     create_access_token,
     generate_opaque_token,
-    get_password_hash,
+    hash_password,
     hash_token,
-    verify_password,
 )
 from app.modules.notifications.service import queue_email
 from app.modules.shops.service import list_memberships
@@ -136,7 +136,7 @@ async def authenticate_user(db: AsyncSession, login_data: LoginRequest) -> Token
     if (
         user is None
         or user.password_hash is None
-        or not verify_password(login_data.password, user.password_hash)
+        or not await check_password(login_data.password, user.password_hash)
     ):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     if not user.is_active:
@@ -147,7 +147,12 @@ async def authenticate_user(db: AsyncSession, login_data: LoginRequest) -> Token
     return await issue_session(db, user=user, device_uuid=login_data.device_uuid)
 
 
-async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenResponse:
+async def refresh_access_token(
+    db: AsyncSession,
+    refresh_token: str,
+    *,
+    device_uuid: str,
+) -> TokenResponse:
     session = await db.scalar(
         select(AuthSession)
         .where(AuthSession.refresh_token_hash == hash_token(refresh_token))
@@ -155,6 +160,8 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> TokenRes
     )
     now = datetime.now(UTC)
     if session is None or session.revoked_at is not None or session.expires_at <= now:
+        raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
+    if session.device_uuid != device_uuid:
         raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
     user = await db.get(User, session.user_id)
     if user is None or not user.is_active:
@@ -199,7 +206,7 @@ async def reset_password(db: AsyncSession, token: str, password: str) -> None:
     user = await db.get(User, auth_token.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
-    user.password_hash = get_password_hash(password)
+    user.password_hash = await hash_password(password)
     await db.execute(
         update(AuthSession)
         .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))

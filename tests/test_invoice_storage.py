@@ -5,7 +5,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
-from botocore.exceptions import EndpointConnectionError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from app.modules.sales.models import Sale
 from app.modules.sales.storage import (
@@ -17,16 +17,38 @@ from app.modules.sales.storage import (
 
 
 class FakeS3Client:
-    def __init__(self, *, fail_upload: bool = False, fail_presign: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_upload: bool = False,
+        fail_presign: bool = False,
+        existing_checksum: str | None = None,
+    ) -> None:
         self.fail_upload = fail_upload
         self.fail_presign = fail_presign
+        self.existing_checksum = existing_checksum
         self.put_kwargs: dict[str, Any] | None = None
+        self.head_kwargs: dict[str, Any] | None = None
+        self.delete_kwargs: dict[str, Any] | None = None
         self.presign_args: tuple[str, dict[str, str], int] | None = None
 
     def put_object(self, **kwargs: object) -> dict[str, Any]:
         if self.fail_upload:
             raise EndpointConnectionError(endpoint_url="https://s3.example.invalid")
         self.put_kwargs = dict(kwargs)
+        if self.existing_checksum is not None:
+            raise ClientError(
+                {"Error": {"Code": "PreconditionFailed", "Message": "Object exists"}},
+                "PutObject",
+            )
+        return {}
+
+    def head_object(self, **kwargs: object) -> dict[str, Any]:
+        self.head_kwargs = dict(kwargs)
+        return {"ChecksumSHA256": self.existing_checksum}
+
+    def delete_object(self, **kwargs: object) -> dict[str, Any]:
+        self.delete_kwargs = dict(kwargs)
         return {}
 
     def generate_presigned_url(
@@ -101,8 +123,63 @@ async def test_upload_sets_pdf_content_type_and_validated_checksum() -> None:
         "Body": pdf,
         "ContentType": "application/pdf",
         "ChecksumSHA256": base64.b64encode(hashlib.sha256(pdf).digest()).decode("ascii"),
+        "IfNoneMatch": "*",
     }
     assert metadata.checksum_sha256 == hashlib.sha256(pdf).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_retry_accepts_only_an_existing_object_with_the_same_checksum() -> None:
+    pdf = b"%PDF stable invoice"
+    checksum_base64 = base64.b64encode(hashlib.sha256(pdf).digest()).decode("ascii")
+    client = FakeS3Client(existing_checksum=checksum_base64)
+    storage = InvoiceStorage(
+        region="ap-southeast-1",
+        bucket="invoice-bucket",
+        expiry_seconds=600,
+        client=cast(S3Client, client),
+    )
+
+    metadata = await storage.upload_pdf(object_key="exact-key", pdf=pdf)
+
+    assert metadata.checksum_sha256 == hashlib.sha256(pdf).hexdigest()
+    assert client.head_kwargs == {
+        "Bucket": "invoice-bucket",
+        "Key": "exact-key",
+        "ChecksumMode": "ENABLED",
+    }
+
+
+@pytest.mark.asyncio
+async def test_retry_rejects_an_existing_object_with_a_different_checksum() -> None:
+    client = FakeS3Client(existing_checksum="different")
+    storage = InvoiceStorage(
+        region="ap-southeast-1",
+        bucket="invoice-bucket",
+        expiry_seconds=600,
+        client=cast(S3Client, client),
+    )
+
+    with pytest.raises(InvoiceStorageError, match="checksum does not match"):
+        await storage.upload_pdf(object_key="exact-key", pdf=b"%PDF expected")
+
+
+@pytest.mark.asyncio
+async def test_delete_uses_only_the_exact_postgres_object_key() -> None:
+    client = FakeS3Client()
+    storage = InvoiceStorage(
+        region="ap-southeast-1",
+        bucket="invoice-bucket",
+        expiry_seconds=600,
+        client=cast(S3Client, client),
+    )
+
+    await storage.delete_pdf(object_key="shops/shop/invoices/2026/id.pdf")
+
+    assert client.delete_kwargs == {
+        "Bucket": "invoice-bucket",
+        "Key": "shops/shop/invoices/2026/id.pdf",
+    }
 
 
 @pytest.mark.asyncio

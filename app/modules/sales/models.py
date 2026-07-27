@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     Numeric,
     String,
@@ -25,6 +26,7 @@ class Sale(Base):
     __table_args__ = (
         UniqueConstraint("shop_id", "invoice_no", name="uq_sales_shop_invoice"),
         UniqueConstraint("shop_id", "id", name="uq_sales_shop_id"),
+        Index("ix_sales_shop_created_at", "shop_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -114,6 +116,8 @@ class SaleItem(Base):
             ("shop_id", "sale_id"), ("sales.shop_id", "sales.id"), ondelete="CASCADE"
         ),
         ForeignKeyConstraint(("shop_id", "item_id"), ("items.shop_id", "items.id")),
+        Index("ix_sale_items_shop_sale", "shop_id", "sale_id"),
+        Index("ix_sale_items_shop_item", "shop_id", "item_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -156,6 +160,13 @@ class SaleItem(Base):
         JSON,
         nullable=False,
     )
+    item_sku: Mapped[str | None] = mapped_column(String(50))
+    item_name: Mapped[str | None] = mapped_column(String(255))
+    item_metal: Mapped[str | None] = mapped_column(String(50))
+    item_category: Mapped[str | None] = mapped_column(String(20))
+    item_purity: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    item_net_weight: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    item_making_charge: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     sale = relationship(
         "Sale",

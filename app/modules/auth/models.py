@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -109,6 +109,27 @@ class AccountDeletionRequest(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     execute_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cleanup_last_error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
+
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (
+        UniqueConstraint("scope", "subject_hash", "window_started_at"),
+        Index("ix_auth_rate_limits_window_started_at", "window_started_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scope: Mapped[str] = mapped_column(String(50), nullable=False)
+    subject_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True, server_default=func.now()
     )

@@ -3,6 +3,7 @@ import { PLAY_PRODUCT_ID } from '../constants/billing';
 import {
   AnalyticsDashboardResponse,
   ChangeLogEntry,
+  ChangeLogPage,
   DashboardSummary,
   InvoiceDownload,
   Item,
@@ -211,9 +212,13 @@ client.interceptors.response.use(
           if (!refreshToken) {
             throw new Error('No refresh token available');
           }
-          const apiBaseUrl = await getApiBaseUrl();
+          const [apiBaseUrl, deviceUuid] = await Promise.all([
+            getApiBaseUrl(),
+            getDeviceUUID(),
+          ]);
           const { data } = await axios.post<TokenResponse>(`${apiBaseUrl}/api/v1/auth/refresh`, {
             refresh_token: refreshToken,
+            device_uuid: deviceUuid,
           });
           await setAuthData(data.access_token, data.refresh_token, {
             full_name: data.full_name,
@@ -276,7 +281,11 @@ client.interceptors.response.use(
   }
 );
 
-type SaleCreatePayload = Omit<Sale, 'id'> & {
+type SaleCreatePayload = {
+  items: Array<{ item_id: string; quantity: number }>;
+  customer_name: string;
+  customer_phone: string;
+  customer_address?: string;
   total_amount?: number;
 };
 
@@ -496,17 +505,23 @@ export const apiClient = {
   },
 
   // Sales
-  async createSale(sale: SaleCreatePayload) {
+  async createSale(sale: SaleCreatePayload, idempotencyKey: string) {
     const { data } = await client.post<Sale>('/sales/', {
-      invoice_no: sale.invoice_no,
       items: sale.items.map(item => ({ item_id: item.item_id, quantity: item.quantity })),
       customer_name: sale.customer_name,
       customer_phone: sale.customer_phone,
       customer_address: sale.customer_address,
       total_amount: sale.total_amount,
     }, {
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      headers: { 'Idempotency-Key': idempotencyKey },
     });
+    return data;
+  },
+
+  async getSaleByIdempotencyKey(idempotencyKey: string) {
+    const { data } = await client.get<Sale>(
+      `/sales/idempotency/${encodeURIComponent(idempotencyKey)}`,
+    );
     return data;
   },
 
@@ -528,10 +543,22 @@ export const apiClient = {
     action?: string;
     from_date?: string;
     to_date?: string;
+    page?: number;
+    limit?: number;
   }) {
-    const { data } = await client.get<ChangeLogEntry[]>('/change-log/history', {
+    const { data } = await client.get<ChangeLogPage | ChangeLogEntry[]>('/change-log/history', {
       params,
     });
+    if (Array.isArray(data)) {
+      const limit = params.limit ?? 50;
+      return {
+        entries: data,
+        total: data.length,
+        page: params.page ?? 1,
+        limit,
+        pages: data.length > 0 ? Math.ceil(data.length / limit) : 0,
+      };
+    }
     return data;
   },
 

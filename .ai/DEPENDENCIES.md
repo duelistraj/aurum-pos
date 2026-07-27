@@ -27,8 +27,8 @@ Evidence:
 ### Documents and frontend
 
 ReportLab and OpenPyXL generate invoices and labels. React 18, React Router,
-Axios, TanStack Query, Chart.js, and Tailwind implement the client. Capacitor
-Preferences and Filesystem provide mobile storage and exports.
+Axios, TanStack Query, Chart.js, and Tailwind implement the client.
+Capacitor Preferences stores non-secret client state, Filesystem provides exports, and a native Android Keystore plugin encrypts access and refresh tokens.
 
 Evidence:
 - `app/modules/sales/invoice.py::generate_invoice_pdf`
@@ -54,7 +54,7 @@ Evidence:
 Ruff, Mypy, Pytest, pytest-asyncio, and pytest-cov verify Python.
 ESLint, TypeScript, Vitest, Testing Library, and Vite verify the client.
 CI migrates a fresh PostgreSQL service, verifies `alembic check`, and scans changed migration upgrades for unsafe schema operations before integration tests.
-Android workflows use JDK 21.
+Android workflows use JDK 21, and signed releases run Gradle unit tests and lint before bundling.
 
 Evidence:
 - `pyproject.toml::dependency-groups.dev`

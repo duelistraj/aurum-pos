@@ -51,6 +51,7 @@ The backend always runs at `http://localhost:8080`; API documentation is at
 Invoice PDFs are stored in the private S3 bucket configured by `AWS_REGION` and `S3_INVOICE_BUCKET`.
 For local AWS access, use the normal SDK credential chain through `aws configure`, `AWS_PROFILE`, or temporary credentials exported in the shell.
 Do not commit local AWS credentials or add them to the application settings.
+Invoice numbers are assigned by the server, and checkout retries reuse a durable client operation key.
 
 In another terminal:
 
@@ -94,6 +95,8 @@ Self-hosters that enable Google authentication must configure their own backend 
 
 The manually triggered signed-AAB workflow requires `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` as encrypted GitHub secrets.
 Its monotonically increasing version code supports repeated uploads to the existing Play Internal Testing track.
+Run it with the full 40-character SHA of a revision that has a successful CI run.
+The workflow executes Android unit tests and lint before bundling, and native access and refresh tokens are encrypted with Android Keystore.
 
 ## Entitlement administration
 

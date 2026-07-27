@@ -67,6 +67,14 @@ export interface ChangeLogEntry {
   created_at: string | null;
 }
 
+export interface ChangeLogPage {
+  entries: ChangeLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export interface DashboardSummary {
   inventory_items: number;
   total_stock_value: number;

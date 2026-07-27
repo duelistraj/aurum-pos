@@ -11,3 +11,11 @@ class ChangeLogEntry(BaseModel):
     action: str
     payload: dict[str, Any]
     created_at: datetime
+
+
+class ChangeLogPage(BaseModel):
+    entries: list[ChangeLogEntry]
+    total: int
+    page: int
+    limit: int
+    pages: int
