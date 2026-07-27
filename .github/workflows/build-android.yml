@@ -71,7 +71,7 @@ jobs:
         arch: x86_64
         target: default
         disable-animations: true
-        script: cd frontend/android && ./gradlew connectedDebugAndroidTest
+        script: cd frontend/android && ./gradlew :app:connectedDebugAndroidTest
 
     - name: Upload APK
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

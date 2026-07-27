@@ -116,7 +116,7 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: cd frontend/android && ./gradlew connectedDebugAndroidTest
+          script: cd frontend/android && ./gradlew :app:connectedDebugAndroidTest
 
       - name: Decode keystore
         working-directory: frontend/android
