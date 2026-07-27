@@ -109,6 +109,9 @@ jobs:
           distribution: temurin
           cache: gradle
 
+      - name: Prepare Gradle wrapper
+        run: chmod +x frontend/android/gradlew
+
       - name: Run Android Keystore instrumentation tests
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:

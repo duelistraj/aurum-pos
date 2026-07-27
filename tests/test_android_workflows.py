@@ -34,6 +34,9 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
     assert "has no successful CI run" in source
     assert "./gradlew test lint bundleRelease" in source
     assert "./gradlew :app:connectedDebugAndroidTest" in source
+    assert source.index("chmod +x frontend/android/gradlew") < source.index(
+        "./gradlew :app:connectedDebugAndroidTest"
+    )
     assert "environment: play-internal" in source
 
 
