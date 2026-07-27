@@ -109,6 +109,15 @@ jobs:
           distribution: temurin
           cache: gradle
 
+      - name: Run Android Keystore instrumentation tests
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: cd frontend/android && ./gradlew connectedDebugAndroidTest
+
       - name: Decode keystore
         working-directory: frontend/android
         env:

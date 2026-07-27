@@ -17,6 +17,8 @@ def test_debug_apk_excludes_google_authentication() -> None:
     assert "VITE_GOOGLE_WEB_CLIENT_ID" not in source
     assert "aurum-pos-cloud-smoke-debug-apk" in source
     assert "./gradlew test lint assembleDebug" in source
+    assert "./gradlew connectedDebugAndroidTest" in source
+    assert "android-emulator-runner@" in source
 
 
 def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
@@ -31,6 +33,7 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
     assert "not reachable from main" in source
     assert "has no successful CI run" in source
     assert "./gradlew test lint bundleRelease" in source
+    assert "./gradlew connectedDebugAndroidTest" in source
     assert "environment: play-internal" in source
 
 

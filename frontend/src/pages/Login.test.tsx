@@ -209,6 +209,68 @@ describe('Login', () => {
     );
   });
 
+  it('does not enter the app when password authentication cannot be stored securely', async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn(async () => undefined);
+    vi.mocked(useShop).mockReturnValue({
+      user: null,
+      memberships: [],
+      activeMembership: null,
+      canManage: false,
+      selectShop: vi.fn(),
+      reload,
+    });
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+    vi.mocked(apiClient.login).mockResolvedValue(tokenResponse);
+    vi.mocked(setAuthData).mockRejectedValueOnce(new Error(
+      'Your account was authenticated, but this device could not securely save the session.',
+    ));
+
+    renderLogin();
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.type(screen.getByLabelText('Password'), 'strong-password-123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByText(
+      'Your account was authenticated, but this device could not securely save the session.',
+    )).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('does not enter the app when Google authentication cannot be stored securely', async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn(async () => undefined);
+    vi.mocked(useShop).mockReturnValue({
+      user: null,
+      memberships: [],
+      activeMembership: null,
+      canManage: false,
+      selectShop: vi.fn(),
+      reload,
+    });
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: {
+        enabled: true,
+        client_id: 'google-client.apps.googleusercontent.com',
+      },
+    });
+    vi.mocked(AurumGoogleAuth.signIn).mockResolvedValue({ idToken: 'google-id-token' });
+    vi.mocked(apiClient.googleAuth).mockResolvedValue(tokenResponse);
+    vi.mocked(setAuthData).mockRejectedValueOnce(new Error(
+      'Your account was authenticated, but this device could not securely save the session.',
+    ));
+
+    renderLogin();
+    await user.click(await screen.findByRole('button', { name: 'Continue with Google' }));
+
+    expect(await screen.findByText(
+      'Your account was authenticated, but this device could not securely save the session.',
+    )).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it('shows a verification-pending state after email registration', async () => {
     const user = userEvent.setup();
     vi.mocked(apiClient.authProviders).mockResolvedValue({

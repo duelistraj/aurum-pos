@@ -1,5 +1,9 @@
 import { getPreference, removePreference, setPreference } from './storage';
-import { getSecureValue, removeSecureValue, setSecureValue } from '../native/secureStorage';
+import {
+  clearSecureValues,
+  getSecureValue,
+  setSecureValues,
+} from '../native/secureStorage';
 
 export interface MembershipInfo {
   shop_id: string;
@@ -31,13 +35,23 @@ export const setAuthData = async (
   const activeShopId = userInfo.memberships.some(({ shop_id }) => shop_id === currentShopId)
     ? currentShopId
     : userInfo.memberships[0]?.shop_id ?? null;
-  const writes: Array<Promise<void>> = [
-    setSecureValue(AUTH_KEYS.ACCESS_TOKEN, accessToken),
-    setSecureValue(AUTH_KEYS.REFRESH_TOKEN, refreshToken),
-    setPreference(AUTH_KEYS.USER_INFO, JSON.stringify(userInfo)),
-  ];
-  if (activeShopId) writes.push(setPreference(AUTH_KEYS.ACTIVE_SHOP_ID, activeShopId));
-  await Promise.all(writes);
+  try {
+    await setSecureValues({
+      [AUTH_KEYS.ACCESS_TOKEN]: accessToken,
+      [AUTH_KEYS.REFRESH_TOKEN]: refreshToken,
+    });
+    await setPreference(AUTH_KEYS.USER_INFO, JSON.stringify(userInfo));
+    if (activeShopId) await setPreference(AUTH_KEYS.ACTIVE_SHOP_ID, activeShopId);
+  } catch {
+    try {
+      await clearAuthData();
+    } catch {
+      // Preserve the actionable authentication error if best-effort cleanup also fails.
+    }
+    throw new Error(
+      'Your account was authenticated, but this device could not securely save the session.',
+    );
+  }
 };
 
 export const getAccessToken = (): Promise<string | null> =>
@@ -67,8 +81,7 @@ export const setUserInfo = (userInfo: UserInfo): Promise<void> =>
 
 export const clearAuthData = async (): Promise<void> => {
   await Promise.all([
-    removeSecureValue(AUTH_KEYS.ACCESS_TOKEN),
-    removeSecureValue(AUTH_KEYS.REFRESH_TOKEN),
+    clearSecureValues([AUTH_KEYS.ACCESS_TOKEN, AUTH_KEYS.REFRESH_TOKEN]),
     removePreference(AUTH_KEYS.USER_INFO),
     removePreference(AUTH_KEYS.ACTIVE_SHOP_ID),
   ]);

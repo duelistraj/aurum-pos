@@ -64,6 +64,15 @@ jobs:
         chmod +x gradlew
         ./gradlew test lint assembleDebug
 
+    - name: Run Android Keystore instrumentation tests
+      uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+      with:
+        api-level: 35
+        arch: x86_64
+        target: default
+        disable-animations: true
+        script: cd frontend/android && ./gradlew connectedDebugAndroidTest
+
     - name: Upload APK
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
