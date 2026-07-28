@@ -106,10 +106,17 @@ async def invoices(
     from_date: datetime | None = Query(None),
     to_date: datetime | None = Query(None),
     pdf_status: InvoicePdfStatus | None = Query(None),
+    cursor_created_at: datetime | None = Query(None),
+    cursor_id: UUID | None = Query(None),
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ) -> InvoicePageOut:
-    rows, total = await list_invoices(
+    if (cursor_created_at is None) != (cursor_id is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Both invoice cursor fields are required",
+        )
+    rows, total, has_more = await list_invoices(
         db,
         shop_id=context.shop.id,
         page=page,
@@ -118,7 +125,10 @@ async def invoices(
         from_date=from_date,
         to_date=to_date,
         pdf_status=pdf_status,
+        cursor_created_at=cursor_created_at,
+        cursor_id=cursor_id,
     )
+    last_row = rows[-1] if rows and has_more else None
     return InvoicePageOut(
         invoices=[
             InvoiceSummaryOut(
@@ -137,6 +147,8 @@ async def invoices(
         page=page,
         limit=limit,
         pages=math.ceil(total / limit),
+        next_cursor_created_at=last_row.created_at if last_row is not None else None,
+        next_cursor_id=last_row.id if last_row is not None else None,
     )
 
 

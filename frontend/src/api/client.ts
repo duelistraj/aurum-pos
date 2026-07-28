@@ -634,6 +634,8 @@ export const apiClient = {
     from_date?: string;
     to_date?: string;
     pdf_status?: InvoicePdfStatus;
+    cursor_created_at?: string;
+    cursor_id?: string;
   }) {
     const { data } = await client.get<InvoicePage>('/sales/invoices', { params });
     return data;

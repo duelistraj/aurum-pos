@@ -2,7 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import or_, select, text
 
@@ -22,6 +22,7 @@ class InvoiceTarget:
     job_id: UUID
     shop_id: UUID
     sale_id: UUID
+    lease_token: UUID
 
 
 async def _claim_invoice_jobs() -> list[InvoiceTarget]:
@@ -51,8 +52,16 @@ async def _claim_invoice_jobs() -> list[InvoiceTarget]:
         for job in jobs:
             job.status = "processing"
             job.lease_until = now + INVOICE_LEASE
+            job.lease_token = uuid4()
         return [
-            InvoiceTarget(job_id=job.id, shop_id=job.shop_id, sale_id=job.sale_id) for job in jobs
+            InvoiceTarget(
+                job_id=job.id,
+                shop_id=job.shop_id,
+                sale_id=job.sale_id,
+                lease_token=job.lease_token,
+            )
+            for job in jobs
+            if job.lease_token is not None
         ]
 
 
@@ -64,11 +73,17 @@ async def _finish_invoice_job(
     now = datetime.now(UTC)
     async with AsyncSessionLocal.begin() as session:
         job = await session.scalar(
-            select(InvoiceJob).where(InvoiceJob.id == target.job_id).with_for_update()
+            select(InvoiceJob)
+            .where(
+                InvoiceJob.id == target.job_id,
+                InvoiceJob.lease_token == target.lease_token,
+            )
+            .with_for_update()
         )
         if job is None:
             return
         job.lease_until = None
+        job.lease_token = None
         if error_code is None:
             job.status = "ready"
             job.last_error_code = None

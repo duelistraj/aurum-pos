@@ -191,16 +191,26 @@ async def revoke_session(db: AsyncSession, session_id: UUID) -> None:
 
 
 async def request_password_reset(db: AsyncSession, email: str) -> None:
-    user = await db.scalar(select(User).where(User.email == email))
+    user = await db.scalar(select(User).where(User.email == email).with_for_update())
     if user is None or not user.is_active:
         return
+    now = datetime.now(UTC)
+    await db.execute(
+        update(AuthToken)
+        .where(
+            AuthToken.user_id == user.id,
+            AuthToken.purpose == "reset_password",
+            AuthToken.consumed_at.is_(None),
+        )
+        .values(consumed_at=now)
+    )
     token = generate_opaque_token()
     db.add(
         AuthToken(
             user_id=user.id,
             purpose="reset_password",
             token_hash=hash_token(token),
-            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            expires_at=now + timedelta(minutes=30),
         )
     )
     email_content = password_reset_email(token=token)
@@ -218,11 +228,21 @@ async def reset_password(db: AsyncSession, token: str, password: str) -> None:
     user = await db.get(User, auth_token.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token")
+    now = datetime.now(UTC)
+    await db.execute(
+        update(AuthToken)
+        .where(
+            AuthToken.user_id == user.id,
+            AuthToken.purpose == "reset_password",
+            AuthToken.consumed_at.is_(None),
+        )
+        .values(consumed_at=now)
+    )
     user.password_hash = await hash_password(password)
     await db.execute(
         update(AuthSession)
         .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
-        .values(revoked_at=datetime.now(UTC))
+        .values(revoked_at=now)
     )
 
 

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -19,6 +20,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 @dataclass(frozen=True)
 class AuthContext:
     user: User
+    device: Device
     session_id: UUID
     device_uuid: str
 
@@ -32,7 +34,9 @@ class ShopContext:
 
 
 async def get_auth_context(
-    token: Annotated[str, Depends(oauth2_scheme)], db: AsyncSession = Depends(get_db)
+    token: Annotated[str, Depends(oauth2_scheme)],
+    x_device_uuid: Annotated[str, Header()],
+    db: AsyncSession = Depends(get_db),
 ) -> AuthContext:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -56,8 +60,13 @@ async def get_auth_context(
 
     auth_row = (
         await db.execute(
-            select(AuthSession, User)
+            select(AuthSession, User, Device)
             .join(User, User.id == AuthSession.user_id)
+            .outerjoin(
+                Device,
+                (Device.user_id == AuthSession.user_id)
+                & (Device.device_uuid == AuthSession.device_uuid),
+            )
             .where(
                 AuthSession.id == session_id,
                 AuthSession.user_id == user_id,
@@ -69,9 +78,17 @@ async def get_auth_context(
     ).one_or_none()
     if auth_row is None:
         raise credentials_exception
-    session, user = auth_row
+    session, user, device = auth_row
+    if x_device_uuid != session.device_uuid:
+        raise HTTPException(
+            status_code=403,
+            detail="Device does not match the authenticated session",
+        )
+    if device is None or not device.is_active:
+        raise HTTPException(status_code=403, detail="Device is not registered or is disabled")
     return AuthContext(
         user=user,
+        device=device,
         session_id=session_id,
         device_uuid=session.device_uuid,
     )
@@ -82,24 +99,9 @@ async def get_current_user(context: AuthContext = Depends(get_auth_context)) -> 
 
 
 async def get_current_device(
-    x_device_uuid: Annotated[str, Header()],
     context: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(get_db),
 ) -> Device:
-    if x_device_uuid != context.device_uuid:
-        raise HTTPException(
-            status_code=403,
-            detail="Device does not match the authenticated session",
-        )
-    device = await db.scalar(
-        select(Device).where(
-            Device.device_uuid == x_device_uuid,
-            Device.user_id == context.user.id,
-        )
-    )
-    if device is None or not device.is_active:
-        raise HTTPException(status_code=403, detail="Device is not registered or is disabled")
-    return device
+    return context.device
 
 
 async def get_shop_context(
@@ -137,10 +139,18 @@ async def get_shop_context(
         raise HTTPException(status_code=404, detail="Shop membership not found")
     membership, shop, device_access = membership_row
     if device_access is None:
-        device_access = ShopDeviceAccess(shop_id=x_shop_id, device_id=device.id)
-        db.add(device_access)
-        await db.flush()
-    elif not device_access.is_active:
+        await db.execute(
+            pg_insert(ShopDeviceAccess)
+            .values(shop_id=x_shop_id, device_id=device.id)
+            .on_conflict_do_nothing(index_elements=("shop_id", "device_id"))
+        )
+        device_access = await db.scalar(
+            select(ShopDeviceAccess).where(
+                ShopDeviceAccess.shop_id == x_shop_id,
+                ShopDeviceAccess.device_id == device.id,
+            )
+        )
+    if device_access is None or not device_access.is_active:
         raise HTTPException(status_code=403, detail="Device is disabled for this shop")
     return ShopContext(user=context.user, shop=shop, membership=membership, device=device)
 

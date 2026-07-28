@@ -12,13 +12,15 @@ def test_verification_and_password_reset_emails_have_multipart_content() -> None
 
     assert verification.subject == "Verify your email | Aurum POS"
     assert "verify-token" in verification.text_body
-    assert 'href="https://aurumpos.net/verify-email.html?token=verify-token"' in (
+    assert 'href="https://aurumpos.net/verify-email.html#token=verify-token"' in (
         verification.html_body
     )
+    assert "?token=" not in verification.html_body
     assert "expires in 24 hours" in verification.text_body
 
     assert password_reset.subject == "Reset your password | Aurum POS"
     assert "reset-token" in password_reset.html_body
+    assert "#token=reset-token" in password_reset.html_body
     assert "expires in 30 minutes" in password_reset.text_body
 
 

@@ -56,3 +56,5 @@ class InvoicePageOut(BaseModel):
     page: int
     limit: int
     pages: int
+    next_cursor_created_at: datetime | None
+    next_cursor_id: UUID | None

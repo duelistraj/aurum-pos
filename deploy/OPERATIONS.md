@@ -21,6 +21,7 @@ the loopback-only API port, and Certbot manages TLS.
 - Keep `aurum-pos-prod-duelistraj` private in `ap-southeast-1` with Block Public Access enabled.
 - Set `AWS_REGION=ap-southeast-1`, `S3_INVOICE_BUCKET=aurum-pos-prod-duelistraj`, `S3_INVOICE_PREFIX=shops`, and `S3_PRESIGNED_URL_EXPIRY_SECONDS=600` in the runtime environment.
 - Tune `DATABASE_POOL_SIZE` and `DATABASE_MAX_OVERFLOW` so the API and worker containers together remain below the Aiven connection limit.
+- Keep `DATABASE_STATEMENT_TIMEOUT_MS=30000` unless a measured endpoint requires a narrower limit.
 - Keep the bounded worker defaults unless monitoring shows a need to change `WORKER_EMAIL_CONCURRENCY`, `WORKER_RECONCILIATION_BATCH_SIZE`, or `WORKER_RECONCILIATION_CONCURRENCY`.
 
 The boto3 credential chain automatically obtains temporary credentials from the EC2 instance role.
@@ -35,21 +36,22 @@ The IAM policy should scope all three object actions to `arn:aws:s3:::aurum-pos-
 
 Nginx provides a coarse per-IP limit for sensitive authentication routes.
 The application adds durable per-IP and per-account fixed-window limits in PostgreSQL.
-Keep Uvicorn's trusted forwarded-proxy range restricted to the loopback Nginx proxy.
+Compose assigns a fixed `172.30.0.1` gateway to the host proxy path and configures Uvicorn to trust only that address.
+Nginx overwrites `X-Forwarded-For` with the direct client address instead of accepting a caller-provided chain.
 
 ## Deployment
 
-Set `AURUM_IMAGE` to the tested GHCR digest, then run `deploy/deploy.sh` through
-SSM. The script refuses mutable tags, runs the migration from the same image,
-starts the API and worker, and checks readiness. Nginx remains a host service
-and proxies to `127.0.0.1:8000`.
+Set `AURUM_IMAGE` to the tested GHCR digest, then run `deploy/deploy.sh` through SSM.
+The script refuses mutable tags, pauses the worker, runs the migration from the same image, verifies API readiness, starts the worker, and verifies its database heartbeat.
+Nginx remains a host service and proxies to `127.0.0.1:8000`.
 
 Keep the prior image digest for application rollback. Database migrations must
 remain backward-compatible after the initial clean-database SaaS cutover. The
 legacy BMR rollback is its isolated old deployment, not an application rollback
 against the new schema.
 
-The worker uses expiring PostgreSQL leases for email, invoice generation, subscription reconciliation, and account deletion work.
+The worker uses expiring PostgreSQL leases with unique fencing tokens for email, invoice generation, subscription reconciliation, and account deletion work.
+Independent worker queues execute concurrently inside the lean worker process so slow deletion or provider calls do not stall invoice and email progress.
 Invoice PDFs are generated off the async event loop, retried with a stable object key, and exposed only after successful S3 upload metadata commits.
 Invoice delivery stops automatic retries after `WORKER_INVOICE_MAX_ATTEMPTS`; an authenticated download request requeues a failed job.
 Email delivery stops retrying after `WORKER_EMAIL_MAX_ATTEMPTS` and leaves the row in `failed` state for operator review.
@@ -66,8 +68,22 @@ Database backup, retention, and restoration are configured and operated
 directly through the selected infrastructure providers. Aurum POS does not run
 application-managed backup jobs.
 
+For the initial launch, require a provider recovery point objective of at most 24 hours and a recovery time objective of at most four hours.
+Before sustained traffic reaches 10,000 active users, tighten those objectives to at most one hour of data loss and at most two hours to restore service.
+Record the configured point-in-time recovery window, backup retention, backup region, and responsible operator in the private operations repository.
+
+Run a restore drill before launch and at least quarterly:
+
+1. Restore the latest backup or point-in-time snapshot into an isolated database project.
+2. Connect using a temporary migration administrator credential and run `alembic current` plus `alembic check`.
+3. Start the tested application digest against the restored database and verify login, shop selection, inventory counts, recent sales, invoice metadata, and worker heartbeat.
+4. Compare row counts for users, shops, memberships, items, sales, sale items, invoice jobs, and subscriptions against the source checkpoint.
+5. Record achieved recovery point and recovery time, investigate every mismatch, then destroy the isolated restore and its temporary credentials.
+
 ## Scale triggers
 
 Start Terraform and an ALB/multi-instance design before adding a second host or when sustained CPU exceeds 60%, memory exceeds 70%, API p95 exceeds 500 ms, or single-host availability is no longer acceptable.
 The API is stateless; session, durable jobs, outbox, entitlement, and worker-lease state live in PostgreSQL.
 Before raising API worker counts, keep the sum of every process's `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` below the Aiven connection limit with room for migrations and operations.
+Run the repository k6 scenario at 100 concurrent users before launch and after every material query or topology change.
+Before a 10,000-user test, deploy at least two API instances, run workers independently from API capacity, place a connection pooler in front of PostgreSQL if the measured connection budget requires it, and alert on p95 latency, error rate, database saturation, and oldest pending job age.

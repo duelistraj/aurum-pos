@@ -156,14 +156,16 @@ Public privacy, terms, source, and account-deletion pages are published from
 ## Verification
 
 ```bash
-uv run ruff check app tests scripts
-uv run ruff format --check app tests scripts
+uv run pip-audit
+uv run ruff check app tests scripts alembic/versions
+uv run ruff format --check app tests scripts alembic/versions
 uv run mypy app
 uv run pytest
 cd frontend && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
 Set `RUN_INTEGRATION=1` after `uv run alembic upgrade head` to run the migrated PostgreSQL tenant, durable-job, ownership-transfer, and lifecycle flows.
+Use [`loadtest/k6.js`](loadtest/k6.js) for launch and scale latency gates against an isolated representative environment.
 
 ## Source and license
 

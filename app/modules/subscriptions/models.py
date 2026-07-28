@@ -69,6 +69,7 @@ class PlaySubscription(Base):
         DateTime(timezone=True), index=True
     )
     verification_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     deletion_cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

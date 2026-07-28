@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    literal_column,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -28,6 +29,24 @@ class Sale(Base):
         UniqueConstraint("shop_id", "invoice_no", name="uq_sales_shop_invoice"),
         UniqueConstraint("shop_id", "id", name="uq_sales_shop_id"),
         Index("ix_sales_shop_created_at", "shop_id", "created_at"),
+        Index(
+            "ix_sales_shop_invoice_no_prefix",
+            "shop_id",
+            literal_column("lower(invoice_no)").label("invoice_no_lower"),
+            postgresql_ops={"invoice_no_lower": "text_pattern_ops"},
+        ),
+        Index(
+            "ix_sales_shop_customer_phone_prefix",
+            "shop_id",
+            "customer_phone",
+            postgresql_ops={"customer_phone": "text_pattern_ops"},
+        ),
+        Index(
+            "ix_sales_customer_name_trgm",
+            literal_column("lower(customer_name)").label("customer_name_lower"),
+            postgresql_using="gin",
+            postgresql_ops={"customer_name_lower": "gin_trgm_ops"},
+        ),
         CheckConstraint(
             "invoice_pdf_status IN ('pending', 'processing', 'ready', 'failed')",
             name="sales_invoice_pdf_status_check",
@@ -267,6 +286,7 @@ class InvoiceJob(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     last_error_code: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

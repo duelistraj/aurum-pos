@@ -4,15 +4,15 @@
 
 Python 3.12 runs FastAPI under Uvicorn.
 Pydantic Settings loads configuration; SQLAlchemy async and asyncpg access PostgreSQL.
-PyJWT, Passlib, and Argon2 implement sessions/passwords.
+PyJWT and Argon2 implement sessions/passwords.
 Google Auth verifies identity and Pub/Sub OIDC tokens, cryptography encrypts Play tokens, and boto3 sends SES email and stores private invoice PDFs in S3 through the AWS credential chain.
 
 Evidence:
 - `pyproject.toml::project.dependencies`
-- `app/modules/auth/security.py::pwd_context`
+- `app/modules/auth/security.py::password_hasher`
 - `app/modules/billing/service.py::_encrypt_token`
 - `app/modules/sales/storage.py::InvoiceStorage`
-- `app/worker.py::deliver_email`
+- `app/jobs/emails.py::deliver_email`
 
 ### Database and local service
 

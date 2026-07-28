@@ -1,6 +1,7 @@
 from email.utils import parseaddr
+from enum import StrEnum
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CORS_ORIGINS = (
@@ -13,9 +14,21 @@ DEFAULT_CORS_ORIGINS = (
 AUTH_TOKEN_EXPOSURE_ENVIRONMENTS = frozenset({"local", "test"})
 
 
+class Environment(StrEnum):
+    LOCAL = "local"
+    TEST = "test"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+class DeploymentMode(StrEnum):
+    SELF_HOSTED = "self_hosted"
+    HOSTED = "hosted"
+
+
 class Settings(BaseSettings):
     app_name: str = "Aurum POS"
-    env: str = "local"
+    env: Environment = Environment.LOCAL
     database_url: str
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
@@ -27,7 +40,7 @@ class Settings(BaseSettings):
     auth_rate_limit_per_ip: int = Field(default=30, ge=1, le=1000)
     auth_rate_limit_per_account: int = Field(default=10, ge=1, le=1000)
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
-    deployment_mode: str = "self_hosted"
+    deployment_mode: DeploymentMode = DeploymentMode.SELF_HOSTED
     free_active_item_limit: int = 50
     source_repository_url: str = "https://github.com/duelistraj/aurum-pos"
     git_sha: str = "development"
@@ -50,6 +63,7 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1, le=50)
     database_max_overflow: int = Field(default=5, ge=0, le=50)
     database_pool_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    database_statement_timeout_ms: int = Field(default=30_000, ge=1_000, le=300_000)
     worker_email_max_attempts: int = Field(default=8, ge=1, le=50)
     worker_email_concurrency: int = Field(default=5, ge=1, le=20)
     worker_reconciliation_batch_size: int = Field(default=100, ge=1, le=1000)
@@ -70,7 +84,18 @@ class Settings(BaseSettings):
 
     @property
     def exposes_auth_tokens(self) -> bool:
-        return self.env.strip().lower() in AUTH_TOKEN_EXPOSURE_ENVIRONMENTS
+        return self.env in AUTH_TOKEN_EXPOSURE_ENVIRONMENTS
+
+    @field_validator("env", "deployment_mode", mode="before")
+    @classmethod
+    def normalize_runtime_mode(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def prevent_hosted_fail_open(self) -> "Settings":
+        if self.deployment_mode == DeploymentMode.HOSTED and self.env != Environment.PRODUCTION:
+            raise ValueError("hosted deployment mode requires ENV=production")
+        return self
 
     @field_validator("aws_region", "s3_invoice_bucket")
     @classmethod

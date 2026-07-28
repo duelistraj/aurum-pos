@@ -14,6 +14,8 @@ __pypackages__/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 .cache/
 pip-wheel-metadata/
 

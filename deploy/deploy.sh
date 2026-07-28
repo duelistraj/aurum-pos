@@ -13,7 +13,28 @@ test -f .env || {
 }
 
 docker compose -f compose.cloud.yml pull api worker
+docker compose -f compose.cloud.yml stop worker
 docker compose -f compose.cloud.yml run --rm api alembic upgrade head
-docker compose -f compose.cloud.yml up -d --remove-orphans
-docker compose -f compose.cloud.yml exec -T api \
-  curl -fsS http://localhost:8000/health/ready
+docker compose -f compose.cloud.yml up -d --remove-orphans api
+
+attempt=0
+until curl -fsS http://127.0.0.1:8000/health/ready >/dev/null; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 30 ]; then
+    echo "API readiness did not recover after deployment" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+docker compose -f compose.cloud.yml up -d worker
+
+attempt=0
+until curl -fsS http://127.0.0.1:8000/health/worker >/dev/null; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 30 ]; then
+    echo "Worker heartbeat did not recover after deployment" >&2
+    exit 1
+  fi
+  sleep 2
+done

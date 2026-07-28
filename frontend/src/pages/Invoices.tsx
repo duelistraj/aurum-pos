@@ -31,6 +31,11 @@ interface InvoiceFilters {
   pdfStatus: '' | InvoicePdfStatus;
 }
 
+interface InvoiceCursor {
+  createdAt: string;
+  id: string;
+}
+
 interface ShopProfile {
   name: string;
   legal_name: string;
@@ -94,6 +99,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
   const [filters, setFilters] = React.useState<InvoiceFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = React.useState<InvoiceFilters>(EMPTY_FILTERS);
   const [page, setPage] = React.useState(1);
+  const [cursorByPage, setCursorByPage] = React.useState<Record<number, InvoiceCursor>>({});
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [downloadError, setDownloadError] = React.useState('');
   const queryParams = {
@@ -103,6 +109,8 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     from_date: startOfLocalDayIso(appliedFilters.fromDate),
     to_date: endOfLocalDayIso(appliedFilters.toDate),
     pdf_status: appliedFilters.pdfStatus || undefined,
+    cursor_created_at: cursorByPage[page]?.createdAt,
+    cursor_id: cursorByPage[page]?.id,
   };
   const invoicesQuery = useQuery({
     queryKey: queryKeys.invoices(shopId, queryParams),
@@ -114,12 +122,14 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     event.preventDefault();
     setAppliedFilters({ ...filters });
     setPage(1);
+    setCursorByPage({});
   };
 
   const resetFilters = () => {
     setFilters(EMPTY_FILTERS);
     setAppliedFilters(EMPTY_FILTERS);
     setPage(1);
+    setCursorByPage({});
   };
 
   const downloadInvoice = async (invoice: InvoiceSummary) => {
@@ -338,7 +348,16 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
               size="sm"
               variant="secondary"
               disabled={page >= pageCount}
-              onClick={() => setPage((current) => current + 1)}
+              onClick={() => {
+                const createdAt = invoicesQuery.data?.next_cursor_created_at;
+                const id = invoicesQuery.data?.next_cursor_id;
+                if (!createdAt || !id) return;
+                setCursorByPage((current) => ({
+                  ...current,
+                  [page + 1]: { createdAt, id },
+                }));
+                setPage((current) => current + 1);
+              }}
             >
               <span>Next</span>
               <ChevronRight className="h-4 w-4" />

@@ -44,6 +44,7 @@ LABEL org.opencontainers.image.source="https://github.com/duelistraj/aurum-pos" 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
+    FORWARDED_ALLOW_IPS=127.0.0.1 \
     GIT_SHA=$VCS_REF
 
 WORKDIR /app
@@ -67,4 +68,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers=2", "--proxy-headers", "--forwarded-allow-ips=*", "--no-access-log"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers=2", "--proxy-headers", "--no-access-log"]

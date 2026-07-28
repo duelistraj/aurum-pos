@@ -7,13 +7,13 @@ import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy import delete, text
 
-from app import worker
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.jobs import account_deletions as worker
 from app.modules.auth.models import AccountDeletionRequest, User
 from app.modules.billing.service import _encrypt_token
 from app.modules.sales.models import Sale
-from app.modules.shops.models import Shop, ShopMembership
+from app.modules.shops.models import Shop, ShopInvitation, ShopMembership
 from app.modules.subscriptions.models import PlaySubscription, Subscription
 
 pytestmark = [
@@ -105,6 +105,8 @@ async def test_shop_cleanup_cancels_billing_and_deletes_exact_invoice_keys(monke
 async def test_confirmed_deletion_removes_user_and_sole_owned_shop(monkeypatch) -> None:
     user_id = uuid4()
     shop_id = uuid4()
+    surviving_shop_id = uuid4()
+    invitation_id = uuid4()
     request_id = uuid4()
 
     class FakeStorage:
@@ -122,15 +124,35 @@ async def test_confirmed_deletion_removes_user_and_sole_owned_shop(monkeypatch) 
                 is_active=True,
             )
         )
-        session.add(Shop(id=shop_id, name="Owned Shop", slug=f"owned-{shop_id}"))
+        session.add_all(
+            [
+                Shop(id=shop_id, name="Owned Shop", slug=f"owned-{shop_id}"),
+                Shop(
+                    id=surviving_shop_id,
+                    name="Surviving Shop",
+                    slug=f"surviving-{surviving_shop_id}",
+                ),
+            ]
+        )
         await session.flush()
-        session.add(
-            ShopMembership(
-                shop_id=shop_id,
-                user_id=user_id,
-                role="OWNER",
-                is_active=True,
-            )
+        session.add_all(
+            [
+                ShopMembership(
+                    shop_id=shop_id,
+                    user_id=user_id,
+                    role="OWNER",
+                    is_active=True,
+                ),
+                ShopInvitation(
+                    id=invitation_id,
+                    shop_id=surviving_shop_id,
+                    email=f"invitee-{invitation_id}@example.com",
+                    role="CASHIER",
+                    token_hash=uuid4().hex + uuid4().hex,
+                    invited_by_user_id=user_id,
+                    expires_at=datetime.now(UTC) + timedelta(days=7),
+                ),
+            ]
         )
         session.add(
             AccountDeletionRequest(
@@ -155,11 +177,15 @@ async def test_confirmed_deletion_removes_user_and_sole_owned_shop(monkeypatch) 
         assert request is not None
         assert request.user_id is None
         assert request.completed_at is not None
+        invitation = await session.get(ShopInvitation, invitation_id)
+        assert invitation is not None
+        assert invitation.invited_by_user_id is None
 
     async with AsyncSessionLocal.begin() as session:
         await session.execute(
             delete(AccountDeletionRequest).where(AccountDeletionRequest.id == request_id)
         )
+        await session.execute(delete(Shop).where(Shop.id == surviving_shop_id))
 
 
 @pytest.mark.asyncio
@@ -218,8 +244,10 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
         _shop_id,
         *,
         request_id=None,
-    ) -> set[str]:
+        lease_token=None,
+    ) -> None:
         assert request_id is not None
+        assert lease_token is None
         async with AsyncSessionLocal.begin() as session:
             owner = await session.get(User, owner_id)
             replacement = await session.get(User, replacement_id)
@@ -241,7 +269,6 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
                 .where(ShopMembership.id == by_user[replacement_id])
                 .values(role="OWNER")
             )
-        return set()
 
     monkeypatch.setattr(worker, "_cleanup_shop_external_data", transfer_during_cleanup)
 

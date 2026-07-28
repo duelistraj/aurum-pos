@@ -33,7 +33,23 @@ async def test_health_cors_and_removed_shared_manager_secret() -> None:
 
 
 def test_static_item_routes_precede_uuid_route() -> None:
-    paths = [route.path for route in app.routes if isinstance(route, APIRoute)]
+    def api_paths(routes) -> list[str]:
+        paths: list[str] = []
+        for route in routes:
+            if isinstance(route, APIRoute):
+                paths.append(route.path)
+            elif original_router := getattr(route, "original_router", None):
+                prefix = route.include_context.prefix
+                paths.extend(
+                    f"{prefix}{candidate.path}"
+                    for candidate in original_router.routes
+                    if isinstance(candidate, APIRoute)
+                )
+            elif nested_routes := getattr(route, "routes", None):
+                paths.extend(api_paths(nested_routes))
+        return paths
+
+    paths = api_paths(app.routes)
     assert paths.index("/api/v1/items/labels/all") < paths.index("/api/v1/items/{item_id}")
     assert "/api/v1/sales/invoices" in paths
     assert "/api/v1/sales/{sale_id}/invoice" in paths

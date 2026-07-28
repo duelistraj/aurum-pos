@@ -54,6 +54,9 @@ jobs:
       - name: Validate lockfile
         run: uv lock --check
 
+      - name: Audit Python dependencies
+        run: uv run pip-audit
+
       - name: Run migrations
         run: uv run alembic upgrade head
 
@@ -77,30 +80,10 @@ jobs:
           uv run python scripts/check_migration_safety.py "${MIGRATIONS[@]}"
 
       - name: Lint backend
-        run: >-
-          uv run ruff check app tests scripts
-          alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py
-          alembic/versions/d4e5f6a7b8c9_add_deletion_and_idempotency.py
-          alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py
-          alembic/versions/a8c9d0e1f2g3_assign_bmr_items.py
-          alembic/versions/k2l3m4n5o6p7_harden_runtime_workflows.py
-          alembic/versions/l3m4n5o6p7q8_scale_and_tenant_hardening.py
-          alembic/versions/m3n4o5p6q7r8_configurable_shop_tax.py
-          alembic/versions/n4o5p6q7r8s9_preserve_metal_rate_contract.py
-          alembic/versions/q6r7s8t9u0v1_add_shop_phone_to_invoices.py
+        run: uv run ruff check app tests scripts alembic/versions
 
       - name: Check backend formatting
-        run: >-
-          uv run ruff format --check app tests scripts
-          alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py
-          alembic/versions/d4e5f6a7b8c9_add_deletion_and_idempotency.py
-          alembic/versions/f7b8c9d0e1f2_add_invoice_s3_metadata.py
-          alembic/versions/a8c9d0e1f2g3_assign_bmr_items.py
-          alembic/versions/k2l3m4n5o6p7_harden_runtime_workflows.py
-          alembic/versions/l3m4n5o6p7q8_scale_and_tenant_hardening.py
-          alembic/versions/m3n4o5p6q7r8_configurable_shop_tax.py
-          alembic/versions/n4o5p6q7r8s9_preserve_metal_rate_contract.py
-          alembic/versions/q6r7s8t9u0v1_add_shop_phone_to_invoices.py
+        run: uv run ruff format --check app tests scripts alembic/versions
 
       - name: Type-check backend
         run: uv run mypy app

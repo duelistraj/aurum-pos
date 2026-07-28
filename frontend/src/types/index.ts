@@ -79,6 +79,8 @@ export interface InvoicePage {
   page: number;
   limit: number;
   pages: number;
+  next_cursor_created_at?: string | null;
+  next_cursor_id?: string | null;
 }
 
 export interface ChangeLogEntry {

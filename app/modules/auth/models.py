@@ -11,10 +11,9 @@ from app.core.database import Base
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("email"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -110,6 +109,7 @@ class AccountDeletionRequest(Base):
     execute_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleanup_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     cleanup_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleanup_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cleanup_last_error_code: Mapped[str | None] = mapped_column(String(100))

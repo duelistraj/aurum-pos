@@ -30,6 +30,7 @@ class EmailOutbox(Base):
     attempts: Mapped[int] = mapped_column(default=0, nullable=False)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     last_error_code: Mapped[str | None] = mapped_column(String(100))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

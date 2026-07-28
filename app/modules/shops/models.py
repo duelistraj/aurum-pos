@@ -22,7 +22,6 @@ from app.core.database import Base
 class Shop(Base):
     __tablename__ = "shops"
     __table_args__ = (
-        UniqueConstraint("slug"),
         CheckConstraint(
             "tax_rate_percent >= 0 AND tax_rate_percent <= 100",
             name="shops_tax_rate_percent_check",
@@ -31,7 +30,7 @@ class Shop(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     legal_name: Mapped[str | None] = mapped_column(String(200))
     tax_id: Mapped[str | None] = mapped_column(String(30))
     phone: Mapped[str | None] = mapped_column(String(30))
@@ -85,8 +84,8 @@ class ShopInvitation(Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    invited_by_user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    invited_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

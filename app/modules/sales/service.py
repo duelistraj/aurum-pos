@@ -57,18 +57,21 @@ async def list_invoices(
     from_date: datetime | None = None,
     to_date: datetime | None = None,
     pdf_status: str | None = None,
-) -> tuple[list[Sale], int]:
+    cursor_created_at: datetime | None = None,
+    cursor_id: UUID | None = None,
+) -> tuple[list[Sale], int, bool]:
     filters = [Sale.shop_id == shop_id]
     if search and (normalized_search := search.strip()):
         escaped_search = (
             normalized_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        )
-        search_pattern = f"%{escaped_search}%"
+        ).lower()
+        prefix_pattern = f"{escaped_search}%"
+        contains_pattern = f"%{escaped_search}%"
         filters.append(
             or_(
-                Sale.invoice_no.ilike(search_pattern, escape="\\"),
-                Sale.customer_name.ilike(search_pattern, escape="\\"),
-                Sale.customer_phone.ilike(search_pattern, escape="\\"),
+                func.lower(Sale.invoice_no).like(prefix_pattern, escape="\\"),
+                func.lower(Sale.customer_name).like(contains_pattern, escape="\\"),
+                Sale.customer_phone.like(prefix_pattern, escape="\\"),
             )
         )
     if from_date is not None:
@@ -77,16 +80,24 @@ async def list_invoices(
         filters.append(Sale.created_at <= to_date)
     if pdf_status is not None:
         filters.append(Sale.invoice_pdf_status == pdf_status)
+    count_filters = tuple(filters)
+    if cursor_created_at is not None and cursor_id is not None:
+        filters.append(
+            (Sale.created_at < cursor_created_at)
+            | ((Sale.created_at == cursor_created_at) & (Sale.id < cursor_id))
+        )
 
-    total = int(await db.scalar(select(func.count(Sale.id)).where(*filters)) or 0)
+    total = int(await db.scalar(select(func.count(Sale.id)).where(*count_filters)) or 0)
+    offset = 0 if cursor_created_at is not None else (page - 1) * limit
     result = await db.execute(
         select(Sale)
         .where(*filters)
         .order_by(Sale.created_at.desc(), Sale.id.desc())
-        .offset((page - 1) * limit)
-        .limit(limit)
+        .offset(offset)
+        .limit(limit + 1)
     )
-    return list(result.scalars()), total
+    rows = list(result.scalars())
+    return rows[:limit], total, len(rows) > limit
 
 
 async def persist_invoice_pdf(

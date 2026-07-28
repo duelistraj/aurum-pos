@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from botocore.exceptions import ClientError
 
-from app import worker
+from app.jobs import emails as worker
 
 
 @pytest.mark.asyncio
@@ -29,10 +29,12 @@ async def test_email_delivery_uses_configured_sender(monkeypatch) -> None:
     async def run_inline(function) -> None:
         function()
 
-    async def load(_outbox_id):
+    async def load(_outbox_id, *, claim_token):
+        assert claim_token is None
         return message
 
-    async def finish(finished_id, *, error_code):
+    async def finish(finished_id, *, claim_token, error_code):
+        assert claim_token is None
         completions.append((finished_id, error_code))
 
     monkeypatch.setattr(worker, "_load_email_message", load)
@@ -88,10 +90,12 @@ async def test_email_delivery_logs_safe_error_metadata(monkeypatch, caplog) -> N
     async def run_inline(function) -> None:
         function()
 
-    async def load(_outbox_id):
+    async def load(_outbox_id, *, claim_token):
+        assert claim_token is None
         return message
 
-    async def finish(_finished_id, *, error_code):
+    async def finish(_finished_id, *, claim_token, error_code):
+        assert claim_token is None
         completion.error_code = error_code
 
     monkeypatch.setattr(worker, "_load_email_message", load)

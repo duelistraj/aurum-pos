@@ -35,15 +35,14 @@ async def _rates_at(
             MetalRateHistory.effective_from <= timestamp,
             MetalRateHistory.purity == HUNDRED,
         )
+        .distinct(MetalRateHistory.metal)
         .order_by(
             MetalRateHistory.metal,
             MetalRateHistory.effective_from.desc(),
+            MetalRateHistory.id.desc(),
         )
     )
-    rates: dict[str, Decimal] = {}
-    for metal, rate in rows:
-        rates.setdefault(str(metal).lower(), Decimal(rate))
-    return rates
+    return {str(metal).lower(): Decimal(rate) for metal, rate in rows}
 
 
 async def _inventory_metrics(
@@ -52,30 +51,49 @@ async def _inventory_metrics(
     shop_id: UUID,
     timestamp: datetime,
     metal: str,
+    use_current_state: bool = False,
 ) -> dict[str, Decimal | int]:
     rates = await _rates_at(db, shop_id=shop_id, timestamp=timestamp)
-    inventory_at = (
-        select(
-            ItemHistory.item_id,
-            ItemHistory.category,
-            ItemHistory.metal,
-            ItemHistory.purity,
-            ItemHistory.net_weight,
-            ItemHistory.making_charge,
-            ItemHistory.quantity,
+    if use_current_state:
+        inventory_at = (
+            select(
+                Item.id.label("item_id"),
+                Item.category,
+                Item.metal,
+                Item.purity,
+                Item.net_weight,
+                Item.making_charge,
+                Item.quantity,
+            )
+            .where(
+                Item.shop_id == shop_id,
+                Item.archived_at.is_(None),
+            )
+            .subquery()
         )
-        .where(
-            ItemHistory.shop_id == shop_id,
-            ItemHistory.effective_from <= timestamp,
+    else:
+        inventory_at = (
+            select(
+                ItemHistory.item_id,
+                ItemHistory.category,
+                ItemHistory.metal,
+                ItemHistory.purity,
+                ItemHistory.net_weight,
+                ItemHistory.making_charge,
+                ItemHistory.quantity,
+            )
+            .where(
+                ItemHistory.shop_id == shop_id,
+                ItemHistory.effective_from <= timestamp,
+            )
+            .distinct(ItemHistory.item_id)
+            .order_by(
+                ItemHistory.item_id,
+                ItemHistory.effective_from.desc(),
+                ItemHistory.id.desc(),
+            )
+            .subquery()
         )
-        .distinct(ItemHistory.item_id)
-        .order_by(
-            ItemHistory.item_id,
-            ItemHistory.effective_from.desc(),
-            ItemHistory.id.desc(),
-        )
-        .subquery()
-    )
     quantity_at_timestamp = inventory_at.c.quantity
     normalized_metal = func.lower(inventory_at.c.metal)
     base_rate = (
@@ -311,6 +329,7 @@ async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
         shop_id=shop_id,
         timestamp=now,
         metal="all",
+        use_current_state=True,
     )
     total_sales_amount = await db.scalar(
         select(func.coalesce(func.sum(Sale.total_amount), 0)).where(Sale.shop_id == shop_id)

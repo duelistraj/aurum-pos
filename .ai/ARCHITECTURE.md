@@ -22,6 +22,7 @@ Tenant-aware service queries also carry an explicit `shop_id` predicate instead 
 Items, immutable item and metal-rate history, current metal rates, sales, sale lines, change logs, subscriptions, and sale idempotency use shop-scoped constraints and forced RLS.
 Global worker control tables carry composite tenant foreign keys where they reference tenant data but intentionally remain visible to the cross-tenant worker.
 Production API and worker connections use a restricted `NOBYPASSRLS` login, while Alembic receives a separate administrator URL only for the migration container.
+Hosted mode is accepted only with the production environment value, so local token exposure and provider shortcuts cannot be enabled by a deployment typo.
 
 Evidence:
 - `app/modules/auth/dependencies.py::get_auth_context`
@@ -45,6 +46,7 @@ Cashiers can view shop data and create sales, managers additionally control inve
 Confirmed account deletions execute after seven days and can be cancelled with the confirmation token until cleanup begins.
 Sensitive auth routes use both PostgreSQL-backed account/IP limits and coarse Nginx IP limits.
 Password work runs in a capacity-limited thread pool, and every authenticated request must present the device UUID bound to its session.
+Session, user, and registered-device state are loaded in one database query, and first shop-device access uses a conflict-safe PostgreSQL insert.
 Deletion cleanup cancels Play renewals and deletes exact invoice object keys before sole-owned shops and user rows are removed.
 Sole-owned shops are atomically locked and deactivated before external cleanup, and ownership plus the invoice-key set are revalidated before database deletion.
 
@@ -52,7 +54,7 @@ Evidence:
 - `app/modules/auth/security.py::create_access_token`
 - `app/modules/auth/routes.py::accept_invitation`
 - `app/modules/auth/routes.py::google_auth`
-- `app/worker.py::process_account_deletions`
+- `app/jobs/account_deletions.py::process_account_deletions`
 
 ### Inventory, entitlement, and sale flow
 
@@ -79,7 +81,8 @@ External Google Play calls run outside database transactions, and a token-scoped
 The current Fernet key encrypts new token values while configured previous keys support gradual rotation.
 Authenticated RTDN pushes and periodic lease-based reconciliation keep state current and drain the due backlog in bounded batches.
 The worker also delivers branded multipart HTML and plain-text messages from the PostgreSQL email outbox through SES.
-Email and Play work is claimed with expiring database leases, processed with bounded concurrency, and finalized in short transactions.
+Email, invoice, Play, and deletion work is claimed with expiring database leases plus unique fencing tokens, processed with bounded concurrency, and finalized only by the current lease owner.
+Independent job modules run concurrently inside the lean worker process so a slow provider or deletion path does not stall unrelated queues.
 Failed email delivery uses bounded attempts and a durable failed state.
 
 Evidence:
@@ -91,7 +94,7 @@ Evidence:
 ### Invoice document storage
 
 PostgreSQL sales remain the authoritative invoice index.
-Every active shop member can browse the selected shop's invoice index through a paginated API without listing S3.
+Every active shop member can browse the selected shop's invoice index through an indexed cursor-paginated API without listing S3.
 Sale creation commits a durable invoice job with the immutable sale snapshot and never performs PDF or S3 work inside the request.
 The worker claims jobs with expiring leases, renders PDFs off the event loop, and uploads each document to a private S3 object whose key contains only the configured prefix, shop UUID, year, and sale UUID.
 Failed jobs use bounded exponential retry while preserving the same object key, and a sale is downloadable only after upload metadata commits.
@@ -108,6 +111,7 @@ Evidence:
 
 The production API exposes a database-free liveness endpoint, a database-backed readiness endpoint, a database-backed worker-heartbeat endpoint, and a version endpoint that reports the source revision, immutable image reference, and non-secret runtime configuration revision.
 The private operations repository refreshes runtime configuration from SSM, migrates before API replacement, verifies the new API before starting the worker, and serializes host changes with a deployment lock.
+The public operator template also pauses the worker before migration and requires both API readiness and worker heartbeat recovery.
 
 Evidence:
 - `app/main.py::health`

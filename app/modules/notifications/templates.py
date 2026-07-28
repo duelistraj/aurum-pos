@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from html import escape
-from urllib.parse import urlencode
+from urllib.parse import quote
 
 from app.core.config import settings
 from app.modules.auth.constants import ACCOUNT_DELETION_GRACE_DAYS
@@ -15,7 +15,7 @@ class EmailContent:
 
 def _action_url(path: str, *, token: str) -> str:
     base_url = settings.public_site_url.rstrip("/")
-    return f"{base_url}/{path}?{urlencode({'token': token})}"
+    return f"{base_url}/{path}#token={quote(token, safe='')}"
 
 
 def _render_email(

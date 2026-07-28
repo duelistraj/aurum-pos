@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -21,6 +22,14 @@ from app.core.database import Base
 class MetalRate(Base):
     __tablename__ = "metal_rates"
     __table_args__ = (
+        CheckConstraint(
+            "rate_per_gram > 0",
+            name="metal_rates_positive_rate_check",
+        ),
+        CheckConstraint(
+            "purity > 0 AND purity <= 100",
+            name="metal_rates_purity_range_check",
+        ),
         UniqueConstraint(
             "shop_id",
             "metal",
@@ -84,6 +93,14 @@ class MetalRate(Base):
 class MetalRateHistory(Base):
     __tablename__ = "metal_rate_history"
     __table_args__ = (
+        CheckConstraint(
+            "rate_per_gram > 0",
+            name="metal_rate_history_positive_rate_check",
+        ),
+        CheckConstraint(
+            "purity > 0 AND purity <= 100",
+            name="metal_rate_history_purity_range_check",
+        ),
         Index(
             "ix_metal_rate_history_shop_metal_effective",
             "shop_id",
