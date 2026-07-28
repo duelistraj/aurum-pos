@@ -41,6 +41,7 @@ Staff join through hashed, expiring shop invitations.
 Owners and administrators can immediately deactivate memberships, while only the current owner can atomically transfer ownership to another active member.
 Access JWTs contain user and session identity but no role; opaque hashed refresh tokens rotate in the database.
 Roles are OWNER, ADMIN, MANAGER, and CASHIER.
+Cashiers can view shop data and create sales, managers additionally control inventory, rates, and label exports, administrators additionally manage shop settings, staff, and devices, and owners alone control administrator membership, ownership transfer, and Play billing.
 Confirmed account deletions execute after seven days and can be cancelled with the confirmation token until cleanup begins.
 Sensitive auth routes use both PostgreSQL-backed account/IP limits and coarse Nginx IP limits.
 Password work runs in a capacity-limited thread pool, and every authenticated request must present the device UUID bound to its session.
@@ -57,6 +58,7 @@ Evidence:
 
 Hosted entitlement belongs to a shop.
 Self-hosted shops are Pro/unlimited; hosted shops without a current Pro subscription are limited to 50 active inventory rows.
+Sold and zero-quantity rows do not consume that allowance, and sold rows remain immutable to preserve invoice and audit history.
 Item activation locks the shop before counting.
 Item updates, sales, and archival append immutable inventory snapshots, while deletion is a soft archive that preserves sale references.
 Metal-rate writes preserve one compatible current row and append immutable history for as-of analytics.

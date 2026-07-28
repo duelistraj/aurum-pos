@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { Plus, Minus, AlertCircle, X } from 'lucide-react';
 import {
@@ -10,6 +11,8 @@ import {
   Badge,
 } from '../components/UI';
 import { apiClient } from '../api/client';
+import { queryKeys } from '../api/queryKeys';
+import { useShop } from '../context/ShopContext';
 import { ItemPOSWithPrice, CustomerDetails } from '../types';
 import { downloadUrl, formatCurrency } from '../utils';
 import {
@@ -39,6 +42,9 @@ type CartItem = ItemPOSWithPrice & {
 };
 
 export const POS: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { activeMembership } = useShop();
+  const shopId = activeMembership?.shop_id ?? '';
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [barcode, setBarcode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -293,6 +299,7 @@ export const POS: React.FC = () => {
       };
       const idempotencyKey = await getCheckoutIdempotencyKey(salePayload);
       const sale = await apiClient.createSale(salePayload, idempotencyKey);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) });
 
       // Download invoice PDF
       try {

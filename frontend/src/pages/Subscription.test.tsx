@@ -18,7 +18,6 @@ vi.mock('../api/client', () => ({
   apiClient: {
     getEntitlement: vi.fn(),
     submitPlayPurchase: vi.fn(),
-    requestAccountDeletion: vi.fn(),
   },
 }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
@@ -177,5 +176,15 @@ describe('Subscription', () => {
 
     expect(await screen.findByText('Owner access required')).toBeInTheDocument();
     expect(AurumBilling.getProducts).not.toHaveBeenCalled();
+  });
+
+  it('keeps account deletion out of the shop plan page', async () => {
+    vi.mocked(AurumBilling.getProducts).mockResolvedValue({ products: [] });
+
+    renderSubscription();
+
+    expect(await screen.findByText('Pro is not available yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request account deletion' }))
+      .not.toBeInTheDocument();
   });
 });

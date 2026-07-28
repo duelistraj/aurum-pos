@@ -101,6 +101,7 @@ class Sale(Base):
 
     seller_name: Mapped[str | None] = mapped_column(String(200))
     seller_tax_id: Mapped[str | None] = mapped_column(String(30))
+    seller_phone: Mapped[str | None] = mapped_column(String(30))
     seller_address: Mapped[str | None] = mapped_column(String(500))
     seller_state: Mapped[str | None] = mapped_column(String(100))
     seller_state_code: Mapped[str | None] = mapped_column(String(10))

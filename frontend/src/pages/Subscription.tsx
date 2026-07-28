@@ -35,8 +35,6 @@ export const Subscription: React.FC = () => {
   const [billingError, setBillingError] = React.useState('');
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const [deleteOwnedShops, setDeleteOwnedShops] = React.useState(false);
-  const [deletionMessage, setDeletionMessage] = React.useState('');
   const shopId = activeMembership?.shop_id ?? '';
   const entitlement = useQuery({
     queryKey: queryKeys.entitlement(shopId),
@@ -119,19 +117,6 @@ export const Subscription: React.FC = () => {
     }
   };
 
-  const requestDeletion = async () => {
-    if (!user || !window.confirm('Email a confirmation link to schedule account deletion?')) return;
-    setBusy(true);
-    try {
-      const result = await apiClient.requestAccountDeletion(user.email, deleteOwnedShops);
-      setDeletionMessage(result.message);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Deletion request failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (entitlement.isPending) return <Loader />;
   if (!activeMembership) return <Alert type="error" message="Select a shop first." />;
 
@@ -139,7 +124,7 @@ export const Subscription: React.FC = () => {
     <div className="app-page app-page__container mx-auto max-w-2xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
       <div className="app-page__header app-page__header--stacked">
         <h1>Aurum Cloud</h1>
-        <p>Manage this shop's plan, purchases, and account controls.</p>
+        <p>Manage this shop's plan and Google Play purchases.</p>
       </div>
       {error && <Alert type="error" message={error} />}
       <Card className="p-6">
@@ -238,24 +223,6 @@ export const Subscription: React.FC = () => {
       {!isCloudDistribution && (
         <Alert type="success" message="Self-hosted Aurum POS includes unlimited active inventory." />
       )}
-      <Card className="p-6">
-        <h2 className="font-semibold">Account</h2>
-        <label className="my-3 flex gap-2 text-sm text-slate-700 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={deleteOwnedShops}
-            onChange={(event) => setDeleteOwnedShops(event.target.checked)}
-            className="checkbox-round"
-          />
-          Delete shops for which I am the sole owner
-        </label>
-        <Button variant="danger" onClick={() => void requestDeletion()} disabled={busy}>
-          Request account deletion
-        </Button>
-        {deletionMessage && (
-          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{deletionMessage}</p>
-        )}
-      </Card>
     </div>
   );
 };

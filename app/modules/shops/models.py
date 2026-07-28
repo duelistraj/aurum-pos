@@ -34,6 +34,7 @@ class Shop(Base):
     slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     legal_name: Mapped[str | None] = mapped_column(String(200))
     tax_id: Mapped[str | None] = mapped_column(String(30))
+    phone: Mapped[str | None] = mapped_column(String(30))
     address: Mapped[str | None] = mapped_column(String(500))
     state: Mapped[str | None] = mapped_column(String(100))
     state_code: Mapped[str | None] = mapped_column(String(10))

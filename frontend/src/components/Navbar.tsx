@@ -298,10 +298,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 aria-label="Account and settings"
                 className={`sidebar__popover sidebar__account-menu${collapsed ? ' sidebar__popover--collapsed' : ''}`}
               >
-                <div className="sidebar__account-heading">
+                <Link
+                  to="/account"
+                  role="menuitem"
+                  onClick={handleNavigation}
+                  className="sidebar__account-heading"
+                >
                   <span className="sidebar__account-heading-name">{displayName}</span>
                   <span className="sidebar__account-heading-email">{user?.email ?? 'Account settings'}</span>
-                </div>
+                </Link>
                 <Link
                   to="/subscription"
                   role="menuitem"

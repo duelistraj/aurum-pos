@@ -345,12 +345,15 @@ def _draw_header(
     seller_location = getattr(sale, "seller_address", None)
     seller_state = getattr(sale, "seller_state", None)
     seller_state_code = getattr(sale, "seller_state_code", None)
+    seller_phone = getattr(sale, "seller_phone", None)
     location_parts = [str(seller_location)] if seller_location else []
     if seller_state:
         state = str(seller_state)
         if seller_state_code:
             state = f"{state} - {seller_state_code}"
         location_parts.append(state)
+    if seller_phone:
+        location_parts.append(f"Phone: {seller_phone}")
     if location_parts:
         location_paragraph = Paragraph(
             "<br/>".join(escape(part) for part in location_parts),

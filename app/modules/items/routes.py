@@ -148,7 +148,7 @@ async def pos_scan(
     }
 
 
-@router.get("/labels/all")
+@router.get("/labels/all", dependencies=[RequireManager])
 async def print_labels_for_all_items(
     output_format: str = Query("xlsx", alias="format", pattern="^(xlsx|pdf)$"),
     context: ShopContext = Depends(get_shop_context),
@@ -178,7 +178,7 @@ async def print_labels_for_all_items(
     )
 
 
-@router.post("/labels/batch")
+@router.post("/labels/batch", dependencies=[RequireManager])
 async def print_labels_batch(
     item_ids: Annotated[list[UUID], Body(min_length=1, max_length=200)],
     output_format: str = Query("xlsx", alias="format", pattern="^(xlsx|pdf)$"),

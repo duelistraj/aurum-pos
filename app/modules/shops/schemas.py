@@ -14,6 +14,7 @@ class ShopResponse(BaseModel):
     role: str
     legal_name: str | None = None
     tax_id: str | None = None
+    phone: str | None = None
     address: str | None = None
     state: str | None = None
     state_code: str | None = None
@@ -25,6 +26,7 @@ class ShopUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     legal_name: str | None = Field(default=None, min_length=1, max_length=200)
     tax_id: str | None = Field(default=None, max_length=30)
+    phone: str | None = Field(default=None, max_length=30)
     address: str | None = Field(default=None, max_length=500)
     state: str | None = Field(default=None, min_length=1, max_length=100)
     state_code: str | None = Field(default=None, min_length=1, max_length=10)
@@ -35,6 +37,7 @@ class ShopUpdate(BaseModel):
         "name",
         "legal_name",
         "tax_id",
+        "phone",
         "address",
         "state",
         "state_code",
@@ -43,6 +46,11 @@ class ShopUpdate(BaseModel):
     @classmethod
     def strip_optional_text(cls, value: str | None) -> str | None:
         return value.strip() if value is not None else None
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_optional_phone(cls, value: str | None) -> str | None:
+        return value or None
 
     @field_validator("invoice_prefix")
     @classmethod

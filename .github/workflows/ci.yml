@@ -87,6 +87,7 @@ jobs:
           alembic/versions/l3m4n5o6p7q8_scale_and_tenant_hardening.py
           alembic/versions/m3n4o5p6q7r8_configurable_shop_tax.py
           alembic/versions/n4o5p6q7r8s9_preserve_metal_rate_contract.py
+          alembic/versions/q6r7s8t9u0v1_add_shop_phone_to_invoices.py
 
       - name: Check backend formatting
         run: >-
@@ -99,6 +100,7 @@ jobs:
           alembic/versions/l3m4n5o6p7q8_scale_and_tenant_hardening.py
           alembic/versions/m3n4o5p6q7r8_configurable_shop_tax.py
           alembic/versions/n4o5p6q7r8s9_preserve_metal_rate_contract.py
+          alembic/versions/q6r7s8t9u0v1_add_shop_phone_to_invoices.py
 
       - name: Type-check backend
         run: uv run mypy app

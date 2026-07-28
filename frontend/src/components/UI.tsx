@@ -1,5 +1,12 @@
 import React from 'react';
-import { AlertCircle, CheckCircle, Info, XCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  Info,
+  XCircle,
+} from 'lucide-react';
 
 interface AlertProps {
   type: 'success' | 'error' | 'warning' | 'info';
@@ -225,6 +232,149 @@ export const Select: React.FC<SelectProps> = ({
         ))}
       </select>
       {error && <p className="ui-field-error">{error}</p>}
+    </div>
+  );
+};
+
+interface ListboxSelectProps {
+  id: string;
+  label?: string;
+  error?: string;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+export const ListboxSelect: React.FC<ListboxSelectProps> = ({
+  id,
+  label,
+  error,
+  options,
+  placeholder = 'Select an option',
+  value,
+  onValueChange,
+  disabled = false,
+  className = '',
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const allOptions = [{ value: '', label: placeholder }, ...options];
+  const selectedIndex = Math.max(0, allOptions.findIndex((option) => option.value === value));
+  const selectedLabel = allOptions[selectedIndex]?.label ?? placeholder;
+  const labelId = `${id}-label`;
+  const valueId = `${id}-value`;
+
+  React.useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !open) return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const focusOption = (index: number) => {
+    const wrappedIndex = (index + allOptions.length) % allOptions.length;
+    optionRefs.current[wrappedIndex]?.focus();
+  };
+
+  const openMenu = (focusIndex = selectedIndex) => {
+    if (disabled) return;
+    setOpen(true);
+    window.requestAnimationFrame(() => focusOption(focusIndex));
+  };
+
+  const chooseOption = (nextValue: string) => {
+    onValueChange(nextValue);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') openMenu(0);
+    else if (event.key === 'End') openMenu(allOptions.length - 1);
+    else openMenu(event.key === 'ArrowDown' ? selectedIndex : selectedIndex - 1);
+  };
+
+  const handleOptionKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === 'Home') focusOption(0);
+    else if (event.key === 'End') focusOption(allOptions.length - 1);
+    else focusOption(index + (event.key === 'ArrowDown' ? 1 : -1));
+  };
+
+  return (
+    <div ref={containerRef} className={`ui-listbox ${className}`}>
+      {label ? (
+        <span id={labelId} className="ui-field-label">
+          {label}
+        </span>
+      ) : null}
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        aria-labelledby={label ? `${labelId} ${valueId}` : valueId}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => {
+          if (open) setOpen(false);
+          else openMenu();
+        }}
+        onKeyDown={handleTriggerKeyDown}
+        className={`ui-listbox__trigger ${open ? 'is-open' : ''} ${error ? 'ui-input--error' : ''}`}
+      >
+        <span id={valueId}>{selectedLabel}</span>
+        <ChevronDown className={`ui-listbox__chevron ${open ? 'is-open' : ''}`} />
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          aria-labelledby={label ? labelId : undefined}
+          className="ui-listbox__menu animate-fade-in"
+        >
+          {allOptions.map((option, index) => {
+            const selected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                ref={(node) => { optionRefs.current[index] = node; }}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => chooseOption(option.value)}
+                onKeyDown={(event) => handleOptionKeyDown(event, index)}
+                className={`ui-listbox__option ${selected ? 'is-selected' : ''}`}
+              >
+                <span>{option.label}</span>
+                {selected ? <Check className="ui-listbox__check" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {error ? <p className="ui-field-error">{error}</p> : null}
     </div>
   );
 };

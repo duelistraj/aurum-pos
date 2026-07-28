@@ -1,5 +1,5 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   Plus, 
   AlertCircle, 
@@ -43,6 +43,7 @@ import {
 import { ExcelIcon, PDFIcon } from '../features/items/catalogIcons';
 
 export const Items: React.FC = () => {
+  const queryClient = useQueryClient();
   const { canManage, activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
   const entitlementQuery = useQuery({
@@ -436,7 +437,10 @@ export const Items: React.FC = () => {
       }
 
       closeModal();
-      await refreshItems();
+      await Promise.all([
+        refreshItems(),
+        queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
+      ]);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to save item'
@@ -463,7 +467,10 @@ export const Items: React.FC = () => {
         next.delete(itemId);
         return next;
       });
-      await refreshItems();
+      await Promise.all([
+        refreshItems(),
+        queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
+      ]);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to delete item'

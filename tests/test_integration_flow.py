@@ -301,6 +301,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 json={
                     "legal_name": "Integration Jewellers Private Limited",
                     "tax_id": "19ABCDE1234F1Z5",
+                    "phone": "+91 98765 43210",
                     "address": "Kolkata",
                     "state": "West Bengal",
                     "state_code": "19",
@@ -308,6 +309,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 },
             )
             assert shop_profile.status_code == 200, shop_profile.text
+            assert shop_profile.json()["phone"] == "+91 98765 43210"
 
             rate = await client.post(
                 "/api/v1/metal-rates/",
@@ -333,6 +335,53 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert item.status_code == 200, item.text
             item_id = UUID(item.json()["id"])
             barcode = item.json()["barcode"]
+            active_entitlement = await client.get(
+                "/api/v1/subscriptions/entitlement",
+                headers=headers,
+            )
+            assert active_entitlement.status_code == 200, active_entitlement.text
+            assert active_entitlement.json()["active_item_count"] == 1
+
+            cashier_all_labels = await client.get(
+                "/api/v1/items/labels/all",
+                headers=second_primary_headers,
+            )
+            assert cashier_all_labels.status_code == 403
+            cashier_batch_labels = await client.post(
+                "/api/v1/items/labels/batch",
+                headers=second_primary_headers,
+                json=[str(item_id)],
+            )
+            assert cashier_batch_labels.status_code == 403
+            async with AsyncSessionLocal.begin() as session:
+                await session.execute(
+                    update(ShopMembership)
+                    .where(
+                        ShopMembership.shop_id == shop_id,
+                        ShopMembership.user_id == second_user_id,
+                    )
+                    .values(role="MANAGER")
+                )
+            manager_all_labels = await client.get(
+                "/api/v1/items/labels/all",
+                headers=second_primary_headers,
+            )
+            assert manager_all_labels.status_code == 200, manager_all_labels.text
+            manager_batch_labels = await client.post(
+                "/api/v1/items/labels/batch",
+                headers=second_primary_headers,
+                json=[str(item_id)],
+            )
+            assert manager_batch_labels.status_code == 200, manager_batch_labels.text
+            async with AsyncSessionLocal.begin() as session:
+                await session.execute(
+                    update(ShopMembership)
+                    .where(
+                        ShopMembership.shop_id == shop_id,
+                        ShopMembership.user_id == second_user_id,
+                    )
+                    .values(role="CASHIER")
+                )
 
             second_shop_items = await client.get(
                 "/api/v1/items/",
@@ -448,6 +497,18 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert sale.status_code == 200, sale.text
             sale_id = UUID(sale.json()["id"])
             assert sale.json()["invoice_no"].startswith("TEST-")
+            sold_entitlement = await client.get(
+                "/api/v1/subscriptions/entitlement",
+                headers=headers,
+            )
+            assert sold_entitlement.status_code == 200, sold_entitlement.text
+            assert sold_entitlement.json()["active_item_count"] == 0
+            sold_item_deletion = await client.delete(
+                f"/api/v1/items/{item_id}",
+                headers=headers,
+            )
+            assert sold_item_deletion.status_code == 400
+            assert sold_item_deletion.json()["detail"] == "Only in_stock items can be deleted"
 
             pending_invoice_list = await client.get(
                 "/api/v1/sales/invoices",
@@ -548,6 +609,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 assert not hasattr(persisted_sale, "presigned_url")
                 assert persisted_sale.seller_name == "Integration Jewellers Private Limited"
                 assert persisted_sale.seller_tax_id == "19ABCDE1234F1Z5"
+                assert persisted_sale.seller_phone == "+91 98765 43210"
                 assert persisted_sale.items[0].item_name == "Integration Ring"
                 assert persisted_sale.items[0].item_sku == f"SKU-{suffix}"
 

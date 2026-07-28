@@ -68,6 +68,7 @@ describe('Manage Shop', () => {
       role: 'OWNER',
       legal_name: 'Demo Shop Private Limited',
       tax_id: '19ABCDE1234F1Z5',
+      phone: '+91 98765 43210',
       address: 'Kolkata',
       state: 'West Bengal',
       state_code: '19',
@@ -162,6 +163,7 @@ describe('Manage Shop', () => {
       'true',
     );
     expect(await screen.findByDisplayValue('Demo Shop Private Limited')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('+91 98765 43210')).toBeInTheDocument();
     expect(apiClient.listStaff).not.toHaveBeenCalled();
 
     await user.clear(screen.getByRole('textbox', { name: 'Invoice prefix' }));

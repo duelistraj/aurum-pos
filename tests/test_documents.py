@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from openpyxl import load_workbook
 
+from app.modules.sales import invoice as invoice_module
 from app.modules.sales.invoice import (
     ITEMS_PER_STANDARD_PAGE,
     _invoice_lines,
@@ -73,6 +74,7 @@ def test_invoice_is_generated_from_locked_sale_values() -> None:
         customer_state_code="19",
         seller_name="Snapshot Jewellers",
         seller_tax_id="19ABCDE1234F1Z5",
+        seller_phone="+91 98765 43210",
         seller_address="M.G. Road, Kolkata",
         seller_state="West Bengal",
         seller_state_code="19",
@@ -84,6 +86,47 @@ def test_invoice_is_generated_from_locked_sale_values() -> None:
     pdf = generate_invoice_pdf(sale)
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 10_000
+
+
+def test_invoice_header_uses_the_snapshotted_shop_phone(monkeypatch) -> None:
+    paragraphs: list[str] = []
+
+    def capture_paragraph(_canvas, paragraph, **_kwargs) -> float:
+        paragraphs.append(paragraph.getPlainText())
+        return 12
+
+    class HeaderCanvas:
+        def setFont(self, *_args) -> None:
+            pass
+
+        def drawString(self, *_args) -> None:
+            pass
+
+        def drawRightString(self, *_args) -> None:
+            pass
+
+    monkeypatch.setattr(invoice_module, "_draw_paragraph_from_top", capture_paragraph)
+    sale = SimpleNamespace(
+        invoice_no="INV-101",
+        created_at=None,
+        seller_name="Snapshot Jewellers",
+        seller_tax_id="19ABCDE1234F1Z5",
+        seller_phone="+91 98765 43210",
+        seller_address="M.G. Road, Kolkata",
+        seller_state="West Bengal",
+        seller_state_code="19",
+    )
+
+    invoice_module._draw_header(
+        HeaderCanvas(),
+        sale,
+        _styles(),
+        page_number=1,
+        page_count=1,
+    )
+
+    assert paragraphs[0] == "SNAPSHOT JEWELLERS"
+    assert "Phone: +91 98765 43210" in paragraphs[1]
 
 
 def test_invoice_line_items_do_not_depend_on_mutable_inventory_relationships() -> None:
@@ -162,6 +205,7 @@ def test_invoice_paginates_after_historical_sixteen_item_layout() -> None:
         customer_state_code="19",
         seller_name="Snapshot Jewellers",
         seller_tax_id="19ABCDE1234F1Z5",
+        seller_phone="+91 98765 43210",
         seller_address="M.G. Road, Kolkata",
         seller_state="West Bengal",
         seller_state_code="19",

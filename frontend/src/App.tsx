@@ -15,6 +15,7 @@ const Analytics = lazy(() => import('./pages/Analytics').then(({ Analytics }) =>
 const Transactions = lazy(() => import('./pages/History').then(({ Transactions }) => ({ default: Transactions })));
 const Login = lazy(() => import('./pages/Login').then(({ Login }) => ({ default: Login })));
 const Subscription = lazy(() => import('./pages/Subscription').then(({ Subscription }) => ({ default: Subscription })));
+const Account = lazy(() => import('./pages/Account').then(({ Account }) => ({ default: Account })));
 const ManageShop = lazy(() => import('./pages/Staff').then(({ ManageShop }) => ({ default: ManageShop })));
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" role="status">
@@ -89,6 +90,7 @@ function App() {
                       <Route path="/transactions" element={<Transactions />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/subscription" element={<Subscription />} />
+                      <Route path="/account" element={<Account />} />
                       <Route path="/manage-shop" element={<ManageShop />} />
                       <Route path="/history" element={<Navigate to="/transactions" replace />} />
                       <Route

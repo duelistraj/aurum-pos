@@ -157,6 +157,10 @@ describe('Navbar', () => {
     await user.click(screen.getByRole('button', { name: 'Account and settings' }));
 
     expect(screen.getByRole('menu', { name: 'Account and settings' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Admin User admin@example.com/ })).toHaveAttribute(
+      'href',
+      '/account',
+    );
     expect(screen.getByRole('menuitem', { name: /Upgrade to Pro/ })).toHaveAttribute('href', '/subscription');
     expect(screen.getByRole('menuitem', { name: 'Manage Shop' })).toHaveAttribute(
       'href',

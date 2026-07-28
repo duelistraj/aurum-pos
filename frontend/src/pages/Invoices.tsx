@@ -11,7 +11,15 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
-import { Alert, Badge, Button, Card, Input, Loader, Select } from '../components/UI';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Input,
+  ListboxSelect,
+  Loader,
+} from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import type { InvoicePdfStatus, InvoiceSummary } from '../types';
 import { downloadUrl, formatCurrency, formatDate } from '../utils';
@@ -27,6 +35,7 @@ interface ShopProfile {
   name: string;
   legal_name: string;
   tax_id: string;
+  phone: string;
   address: string;
   state: string;
   state_code: string;
@@ -45,6 +54,7 @@ const EMPTY_PROFILE: ShopProfile = {
   name: '',
   legal_name: '',
   tax_id: '',
+  phone: '',
   address: '',
   state: '',
   state_code: '',
@@ -174,15 +184,15 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                 toDate: event.target.value,
               }))}
             />
-            <Select
+            <ListboxSelect
               id="invoice-status"
               label="PDF status"
               value={filters.pdfStatus}
               options={STATUS_OPTIONS}
               placeholder="All statuses"
-              onChange={(event) => setFilters((current) => ({
+              onValueChange={(value) => setFilters((current) => ({
                 ...current,
-                pdfStatus: event.target.value as InvoiceFilters['pdfStatus'],
+                pdfStatus: value as InvoiceFilters['pdfStatus'],
               }))}
             />
           </div>
@@ -358,6 +368,7 @@ export const InvoiceSettings: React.FC<{ shopId: string }> = ({ shopId }) => {
       name: selectedShop.name,
       legal_name: selectedShop.legal_name ?? selectedShop.name,
       tax_id: selectedShop.tax_id ?? '',
+      phone: selectedShop.phone ?? '',
       address: selectedShop.address ?? '',
       state: selectedShop.state ?? '',
       state_code: selectedShop.state_code ?? '',
@@ -414,6 +425,7 @@ export const InvoiceSettings: React.FC<{ shopId: string }> = ({ shopId }) => {
               ['name', 'Shop display name'],
               ['legal_name', 'Legal business name'],
               ['tax_id', 'Tax ID / GSTIN'],
+              ['phone', 'Shop phone number'],
               ['invoice_prefix', 'Invoice prefix'],
               ['tax_rate_percent', 'GST rate (%)'],
               ['state', 'State'],
@@ -423,8 +435,15 @@ export const InvoiceSettings: React.FC<{ shopId: string }> = ({ shopId }) => {
                 key={field}
                 id={`invoice-${field}`}
                 label={label}
-                required={field !== 'tax_id'}
-                type={field === 'tax_rate_percent' ? 'number' : 'text'}
+                required={field !== 'tax_id' && field !== 'phone'}
+                type={
+                  field === 'tax_rate_percent'
+                    ? 'number'
+                    : field === 'phone'
+                      ? 'tel'
+                      : 'text'
+                }
+                maxLength={field === 'phone' ? 30 : undefined}
                 min={field === 'tax_rate_percent' ? 0 : undefined}
                 max={field === 'tax_rate_percent' ? 100 : undefined}
                 step={field === 'tax_rate_percent' ? '0.01' : undefined}

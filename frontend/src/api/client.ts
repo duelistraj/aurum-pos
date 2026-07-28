@@ -353,6 +353,7 @@ export const apiClient = {
       role: string;
       legal_name: string | null;
       tax_id: string | null;
+      phone: string | null;
       address: string | null;
       state: string | null;
       state_code: string | null;
@@ -368,6 +369,7 @@ export const apiClient = {
       name?: string;
       legal_name?: string;
       tax_id?: string;
+      phone?: string;
       address?: string;
       state?: string;
       state_code?: string;

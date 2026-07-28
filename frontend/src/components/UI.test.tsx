@@ -1,6 +1,17 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { Alert, Badge, Button, Card, Input, Loader, Modal, Select } from './UI';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Input,
+  ListboxSelect,
+  Loader,
+  Modal,
+  Select,
+} from './UI';
 
 describe('shared UI primitives', () => {
   it('uses semantic status styling and exposes an accessible alert', () => {
@@ -42,6 +53,37 @@ describe('shared UI primitives', () => {
     expect(screen.getByRole('dialog', { name: 'Edit rate' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('supports app-styled keyboard selection in the shared listbox', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <ListboxSelect
+        id="status"
+        label="PDF status"
+        value=""
+        placeholder="All statuses"
+        options={[
+          { value: 'ready', label: 'Ready' },
+          { value: 'failed', label: 'Failed' },
+        ]}
+        onValueChange={onValueChange}
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'PDF status All statuses' });
+    await user.click(trigger);
+    const listbox = screen.getByRole('listbox', { name: 'PDF status' });
+    expect(trigger).toHaveClass('ui-listbox__trigger', 'is-open');
+    expect(within(listbox).getByRole('option', { name: 'All statuses' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(onValueChange).toHaveBeenCalledWith('ready');
+    expect(trigger).toHaveFocus();
   });
 
   it('renders a loading status with the requested size', () => {

@@ -219,6 +219,7 @@ async def _execute_create_sale(
         customer_state_code=shop.state_code or "19",
         seller_name=shop.legal_name or shop.name,
         seller_tax_id=shop.tax_id,
+        seller_phone=shop.phone,
         seller_address=shop.address,
         seller_state=shop.state or "West Bengal",
         seller_state_code=shop.state_code or "19",

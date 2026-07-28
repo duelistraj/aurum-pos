@@ -610,6 +610,14 @@ body {
   gap: .2rem;
   border-bottom: 1px solid var(--app-border);
   margin-bottom: .3rem;
+  border-radius: .55rem .55rem 0 0;
+  transition: background .14s ease;
+}
+
+.sidebar__account-heading:hover,
+.sidebar__account-heading:focus-visible {
+  background: var(--app-surface-muted);
+  outline: none;
 }
 
 .sidebar__account-heading-name {
@@ -1624,6 +1632,109 @@ html.dark {
 
 .ui-input--error {
   border-color: var(--app-danger);
+}
+
+.ui-listbox {
+  position: relative;
+  width: 100%;
+}
+
+.ui-listbox__trigger {
+  display: flex;
+  width: 100%;
+  min-height: 2.7rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .7rem .85rem;
+  border: 1px solid var(--app-border-strong);
+  border-radius: .7rem;
+  background: var(--app-surface);
+  color: var(--app-ink);
+  font-size: .86rem;
+  font-weight: 650;
+  text-align: left;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.ui-listbox__trigger:hover,
+.ui-listbox__trigger.is-open {
+  border-color: var(--app-accent);
+}
+
+.ui-listbox__trigger:focus-visible,
+.ui-listbox__trigger.is-open {
+  outline: none;
+  box-shadow: 0 0 0 .25rem var(--app-focus);
+}
+
+.ui-listbox__trigger:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.ui-listbox__chevron {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--app-muted);
+  transition: transform .16s ease;
+}
+
+.ui-listbox__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.ui-listbox__menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + .45rem);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: .2rem;
+  padding: .4rem;
+  border: 1px solid var(--app-border);
+  border-radius: .85rem;
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-md);
+}
+
+.ui-listbox__option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .65rem .75rem;
+  border-left: 3px solid transparent;
+  border-radius: .6rem;
+  color: var(--app-muted);
+  font-size: .84rem;
+  font-weight: 650;
+  text-align: left;
+  transition: background .14s ease, border-color .14s ease, color .14s ease;
+}
+
+.ui-listbox__option:hover,
+.ui-listbox__option:focus-visible {
+  outline: none;
+  background: var(--app-surface-muted);
+  color: var(--app-ink);
+}
+
+.ui-listbox__option.is-selected {
+  border-left-color: var(--app-accent);
+  background: var(--app-accent-soft);
+  color: var(--app-ink);
+  font-weight: 750;
+}
+
+.ui-listbox__check {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--app-accent-dark);
 }
 
 .ui-field-error {
