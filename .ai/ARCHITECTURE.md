@@ -41,7 +41,7 @@ Staff join through hashed, expiring shop invitations.
 Owners and administrators can immediately deactivate memberships, while only the current owner can atomically transfer ownership to another active member.
 Access JWTs contain user and session identity but no role; opaque hashed refresh tokens rotate in the database.
 Roles are OWNER, ADMIN, MANAGER, and CASHIER.
-Confirmed account deletions execute after 30 days and can be cancelled with the confirmation token until cleanup begins.
+Confirmed account deletions execute after seven days and can be cancelled with the confirmation token until cleanup begins.
 Sensitive auth routes use both PostgreSQL-backed account/IP limits and coarse Nginx IP limits.
 Password work runs in a capacity-limited thread pool, and every authenticated request must present the device UUID bound to its session.
 Deletion cleanup cancels Play renewals and deletes exact invoice object keys before sole-owned shops and user rows are removed.
@@ -76,7 +76,7 @@ The API verifies purchase tokens with Android Publisher, checks the obfuscated s
 External Google Play calls run outside database transactions, and a token-scoped PostgreSQL advisory lock serializes purchase application.
 The current Fernet key encrypts new token values while configured previous keys support gradual rotation.
 Authenticated RTDN pushes and periodic lease-based reconciliation keep state current and drain the due backlog in bounded batches.
-The worker also delivers the PostgreSQL email outbox through SES.
+The worker also delivers branded multipart HTML and plain-text messages from the PostgreSQL email outbox through SES.
 Email and Play work is claimed with expiring database leases, processed with bounded concurrency, and finalized in short transactions.
 Failed email delivery uses bounded attempts and a durable failed state.
 
@@ -89,6 +89,7 @@ Evidence:
 ### Invoice document storage
 
 PostgreSQL sales remain the authoritative invoice index.
+Every active shop member can browse the selected shop's invoice index through a paginated API without listing S3.
 Sale creation commits a durable invoice job with the immutable sale snapshot and never performs PDF or S3 work inside the request.
 The worker claims jobs with expiring leases, renders PDFs off the event loop, and uploads each document to a private S3 object whose key contains only the configured prefix, shop UUID, year, and sale UUID.
 Failed jobs use bounded exponential retry while preserving the same object key, and a sale is downloadable only after upload metadata commits.
@@ -121,9 +122,11 @@ builds ignore saved URLs and use `https://api.aurumpos.net`; self-hosted builds
 require a build-time API URL and do not support runtime backend switching.
 Debug APKs omit Google Sign-In, while signed Play builds discover the public Google client ID from the backend.
 Native Android access and refresh tokens are encrypted with an AES-GCM key held by Android Keystore and are excluded from device backup.
+Completed Android downloads remain in the public Documents directory, and a native bridge posts a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
 
 Evidence:
 - `frontend/src/main.tsx::ShopProvider`
 - `frontend/src/api/client.ts::client.interceptors`
 - `frontend/src/api/queryKeys.ts::queryKeys`
 - `frontend/src/utils/apiConfig.ts::getApiBaseUrl`
+- `frontend/android/app/src/main/java/com/duelistraj/aurumpos/AurumFileNotificationsPlugin.java`

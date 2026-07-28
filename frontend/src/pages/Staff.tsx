@@ -1,8 +1,10 @@
 import React from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, FileText, Users } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { Alert, Button, Card, Modal } from '../components/UI';
 import { useShop } from '../context/ShopContext';
+import { InvoiceSettings } from './Invoices';
 
 type StaffRole = 'ADMIN' | 'MANAGER' | 'CASHIER';
 type MembershipRole = 'OWNER' | StaffRole;
@@ -15,20 +17,12 @@ interface StaffMember {
   is_active: boolean;
 }
 
-interface ShopProfile {
-  name: string;
-  legal_name: string;
-  tax_id: string;
-  address: string;
-  state: string;
-  state_code: string;
-  invoice_prefix: string;
-  tax_rate_percent: string;
-}
 const OWNER_INVITE_ROLES: StaffRole[] = ['ADMIN', 'MANAGER', 'CASHIER'];
 const ADMIN_INVITE_ROLES: StaffRole[] = ['MANAGER', 'CASHIER'];
 
-export const Staff: React.FC = () => {
+type ManageShopTab = 'invoice-settings' | 'staff';
+
+const StaffManagement: React.FC = () => {
   const { activeMembership, reload } = useShop();
   const [email, setEmail] = React.useState('');
   const [role, setRole] = React.useState<StaffRole>('CASHIER');
@@ -37,16 +31,6 @@ export const Staff: React.FC = () => {
   const [busy, setBusy] = React.useState(false);
   const [members, setMembers] = React.useState<StaffMember[]>([]);
   const [ownershipTarget, setOwnershipTarget] = React.useState<StaffMember | null>(null);
-  const [profile, setProfile] = React.useState<ShopProfile>({
-    name: '',
-    legal_name: '',
-    tax_id: '',
-    address: '',
-    state: '',
-    state_code: '',
-    invoice_prefix: 'INV',
-    tax_rate_percent: '3',
-  });
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
   const roleDropdownRef = React.useRef<HTMLDivElement>(null);
   const roleTriggerRef = React.useRef<HTMLButtonElement>(null);
@@ -57,24 +41,8 @@ export const Staff: React.FC = () => {
 
   const loadManagementData = React.useCallback(async () => {
     if (!activeMembership) return;
-    const [staffRows, shops] = await Promise.all([
-      apiClient.listStaff(activeMembership.shop_id),
-      apiClient.listShops(),
-    ]);
+    const staffRows = await apiClient.listStaff(activeMembership.shop_id);
     setMembers(staffRows);
-    const shop = shops.find(({ id }) => id === activeMembership.shop_id);
-    if (shop) {
-      setProfile({
-        name: shop.name,
-        legal_name: shop.legal_name ?? shop.name,
-        tax_id: shop.tax_id ?? '',
-        address: shop.address ?? '',
-        state: shop.state ?? '',
-        state_code: shop.state_code ?? '',
-        invoice_prefix: shop.invoice_prefix ?? 'INV',
-        tax_rate_percent: String(shop.tax_rate_percent),
-      });
-    }
   }, [activeMembership]);
 
   React.useEffect(() => {
@@ -161,25 +129,6 @@ export const Staff: React.FC = () => {
     }
   };
 
-  const saveProfile = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!activeMembership) return;
-    setBusy(true);
-    setError('');
-    try {
-      await apiClient.updateShop(activeMembership.shop_id, {
-        ...profile,
-        tax_rate_percent: Number(profile.tax_rate_percent),
-      });
-      await reload();
-      setMessage('Shop and invoice details updated.');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update shop');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const updateMember = async (
     member: StaffMember,
     changes: { role?: StaffRole; is_active?: boolean },
@@ -219,60 +168,14 @@ export const Staff: React.FC = () => {
   };
 
   return (
-    <div className="app-page app-page__container mx-auto max-w-3xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
-      <div className="app-page__header app-page__header--stacked">
-        <h1>Shop and staff</h1>
-        <p>
-          Configure invoice identity and control who can access this shop.
-        </p>
-      </div>
+    <div
+      id="staff-management-panel"
+      role="tabpanel"
+      aria-labelledby="staff-management-tab"
+      className="space-y-5"
+    >
       {error ? <Alert type="error" message={error} /> : null}
       {message ? <Alert type="success" message={message} /> : null}
-      <Card className="p-6">
-        <h2 className="mb-1 text-lg font-bold">Invoice identity</h2>
-        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-          These values are snapshotted onto each sale so issued invoices never change later.
-        </p>
-        <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => void saveProfile(event)}>
-          {([
-            ['name', 'Shop display name'],
-            ['legal_name', 'Legal business name'],
-            ['tax_id', 'Tax ID / GSTIN'],
-            ['invoice_prefix', 'Invoice prefix'],
-            ['tax_rate_percent', 'GST rate (%)'],
-            ['state', 'State'],
-            ['state_code', 'State code'],
-          ] as const).map(([field, label]) => (
-            <label key={field} className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-              {label}
-              <input
-                required={!['tax_id'].includes(field)}
-                value={profile[field]}
-                onChange={(event) => setProfile((current) => ({
-                  ...current,
-                  [field]: event.target.value,
-                }))}
-                className="mt-1 w-full rounded-app-control border border-slate-300 bg-white p-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              />
-            </label>
-          ))}
-          <label className="block text-sm font-medium text-slate-700 sm:col-span-2 dark:text-slate-300">
-            Business address
-            <textarea
-              required
-              value={profile.address}
-              onChange={(event) => setProfile((current) => ({
-                ...current,
-                address: event.target.value,
-              }))}
-              className="mt-1 w-full rounded-app-control border border-slate-300 bg-white p-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
-          </label>
-          <div className="sm:col-span-2">
-            <Button type="submit" disabled={busy}>Save invoice details</Button>
-          </div>
-        </form>
-      </Card>
       <Card className="p-6">
         <h2 className="mb-4 text-lg font-bold">Current staff</h2>
         <div className="space-y-3">
@@ -442,6 +345,109 @@ export const Staff: React.FC = () => {
             : ''}
         </p>
       </Modal>
+    </div>
+  );
+};
+
+export const ManageShop: React.FC = () => {
+  const { activeMembership } = useShop();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const invoiceSettingsTabRef = React.useRef<HTMLButtonElement>(null);
+  const staffTabRef = React.useRef<HTMLButtonElement>(null);
+  const activeTab: ManageShopTab = searchParams.get('tab') === 'staff'
+    ? 'staff'
+    : 'invoice-settings';
+
+  if (!activeMembership || !['OWNER', 'ADMIN'].includes(activeMembership.role)) {
+    return (
+      <div className="app-page__container mx-auto max-w-3xl p-6">
+        <Alert
+          type="error"
+          message="Only shop owners and administrators can manage shop settings."
+        />
+      </div>
+    );
+  }
+
+  const selectTab = (tab: ManageShopTab) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (tab === 'invoice-settings') nextParams.delete('tab');
+    else nextParams.set('tab', tab);
+    setSearchParams(nextParams);
+  };
+
+  const handleTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    tab: ManageShopTab,
+  ) => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const nextTab = tab === 'invoice-settings' ? 'staff' : 'invoice-settings';
+    selectTab(nextTab);
+    window.requestAnimationFrame(() => {
+      (nextTab === 'invoice-settings' ? invoiceSettingsTabRef : staffTabRef).current?.focus();
+    });
+  };
+
+  return (
+    <div className="app-page min-h-screen bg-transparent text-slate-900 dark:text-slate-100">
+      <div className="app-page__container mx-auto max-w-4xl space-y-5 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="app-page__header app-page__header--stacked">
+          <h1>Manage Shop</h1>
+          <p>Configure invoice details and control who can access this shop.</p>
+        </div>
+
+        <div
+          className="inline-flex rounded-app-control border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          role="tablist"
+          aria-label="Manage shop sections"
+        >
+          <button
+            ref={invoiceSettingsTabRef}
+            id="invoice-settings-tab"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'invoice-settings'}
+            aria-controls="invoice-settings-panel"
+            tabIndex={activeTab === 'invoice-settings' ? 0 : -1}
+            className={`flex items-center gap-2 rounded-app-control px-4 py-2.5 text-sm font-bold transition-colors ${
+              activeTab === 'invoice-settings'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+            onClick={() => selectTab('invoice-settings')}
+            onKeyDown={(event) => handleTabKeyDown(event, 'invoice-settings')}
+          >
+            <FileText className="h-4 w-4" />
+            Invoice Settings
+          </button>
+          <button
+            ref={staffTabRef}
+            id="staff-management-tab"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'staff'}
+            aria-controls="staff-management-panel"
+            tabIndex={activeTab === 'staff' ? 0 : -1}
+            className={`flex items-center gap-2 rounded-app-control px-4 py-2.5 text-sm font-bold transition-colors ${
+              activeTab === 'staff'
+                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+            onClick={() => selectTab('staff')}
+            onKeyDown={(event) => handleTabKeyDown(event, 'staff')}
+          >
+            <Users className="h-4 w-4" />
+            Staff
+          </button>
+        </div>
+
+        {activeTab === 'invoice-settings' ? (
+          <InvoiceSettings shopId={activeMembership.shop_id} />
+        ) : (
+          <StaffManagement />
+        )}
+      </div>
     </div>
   );
 };

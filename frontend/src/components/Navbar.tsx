@@ -40,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Sales', href: '/pos', icon: ShoppingCart },
   { label: 'Inventory', href: '/items', icon: Package },
   { label: 'Metal Rates', href: '/rates', icon: Store },
-  { label: 'Transactions', href: '/history', icon: HistoryIcon },
+  { label: 'Transactions', href: '/transactions', icon: HistoryIcon },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
 ];
 
@@ -315,13 +315,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </Link>
                 {activeMembership && ['OWNER', 'ADMIN'].includes(activeMembership.role) ? (
                   <Link
-                    to="/staff"
+                    to="/manage-shop"
                     role="menuitem"
                     onClick={handleNavigation}
                     className="sidebar__menu-option"
                   >
                     <Users className="sidebar__menu-icon" />
-                    <span>Manage staff</span>
+                    <span>Manage Shop</span>
                   </Link>
                 ) : null}
                 <button

@@ -90,16 +90,39 @@ describe('Navbar', () => {
   });
 
   it('maps the primary navigation to the existing routes', () => {
-    renderNavbar(['/history']);
+    renderNavbar(['/transactions']);
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: 'Sales' })).toHaveAttribute('href', '/pos');
     expect(screen.getByRole('link', { name: 'Inventory' })).toHaveAttribute('href', '/items');
     expect(screen.getByRole('link', { name: 'Metal Rates' })).toHaveAttribute('href', '/rates');
-    expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute('href', '/history');
+    expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute(
+      'href',
+      '/transactions',
+    );
     expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', '/analytics');
+    expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument();
     expect(screen.queryByText('Reports')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('keeps the combined transactions destination available to lower-privilege staff', () => {
+    vi.mocked(useShop).mockReturnValue({
+      user: null,
+      memberships: [{ ...memberships[0], role: 'MANAGER' }],
+      activeMembership: { ...memberships[0], role: 'MANAGER' },
+      canManage: true,
+      selectShop,
+      reload: reloadShop,
+    });
+
+    renderNavbar();
+
+    expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute(
+      'href',
+      '/transactions',
+    );
   });
 
   it('keeps shop switching in the sidebar footer', async () => {
@@ -135,7 +158,10 @@ describe('Navbar', () => {
 
     expect(screen.getByRole('menu', { name: 'Account and settings' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Upgrade to Pro/ })).toHaveAttribute('href', '/subscription');
-    expect(screen.getByRole('menuitem', { name: 'Manage staff' })).toHaveAttribute('href', '/staff');
+    expect(screen.getByRole('menuitem', { name: 'Manage Shop' })).toHaveAttribute(
+      'href',
+      '/manage-shop',
+    );
     expect(screen.queryByRole('menuitem', { name: 'Connect backend' })).not.toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'View source on GitHub' })).toHaveAttribute(
       'href',

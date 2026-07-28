@@ -195,12 +195,14 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
   options: { value: string; label: string }[];
+  placeholder?: string;
 }
 
 export const Select: React.FC<SelectProps> = ({
   label,
   error,
   options,
+  placeholder = 'Select an option',
   className = '',
   ...props
 }) => {
@@ -215,7 +217,7 @@ export const Select: React.FC<SelectProps> = ({
         className={`ui-select ${error ? 'ui-input--error' : ''} ${className}`}
         {...props}
       >
-        <option value="">Select an option</option>
+        <option value="">{placeholder}</option>
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}

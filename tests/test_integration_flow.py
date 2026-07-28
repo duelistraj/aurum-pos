@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.main import app
-from app.modules.auth.models import User
+from app.modules.auth.models import AccountDeletionRequest, User
 from app.modules.dashboard.service import _rates_at
 from app.modules.items.models import Item
 from app.modules.metal_rates.models import MetalRate, MetalRateHistory
@@ -22,7 +22,7 @@ from app.modules.sales.storage import (
     InvoiceUploadMetadata,
     get_invoice_storage,
 )
-from app.modules.shops.models import Shop
+from app.modules.shops.models import Shop, ShopMembership
 from app.worker import process_invoice_jobs
 
 pytestmark = [
@@ -184,6 +184,35 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                     if membership["role"] == "OWNER"
                 )
             )
+            manager_invoice_list = await client.get(
+                "/api/v1/sales/invoices",
+                headers={
+                    "Authorization": f"Bearer {accepted_data['access_token']}",
+                    "X-Device-UUID": second_device,
+                    "X-Shop-ID": str(shop_id),
+                },
+            )
+            assert manager_invoice_list.status_code == 200, manager_invoice_list.text
+            assert manager_invoice_list.json()["invoices"] == []
+            async with AsyncSessionLocal.begin() as session:
+                await session.execute(
+                    update(ShopMembership)
+                    .where(
+                        ShopMembership.shop_id == shop_id,
+                        ShopMembership.user_id == second_user_id,
+                    )
+                    .values(role="CASHIER")
+                )
+            cashier_invoice_list = await client.get(
+                "/api/v1/sales/invoices",
+                headers={
+                    "Authorization": f"Bearer {accepted_data['access_token']}",
+                    "X-Device-UUID": second_device,
+                    "X-Shop-ID": str(shop_id),
+                },
+            )
+            assert cashier_invoice_list.status_code == 200, cashier_invoice_list.text
+            assert cashier_invoice_list.json()["invoices"] == []
             deletion = await client.post(
                 "/api/v1/auth/account-deletion/request",
                 json={"email": second_email, "delete_owned_shops": True},
@@ -195,6 +224,19 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 json={"token": deletion_token},
             )
             assert deletion_confirmation.status_code == 200, deletion_confirmation.text
+            assert deletion_confirmation.json()["message"] == "Account deletion scheduled in 7 days"
+            async with AsyncSessionLocal.begin() as session:
+                deletion_request = await session.scalar(
+                    select(AccountDeletionRequest)
+                    .where(AccountDeletionRequest.user_id == second_user_id)
+                    .order_by(AccountDeletionRequest.created_at.desc())
+                )
+                assert deletion_request is not None
+                assert deletion_request.confirmed_at is not None
+                assert deletion_request.execute_after is not None
+                assert deletion_request.execute_after - deletion_request.confirmed_at == timedelta(
+                    days=7
+                )
             deletion_cancellation = await client.post(
                 "/api/v1/auth/account-deletion/cancel",
                 json={"token": deletion_token},
@@ -387,6 +429,11 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             wrong_shop_headers = {**headers, "X-Shop-ID": str(uuid4())}
             hidden = await client.get(f"/api/v1/items/{item_id}", headers=wrong_shop_headers)
             assert hidden.status_code == 404
+            hidden_invoice_list = await client.get(
+                "/api/v1/sales/invoices",
+                headers=wrong_shop_headers,
+            )
+            assert hidden_invoice_list.status_code == 404
 
             sale = await client.post(
                 "/api/v1/sales/",
@@ -401,6 +448,16 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert sale.status_code == 200, sale.text
             sale_id = UUID(sale.json()["id"])
             assert sale.json()["invoice_no"].startswith("TEST-")
+
+            pending_invoice_list = await client.get(
+                "/api/v1/sales/invoices",
+                headers=headers,
+                params={"search": "Integration Customer", "pdf_status": "pending"},
+            )
+            assert pending_invoice_list.status_code == 200, pending_invoice_list.text
+            assert pending_invoice_list.json()["total"] == 1
+            assert pending_invoice_list.json()["invoices"][0]["sale_id"] == str(sale_id)
+            assert "s3_object_key" not in pending_invoice_list.text
 
             unavailable_invoice = await client.get(
                 f"/api/v1/sales/{sale_id}/invoice",
@@ -447,6 +504,22 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert invoice.status_code == 200
             assert invoice.json()["expires_in_seconds"] == 600
             assert invoice.json()["url"].startswith("https://example.invalid/invoice")
+
+            ready_invoice_list = await client.get(
+                "/api/v1/sales/invoices",
+                headers=headers,
+                params={"search": sale.json()["invoice_no"], "pdf_status": "ready"},
+            )
+            assert ready_invoice_list.status_code == 200, ready_invoice_list.text
+            assert ready_invoice_list.json()["total"] == 1
+            assert ready_invoice_list.json()["invoices"][0]["pdf_generated_at"] is not None
+
+            isolated_invoice_list = await client.get(
+                "/api/v1/sales/invoices",
+                headers=second_shop_headers,
+            )
+            assert isolated_invoice_list.status_code == 200, isolated_invoice_list.text
+            assert isolated_invoice_list.json()["invoices"] == []
 
             hidden_invoice = await client.get(
                 f"/api/v1/sales/{sale_id}/invoice",

@@ -239,7 +239,7 @@ export const Dashboard: React.FC = () => {
           <h1 className="dashboard-page__title">Welcome back, {welcomeName}</h1>
           <p className="dashboard-page__subtitle">Here is an overview of your shop today.</p>
         </div>
-        <Link to="/history" className="dashboard-header-link">
+        <Link to="/transactions" className="dashboard-header-link">
           <Activity className="dashboard-header-link__icon" />
           View activity
         </Link>
@@ -278,7 +278,7 @@ export const Dashboard: React.FC = () => {
             <p className="dashboard-eyebrow">What is happening</p>
             <h2 id="recent-activity-title" className="dashboard-activity__heading">Recent activity</h2>
           </div>
-          <Link to="/history" className="dashboard-section-link">View all</Link>
+          <Link to="/transactions" className="dashboard-section-link">View all</Link>
         </div>
 
         {loading ? (

@@ -60,6 +60,27 @@ export interface InvoiceDownload {
   expires_in_seconds: number;
 }
 
+export type InvoicePdfStatus = 'pending' | 'processing' | 'ready' | 'failed';
+
+export interface InvoiceSummary {
+  sale_id: string;
+  invoice_no: string;
+  created_at: string;
+  customer_name: string;
+  customer_phone: string;
+  total_amount: number;
+  pdf_status: InvoicePdfStatus;
+  pdf_generated_at: string | null;
+}
+
+export interface InvoicePage {
+  invoices: InvoiceSummary[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export interface ChangeLogEntry {
   id: string;
   entity: string;

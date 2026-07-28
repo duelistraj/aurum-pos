@@ -5,10 +5,10 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.modules.auth.models import User
 from app.modules.auth.security import hash_token
 from app.modules.notifications.service import queue_email
+from app.modules.notifications.templates import invitation_email
 from app.modules.shops.models import Shop, ShopInvitation, ShopMembership
 
 
@@ -59,14 +59,17 @@ async def create_invitation(
         expires_at=datetime.now(UTC) + timedelta(days=7),
     )
     db.add(invitation)
+    email_content = invitation_email(
+        token=token,
+        shop_name=shop.name,
+        role=role,
+    )
     queue_email(
         db,
         recipient=email,
-        subject=f"You are invited to {shop.name} on Aurum POS",
-        text_body=(
-            f"Open Aurum POS, choose 'Accept a staff invitation', and enter this code:\n\n"
-            f"{token}\n\nInstructions: {settings.public_site_url}/accept-invitation.html"
-        ),
+        subject=email_content.subject,
+        text_body=email_content.text_body,
+        html_body=email_content.html_body,
         template_data={"shop_name": shop.name, "role": role},
     )
     await db.flush()

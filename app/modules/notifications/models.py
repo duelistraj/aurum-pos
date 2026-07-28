@@ -24,6 +24,7 @@ class EmailOutbox(Base):
     recipient: Mapped[str] = mapped_column(String(320), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     text_body: Mapped[str] = mapped_column(Text, nullable=False)
+    html_body: Mapped[str | None] = mapped_column(Text)
     template_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending", index=True)
     attempts: Mapped[int] = mapped_column(default=0, nullable=False)

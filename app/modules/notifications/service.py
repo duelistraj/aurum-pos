@@ -9,6 +9,7 @@ def queue_email(
     recipient: str,
     subject: str,
     text_body: str,
+    html_body: str | None = None,
     template_data: dict | None = None,
 ) -> None:
     db.add(
@@ -16,6 +17,7 @@ def queue_email(
             recipient=recipient,
             subject=subject,
             text_body=text_body,
+            html_body=html_body,
             template_data=template_data or {},
         )
     )

@@ -1,5 +1,5 @@
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
 import anyio
@@ -13,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.modules.auth.constants import (
+    ACCOUNT_DELETION_GRACE_DAYS,
+    ACCOUNT_DELETION_GRACE_PERIOD,
+)
 from app.modules.auth.dependencies import (
     AuthContext,
     RequireAdmin,
@@ -255,14 +259,14 @@ async def confirm_account_deletion(
         )
     now = datetime.now(UTC)
     request.confirmed_at = now
-    request.execute_after = now + timedelta(days=30)
+    request.execute_after = now + ACCOUNT_DELETION_GRACE_PERIOD
     if request.user_id:
         await db.execute(
             update(AuthSession)
             .where(AuthSession.user_id == request.user_id, AuthSession.revoked_at.is_(None))
             .values(revoked_at=now)
         )
-    return {"message": "Account deletion scheduled in 30 days"}
+    return {"message": f"Account deletion scheduled in {ACCOUNT_DELETION_GRACE_DAYS} days"}
 
 
 @router.post("/account-deletion/cancel")

@@ -12,10 +12,10 @@ const POS = lazy(() => import('./pages/POS').then(({ POS }) => ({ default: POS }
 const Items = lazy(() => import('./pages/Items').then(({ Items }) => ({ default: Items })));
 const MetalRates = lazy(() => import('./pages/MetalRates').then(({ MetalRates }) => ({ default: MetalRates })));
 const Analytics = lazy(() => import('./pages/Analytics').then(({ Analytics }) => ({ default: Analytics })));
-const History = lazy(() => import('./pages/History').then(({ History }) => ({ default: History })));
+const Transactions = lazy(() => import('./pages/History').then(({ Transactions }) => ({ default: Transactions })));
 const Login = lazy(() => import('./pages/Login').then(({ Login }) => ({ default: Login })));
 const Subscription = lazy(() => import('./pages/Subscription').then(({ Subscription }) => ({ default: Subscription })));
-const Staff = lazy(() => import('./pages/Staff').then(({ Staff }) => ({ default: Staff })));
+const ManageShop = lazy(() => import('./pages/Staff').then(({ ManageShop }) => ({ default: ManageShop })));
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center" role="status">
     Loading…
@@ -86,10 +86,19 @@ function App() {
                       <Route path="/pos" element={<POS />} />
                       <Route path="/items" element={<Items />} />
                       <Route path="/rates" element={<MetalRates />} />
-                      <Route path="/history" element={<History />} />
+                      <Route path="/transactions" element={<Transactions />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/subscription" element={<Subscription />} />
-                      <Route path="/staff" element={<Staff />} />
+                      <Route path="/manage-shop" element={<ManageShop />} />
+                      <Route path="/history" element={<Navigate to="/transactions" replace />} />
+                      <Route
+                        path="/invoices"
+                        element={<Navigate to="/transactions?tab=invoices" replace />}
+                      />
+                      <Route
+                        path="/staff"
+                        element={<Navigate to="/manage-shop?tab=staff" replace />}
+                      />
                     </Routes>
                   </AppShell>
                 </ProtectedRoute>

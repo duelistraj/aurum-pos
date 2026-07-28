@@ -9,4 +9,5 @@ export const queryKeys = {
   metalRates: (shopId: string) => ['shops', shopId, 'metal-rates'] as const,
   availableMetals: (shopId: string) => ['shops', shopId, 'metal-rates', 'available'] as const,
   history: (shopId: string, filters: object) => ['shops', shopId, 'change-log', filters] as const,
+  invoices: (shopId: string, filters: object) => ['shops', shopId, 'invoices', filters] as const,
 };

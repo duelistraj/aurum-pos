@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { FileTransfer } from '@capacitor/file-transfer';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { LocalNotifications } from '@capacitor/local-notifications';
+
+import { AurumFileNotifications } from './native/fileNotifications';
 
 export const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-IN', {
@@ -43,25 +44,11 @@ const requestPublicStoragePermission = async () => {
   }
 };
 
-const notifyFileDownloaded = async (filename: string) => {
+const notifyFileDownloaded = async (uri: string) => {
   try {
-    const notifyPermission = await LocalNotifications.checkPermissions();
-    if (notifyPermission.display !== 'granted') {
-      await LocalNotifications.requestPermissions();
-    }
-
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          title: 'File Downloaded',
-          body: `${filename} has been saved to your Documents folder.`,
-          id: Math.floor(Math.random() * 100000),
-          schedule: { at: new Date(Date.now() + 500) },
-        },
-      ],
-    });
+    await AurumFileNotifications.showDownloadedFile({ uri });
   } catch (notificationErr) {
-    console.error('Error scheduling local notification:', notificationErr);
+    console.error('Error showing downloaded file notification:', notificationErr);
   }
 };
 
@@ -92,13 +79,13 @@ export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) =
 
       await requestPublicStoragePermission();
 
-      await Filesystem.writeFile({
+      const savedFile = await Filesystem.writeFile({
         path: filename,
         data: base64Data,
         directory: Directory.Documents,
       });
 
-      await notifyFileDownloaded(filename);
+      await notifyFileDownloaded(savedFile.uri);
     } catch (error) {
       console.error('Error saving file natively:', error);
       throw error;
@@ -127,7 +114,7 @@ export const downloadUrl = async (url: string, filename: string) => {
       url,
       path: destination.uri,
     });
-    await notifyFileDownloaded(filename);
+    await notifyFileDownloaded(destination.uri);
     return;
   }
 

@@ -16,6 +16,7 @@ async def test_email_delivery_uses_configured_sender(monkeypatch) -> None:
         recipient="owner@example.com",
         subject="Verify your Aurum POS email",
         text_body="Verification link",
+        html_body="<p>Verification link</p>",
         attempts=0,
     )
     sent_messages: list[dict] = []
@@ -49,8 +50,11 @@ async def test_email_delivery_uses_configured_sender(monkeypatch) -> None:
             "Source": "Aurum POS <noreply@aurumpos.net>",
             "Destination": {"ToAddresses": ["owner@example.com"]},
             "Message": {
-                "Subject": {"Data": "Verify your Aurum POS email"},
-                "Body": {"Text": {"Data": "Verification link"}},
+                "Subject": {"Data": "Verify your Aurum POS email", "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": "Verification link", "Charset": "UTF-8"},
+                    "Html": {"Data": "<p>Verification link</p>", "Charset": "UTF-8"},
+                },
             },
         }
     ]
@@ -64,6 +68,7 @@ async def test_email_delivery_logs_safe_error_metadata(monkeypatch, caplog) -> N
         recipient=recipient,
         subject="Verify your Aurum POS email",
         text_body="Sensitive verification link",
+        html_body=None,
         attempts=0,
     )
     completion = SimpleNamespace(error_code=None)

@@ -16,6 +16,11 @@ from app.modules.auth.security import (
     hash_token,
 )
 from app.modules.notifications.service import queue_email
+from app.modules.notifications.templates import (
+    account_deletion_email,
+    password_reset_email,
+    verification_email,
+)
 from app.modules.shops.service import list_memberships
 
 DUMMY_PASSWORD_HASH = (
@@ -60,11 +65,13 @@ async def create_verification_token(db: AsyncSession, user: User) -> str:
             expires_at=datetime.now(UTC) + timedelta(hours=24),
         )
     )
+    email = verification_email(token=token)
     queue_email(
         db,
         recipient=user.email,
-        subject="Verify your Aurum POS email",
-        text_body=f"Verify your email: {settings.public_site_url}/verify-email.html?token={token}",
+        subject=email.subject,
+        text_body=email.text_body,
+        html_body=email.html_body,
     )
     return token
 
@@ -196,13 +203,13 @@ async def request_password_reset(db: AsyncSession, email: str) -> None:
             expires_at=datetime.now(UTC) + timedelta(minutes=30),
         )
     )
+    email_content = password_reset_email(token=token)
     queue_email(
         db,
         recipient=user.email,
-        subject="Reset your Aurum POS password",
-        text_body=(
-            f"Reset your password: {settings.public_site_url}/reset-password.html?token={token}"
-        ),
+        subject=email_content.subject,
+        text_body=email_content.text_body,
+        html_body=email_content.html_body,
     )
 
 
@@ -234,16 +241,15 @@ async def request_account_deletion(
             delete_owned_shops=delete_owned_shops,
         )
     )
+    email_content = account_deletion_email(
+        token=raw_token,
+        delete_owned_shops=delete_owned_shops,
+    )
     queue_email(
         db,
         recipient=user.email,
-        subject="Confirm Aurum POS account deletion",
-        text_body=(
-            "This request will delete your account"
-            + (" and shops for which you are the sole owner" if delete_owned_shops else "")
-            + f". Review and confirm: {settings.public_site_url}/account-deletion.html"
-            f"?token={raw_token}. Confirmed requests are executed after 30 days; "
-            "the same page can cancel a confirmed request during that period."
-        ),
+        subject=email_content.subject,
+        text_body=email_content.text_body,
+        html_body=email_content.html_body,
     )
     return raw_token

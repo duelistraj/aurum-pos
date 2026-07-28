@@ -6,6 +6,8 @@ import {
   ChangeLogPage,
   DashboardSummary,
   InvoiceDownload,
+  InvoicePage,
+  InvoicePdfStatus,
   Item,
   ItemPOSWithPrice,
   MetalRate,
@@ -623,6 +625,18 @@ export const apiClient = {
   },
 
   // Invoices
+  async listInvoices(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    from_date?: string;
+    to_date?: string;
+    pdf_status?: InvoicePdfStatus;
+  }) {
+    const { data } = await client.get<InvoicePage>('/sales/invoices', { params });
+    return data;
+  },
+
   async getInvoiceDownload(saleId: string) {
     for (let attempt = 0; attempt < 15; attempt += 1) {
       const { data } = await client.get<
@@ -633,7 +647,9 @@ export const apiClient = {
         window.setTimeout(resolve, Math.max(1, data.retry_after_seconds) * 1000);
       });
     }
-    throw new Error('Invoice is still being prepared. You can download it from History shortly.');
+    throw new Error(
+      'Invoice is still being prepared. You can download it from Transactions shortly.',
+    );
   },
 };
 

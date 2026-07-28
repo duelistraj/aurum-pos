@@ -1,3 +1,5 @@
+from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -32,3 +34,25 @@ class InvoiceDownloadOut(BaseModel):
 class InvoicePendingOut(BaseModel):
     status: str = "pending"
     retry_after_seconds: int = 2
+
+
+InvoicePdfStatus = Literal["pending", "processing", "ready", "failed"]
+
+
+class InvoiceSummaryOut(BaseModel):
+    sale_id: UUID
+    invoice_no: str
+    created_at: datetime
+    customer_name: str
+    customer_phone: str
+    total_amount: float
+    pdf_status: InvoicePdfStatus
+    pdf_generated_at: datetime | None
+
+
+class InvoicePageOut(BaseModel):
+    invoices: list[InvoiceSummaryOut]
+    total: int
+    page: int
+    limit: int
+    pages: int

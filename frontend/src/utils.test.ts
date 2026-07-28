@@ -5,10 +5,9 @@ const mocks = vi.hoisted(() => ({
   checkPermissions: vi.fn(),
   requestPermissions: vi.fn(),
   getUri: vi.fn(),
+  writeFile: vi.fn(),
   downloadFile: vi.fn(),
-  checkNotificationPermissions: vi.fn(),
-  requestNotificationPermissions: vi.fn(),
-  scheduleNotification: vi.fn(),
+  showDownloadedFile: vi.fn(),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -31,18 +30,17 @@ vi.mock('@capacitor/filesystem', () => ({
     checkPermissions: mocks.checkPermissions,
     requestPermissions: mocks.requestPermissions,
     getUri: mocks.getUri,
+    writeFile: mocks.writeFile,
   },
 }));
 
-vi.mock('@capacitor/local-notifications', () => ({
-  LocalNotifications: {
-    checkPermissions: mocks.checkNotificationPermissions,
-    requestPermissions: mocks.requestNotificationPermissions,
-    schedule: mocks.scheduleNotification,
+vi.mock('./native/fileNotifications', () => ({
+  AurumFileNotifications: {
+    showDownloadedFile: mocks.showDownloadedFile,
   },
 }));
 
-import { downloadUrl } from './utils';
+import { downloadBlob, downloadUrl } from './utils';
 
 describe('signed URL downloads', () => {
   beforeEach(() => {
@@ -50,10 +48,9 @@ describe('signed URL downloads', () => {
     mocks.checkPermissions.mockReset().mockResolvedValue({ publicStorage: 'granted' });
     mocks.requestPermissions.mockReset();
     mocks.getUri.mockReset().mockResolvedValue({ uri: 'file:///documents/invoice.pdf' });
+    mocks.writeFile.mockReset().mockResolvedValue({ uri: 'file:///documents/invoice.pdf' });
     mocks.downloadFile.mockReset().mockResolvedValue({});
-    mocks.checkNotificationPermissions.mockReset().mockResolvedValue({ display: 'granted' });
-    mocks.requestNotificationPermissions.mockReset();
-    mocks.scheduleNotification.mockReset().mockResolvedValue(undefined);
+    mocks.showDownloadedFile.mockReset().mockResolvedValue({ displayed: true });
   });
 
   it('uses direct navigation for browser downloads', async () => {
@@ -81,6 +78,51 @@ describe('signed URL downloads', () => {
       url: 'https://example.invalid/signed',
       path: 'file:///documents/invoice.pdf',
     });
-    expect(mocks.scheduleNotification).toHaveBeenCalledOnce();
+    expect(mocks.showDownloadedFile).toHaveBeenCalledWith({
+      uri: 'file:///documents/invoice.pdf',
+    });
+    expect(mocks.showDownloadedFile.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.downloadFile.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('notifies with the exact URI returned after a native blob write', async () => {
+    mocks.isNative = true;
+    mocks.writeFile.mockResolvedValue({ uri: 'file:///documents/labels.xlsx' });
+
+    await downloadBlob(new Blob(['labels']), 'labels.xlsx');
+
+    expect(mocks.showDownloadedFile).toHaveBeenCalledWith({
+      uri: 'file:///documents/labels.xlsx',
+    });
+    expect(mocks.showDownloadedFile.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.writeFile.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not report a completed download when native transfer fails', async () => {
+    mocks.isNative = true;
+    mocks.downloadFile.mockRejectedValue(new Error('transfer failed'));
+
+    await expect(downloadUrl('https://example.invalid/signed', 'invoice.pdf')).rejects.toThrow(
+      'transfer failed',
+    );
+
+    expect(mocks.showDownloadedFile).not.toHaveBeenCalled();
+  });
+
+  it('keeps a completed download successful when its notification cannot be shown', async () => {
+    mocks.isNative = true;
+    mocks.showDownloadedFile.mockRejectedValue(new Error('notifications disabled'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      downloadUrl('https://example.invalid/signed', 'invoice.pdf'),
+    ).resolves.toBeUndefined();
+
+    expect(consoleError).toHaveBeenCalledWith(
+      'Error showing downloaded file notification:',
+      expect.any(Error),
+    );
   });
 });

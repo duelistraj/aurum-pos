@@ -75,7 +75,10 @@ describe('Dashboard', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome back, Admin' })).toBeInTheDocument();
     expect(await screen.findByText('₹3,200.00')).toBeInTheDocument();
     expect(await screen.findByText('Sale created: INV-1001')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute('href', '/history');
+    expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute(
+      'href',
+      '/transactions',
+    );
   });
 
   it('shows an actionable error when the summary request fails', async () => {

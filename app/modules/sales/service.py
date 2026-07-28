@@ -4,7 +4,7 @@ from uuid import UUID
 
 import anyio
 from fastapi import HTTPException
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,6 +45,48 @@ async def get_sale_by_id(
         stmt = stmt.with_for_update()
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def list_invoices(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    page: int,
+    limit: int,
+    search: str | None = None,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    pdf_status: str | None = None,
+) -> tuple[list[Sale], int]:
+    filters = [Sale.shop_id == shop_id]
+    if search and (normalized_search := search.strip()):
+        escaped_search = (
+            normalized_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        search_pattern = f"%{escaped_search}%"
+        filters.append(
+            or_(
+                Sale.invoice_no.ilike(search_pattern, escape="\\"),
+                Sale.customer_name.ilike(search_pattern, escape="\\"),
+                Sale.customer_phone.ilike(search_pattern, escape="\\"),
+            )
+        )
+    if from_date is not None:
+        filters.append(Sale.created_at >= from_date)
+    if to_date is not None:
+        filters.append(Sale.created_at <= to_date)
+    if pdf_status is not None:
+        filters.append(Sale.invoice_pdf_status == pdf_status)
+
+    total = int(await db.scalar(select(func.count(Sale.id)).where(*filters)) or 0)
+    result = await db.execute(
+        select(Sale)
+        .where(*filters)
+        .order_by(Sale.created_at.desc(), Sale.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    return list(result.scalars()), total
 
 
 async def persist_invoice_pdf(

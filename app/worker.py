@@ -48,6 +48,7 @@ class EmailMessage:
     recipient: str
     subject: str
     text_body: str
+    html_body: str | None
     attempts: int
 
 
@@ -80,6 +81,7 @@ async def _load_email_message(outbox_id: UUID) -> EmailMessage | None:
             recipient=message.recipient,
             subject=message.subject,
             text_body=message.text_body,
+            html_body=message.html_body,
             attempts=message.attempts,
         )
 
@@ -127,8 +129,20 @@ async def deliver_email(outbox_id: UUID) -> None:
                     Source=settings.email_from,
                     Destination={"ToAddresses": [message.recipient]},
                     Message={
-                        "Subject": {"Data": message.subject},
-                        "Body": {"Text": {"Data": message.text_body}},
+                        "Subject": {"Data": message.subject, "Charset": "UTF-8"},
+                        "Body": {
+                            "Text": {"Data": message.text_body, "Charset": "UTF-8"},
+                            **(
+                                {
+                                    "Html": {
+                                        "Data": message.html_body,
+                                        "Charset": "UTF-8",
+                                    }
+                                }
+                                if message.html_body
+                                else {}
+                            ),
+                        },
                     },
                 )
 
@@ -543,9 +557,12 @@ async def cleanup_expired_records() -> None:
                         & (EmailOutbox.created_at < now - timedelta(days=1))
                     ),
                 ),
-                EmailOutbox.text_body != "[redacted]",
+                or_(
+                    EmailOutbox.text_body != "[redacted]",
+                    EmailOutbox.html_body != "[redacted]",
+                ),
             )
-            .values(text_body="[redacted]", template_data={})
+            .values(text_body="[redacted]", html_body="[redacted]", template_data={})
         )
         await session.execute(
             delete(EmailOutbox).where(

@@ -1,0 +1,4 @@
+from datetime import timedelta
+
+ACCOUNT_DELETION_GRACE_DAYS = 7
+ACCOUNT_DELETION_GRACE_PERIOD = timedelta(days=ACCOUNT_DELETION_GRACE_DAYS)

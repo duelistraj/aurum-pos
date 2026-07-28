@@ -1,8 +1,10 @@
 import hashlib
-from typing import Annotated
+import math
+from datetime import datetime
+from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,11 +13,14 @@ from app.modules.auth.dependencies import ShopContext, get_shop_context
 from app.modules.sales.models import InvoiceJob, SaleIdempotency
 from app.modules.sales.schemas import (
     InvoiceDownloadOut,
+    InvoicePageOut,
+    InvoicePdfStatus,
     InvoicePendingOut,
+    InvoiceSummaryOut,
     SaleCreate,
     SaleOut,
 )
-from app.modules.sales.service import create_sale, get_sale_by_id
+from app.modules.sales.service import create_sale, get_sale_by_id, list_invoices
 from app.modules.sales.storage import InvoiceStorage, InvoiceStorageError, get_invoice_storage
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
@@ -88,6 +93,51 @@ async def get_idempotent_sale(
     if sale is None:
         raise HTTPException(status_code=404, detail="Sale result does not exist")
     return sale
+
+
+@router.get(
+    "/invoices",
+    response_model=InvoicePageOut,
+)
+async def invoices(
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
+    search: str | None = Query(None, max_length=100),
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    pdf_status: InvoicePdfStatus | None = Query(None),
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> InvoicePageOut:
+    rows, total = await list_invoices(
+        db,
+        shop_id=context.shop.id,
+        page=page,
+        limit=limit,
+        search=search,
+        from_date=from_date,
+        to_date=to_date,
+        pdf_status=pdf_status,
+    )
+    return InvoicePageOut(
+        invoices=[
+            InvoiceSummaryOut(
+                sale_id=row.id,
+                invoice_no=row.invoice_no,
+                created_at=row.created_at,
+                customer_name=row.customer_name,
+                customer_phone=row.customer_phone,
+                total_amount=float(row.total_amount),
+                pdf_status=cast(InvoicePdfStatus, row.invoice_pdf_status),
+                pdf_generated_at=row.pdf_generated_at,
+            )
+            for row in rows
+        ],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=math.ceil(total / limit),
+    )
 
 
 @router.get(

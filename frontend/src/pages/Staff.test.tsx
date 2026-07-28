@@ -1,9 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
-import { Staff } from './Staff';
+import { ManageShop } from './Staff';
 
 vi.mock('../api/client', () => ({
   apiClient: {
@@ -18,11 +20,27 @@ vi.mock('../api/client', () => ({
 
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 
-describe('Staff', () => {
+const reload = vi.fn<() => Promise<void>>();
+
+const renderManageShop = (initialEntry = '/manage-shop') => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <ManageShop />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+};
+
+describe('Manage Shop', () => {
   afterEach(cleanup);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    reload.mockResolvedValue(undefined);
     vi.mocked(useShop).mockReturnValue({
       user: null,
       memberships: [],
@@ -34,7 +52,7 @@ describe('Staff', () => {
       },
       canManage: true,
       selectShop: vi.fn().mockResolvedValue(undefined),
-      reload: vi.fn().mockResolvedValue(undefined),
+      reload,
     });
     vi.mocked(apiClient.inviteStaff).mockResolvedValue({
       id: 'invite-1',
@@ -83,8 +101,12 @@ describe('Staff', () => {
 
   it('uses the app listbox and submits the selected role', async () => {
     const user = userEvent.setup();
-    render(<Staff />);
+    renderManageShop('/manage-shop?tab=staff');
 
+    expect(screen.getByRole('tab', { name: 'Staff' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
 
@@ -113,7 +135,7 @@ describe('Staff', () => {
 
   it('requires confirmation before transferring ownership', async () => {
     const user = userEvent.setup();
-    render(<Staff />);
+    renderManageShop('/manage-shop?tab=staff');
 
     await screen.findByText('Store Manager');
     await user.click(screen.getByRole('button', { name: 'Make owner' }));
@@ -129,5 +151,52 @@ describe('Staff', () => {
         'manager-membership',
       );
     });
+  });
+
+  it('opens invoice settings by default and saves changes', async () => {
+    const user = userEvent.setup();
+    renderManageShop();
+
+    expect(screen.getByRole('tab', { name: 'Invoice Settings' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(await screen.findByDisplayValue('Demo Shop Private Limited')).toBeInTheDocument();
+    expect(apiClient.listStaff).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByRole('textbox', { name: 'Invoice prefix' }));
+    await user.type(screen.getByRole('textbox', { name: 'Invoice prefix' }), 'TAX');
+    await user.click(screen.getByRole('button', { name: 'Save invoice settings' }));
+
+    await waitFor(() => {
+      expect(apiClient.updateShop).toHaveBeenCalledWith(
+        'shop-1',
+        expect.objectContaining({ invoice_prefix: 'TAX', tax_rate_percent: 3 }),
+      );
+    });
+  });
+
+  it('blocks lower-privilege memberships', () => {
+    vi.mocked(useShop).mockReturnValue({
+      user: null,
+      memberships: [],
+      activeMembership: {
+        shop_id: 'shop-1',
+        shop_name: 'Demo Shop',
+        shop_slug: 'demo',
+        role: 'MANAGER',
+      },
+      canManage: true,
+      selectShop: vi.fn().mockResolvedValue(undefined),
+      reload,
+    });
+
+    renderManageShop();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Only shop owners and administrators can manage shop settings.',
+    );
+    expect(apiClient.listShops).not.toHaveBeenCalled();
+    expect(apiClient.listStaff).not.toHaveBeenCalled();
   });
 });
