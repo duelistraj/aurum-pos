@@ -19,6 +19,7 @@ def test_debug_apk_excludes_google_authentication() -> None:
     assert "./gradlew test lint assembleDebug" in source
     assert "./gradlew :app:connectedDebugAndroidTest" in source
     assert "android-emulator-runner@" in source
+    assert "disable-animations: true" not in source
 
 
 def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
@@ -34,6 +35,7 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
     assert "has no successful CI run" in source
     assert "./gradlew test lint bundleRelease" in source
     assert "./gradlew :app:connectedDebugAndroidTest" in source
+    assert "disable-animations: true" not in source
     assert source.index("chmod +x frontend/android/gradlew") < source.index(
         "./gradlew :app:connectedDebugAndroidTest"
     )
