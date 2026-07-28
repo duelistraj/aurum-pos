@@ -22,6 +22,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Upgrade schema."""
     op.execute("UPDATE items SET making_charge = 0 WHERE making_charge IS NULL")
+    # migration-safety: allow - the preceding update backfills every null row.
     op.alter_column(
         "items",
         "making_charge",

@@ -23,14 +23,17 @@ def upgrade() -> None:
     """Upgrade schema."""
     # Drop shop_id from items table
     op.drop_index(op.f("ix_items_shop_id"), table_name="items")
+    # migration-safety: allow - this is a legacy clean-database bootstrap transition.
     op.drop_column("items", "shop_id")
 
     # Drop shop_id from sales table
     op.drop_index(op.f("ix_sales_shop_id"), table_name="sales")
+    # migration-safety: allow - this is a legacy clean-database bootstrap transition.
     op.drop_column("sales", "shop_id")
 
     # Drop shop_id from change_log table
     op.drop_index(op.f("ix_change_log_shop_id"), table_name="change_log")
+    # migration-safety: allow - this is a legacy clean-database bootstrap transition.
     op.drop_column("change_log", "shop_id")
 
 

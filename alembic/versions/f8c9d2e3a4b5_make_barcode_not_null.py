@@ -47,6 +47,7 @@ def upgrade() -> None:
         )
 
     # Now make barcode NOT NULL
+    # migration-safety: allow - every null barcode is backfilled above.
     op.alter_column(
         "items", "barcode", existing_type=sa.String(100), nullable=False, existing_nullable=True
     )

@@ -36,6 +36,7 @@ def upgrade() -> None:
     )
 
     # 3️⃣ Enforce NOT NULL after backfill
+    # migration-safety: allow - the preceding update backfills every null row.
     op.alter_column("sale_items", "price_breakdown", nullable=False)
 
 

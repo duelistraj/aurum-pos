@@ -43,9 +43,13 @@ def upgrade() -> None:
     )
 
     # Enforce NOT NULL where required
+    # migration-safety: allow - the preceding update backfills every required value.
     op.alter_column("sales", "customer_name", nullable=False)
+    # migration-safety: allow - the preceding update backfills every required value.
     op.alter_column("sales", "customer_phone", nullable=False)
+    # migration-safety: allow - the preceding update backfills every required value.
     op.alter_column("sales", "customer_state", nullable=False)
+    # migration-safety: allow - the preceding update backfills every required value.
     op.alter_column("sales", "customer_state_code", nullable=False)
     # ### end Alembic commands ###
 

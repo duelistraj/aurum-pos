@@ -38,6 +38,7 @@ def upgrade() -> None:
     )
 
     # 3️⃣ Enforce NOT NULL
+    # migration-safety: allow - the preceding update backfills every null row.
     op.alter_column(
         "items",
         "category",

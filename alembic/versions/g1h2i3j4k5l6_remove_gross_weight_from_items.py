@@ -22,6 +22,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Upgrade schema."""
     # Drop gross_weight column from items table
+    # migration-safety: allow - this is a legacy clean-database bootstrap transition.
     op.drop_column("items", "gross_weight")
 
 
