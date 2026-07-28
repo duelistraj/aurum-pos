@@ -48,8 +48,12 @@ describe('signed URL downloads', () => {
     mocks.isNative = false;
     mocks.checkPermissions.mockReset().mockResolvedValue({ publicStorage: 'granted' });
     mocks.requestPermissions.mockReset();
-    mocks.getUri.mockReset().mockResolvedValue({ uri: 'file:///documents/invoice.pdf' });
-    mocks.writeFile.mockReset().mockResolvedValue({ uri: 'file:///documents/invoice.pdf' });
+    mocks.getUri.mockReset().mockResolvedValue({
+      uri: 'file:///data/user/0/com.duelistraj.aurumpos/cache/invoice.pdf',
+    });
+    mocks.writeFile.mockReset().mockResolvedValue({
+      uri: 'file:///data/user/0/com.duelistraj.aurumpos/cache/invoice.pdf',
+    });
     mocks.downloadFile.mockReset().mockResolvedValue({});
     mocks.showDownloadedFile.mockReset().mockResolvedValue({ displayed: true });
   });
@@ -77,10 +81,10 @@ describe('signed URL downloads', () => {
     });
     expect(mocks.downloadFile).toHaveBeenCalledWith({
       url: 'https://example.invalid/signed',
-      path: 'file:///documents/invoice.pdf',
+      path: 'file:///data/user/0/com.duelistraj.aurumpos/cache/invoice.pdf',
     });
     expect(mocks.showDownloadedFile).toHaveBeenCalledWith({
-      uri: 'file:///documents/invoice.pdf',
+      uri: 'file:///data/user/0/com.duelistraj.aurumpos/cache/invoice.pdf',
     });
     expect(mocks.showDownloadedFile.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.downloadFile.mock.invocationCallOrder[0],
@@ -112,18 +116,21 @@ describe('signed URL downloads', () => {
     expect(mocks.showDownloadedFile).not.toHaveBeenCalled();
   });
 
-  it('keeps a completed download successful when its notification cannot be shown', async () => {
+  it('reports a native handoff failure instead of silently hiding the download', async () => {
     mocks.isNative = true;
     mocks.showDownloadedFile.mockRejectedValue(new Error('notifications disabled'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(
-      downloadUrl('https://example.invalid/signed', 'invoice.pdf'),
-    ).resolves.toBeUndefined();
+    await expect(downloadUrl('https://example.invalid/signed', 'invoice.pdf')).rejects.toThrow(
+      'notifications disabled',
+    );
+  });
 
-    expect(consoleError).toHaveBeenCalledWith(
-      'Error showing downloaded file notification:',
-      expect.any(Error),
+  it('explains when Android notification permission prevents file access', async () => {
+    mocks.isNative = true;
+    mocks.showDownloadedFile.mockResolvedValue({ displayed: false });
+
+    await expect(downloadUrl('https://example.invalid/signed', 'invoice.pdf')).rejects.toThrow(
+      'Android notifications are disabled',
     );
   });
 });

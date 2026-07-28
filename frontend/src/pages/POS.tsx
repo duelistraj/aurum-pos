@@ -321,15 +321,20 @@ export const POS: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'invoices'] }),
       ]);
 
-      // Download invoice PDF
+      let invoiceDownloaded = true;
       try {
         const invoice = await apiClient.getInvoiceDownload(sale.id);
         await downloadUrl(invoice.url, `${sale.invoice_no}.pdf`);
       } catch (pdfErr) {
+        invoiceDownloaded = false;
         console.error('Failed to download PDF:', pdfErr);
       }
 
-      setSuccess('Sale completed successfully!');
+      setSuccess(
+        invoiceDownloaded
+          ? 'Sale completed and invoice downloaded.'
+          : 'Sale completed. The invoice could not be opened; retry from Transactions.',
+      );
       await clearCheckoutIdempotencyKey();
       setCart([]);
       setCustomerDetails({ name: '', phone: '', address: '' });

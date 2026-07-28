@@ -133,7 +133,7 @@ builds ignore saved URLs and use `https://api.aurumpos.net`; self-hosted builds
 require a build-time API URL and do not support runtime backend switching.
 Debug APKs omit Google Sign-In, while signed Play builds discover the public Google client ID from the backend.
 Native Android access and refresh tokens are encrypted with an AES-GCM key held by Android Keystore and are excluded from device backup.
-Completed Android downloads remain in the public Documents directory, and a native bridge posts a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
+Completed Android downloads are written to app-owned storage, and a native bridge accepts only those app-owned paths before posting a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
 
 Evidence:
 - `frontend/src/main.tsx::ShopProvider`

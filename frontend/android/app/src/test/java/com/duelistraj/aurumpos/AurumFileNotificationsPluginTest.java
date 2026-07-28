@@ -17,15 +17,45 @@ public class AurumFileNotificationsPluginTest {
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
-    public void acceptsFilesInsideDocumentsButRejectsSiblingPrefixes() throws IOException {
-        File documents = temporaryFolder.newFolder("Documents");
-        File invoice = new File(documents, "INV-100.pdf");
-        File sibling = temporaryFolder.newFolder("Documents-private");
-        File privateInvoice = new File(sibling, "INV-100.pdf");
+    public void acceptsFilesInsideAppOwnedDownloadRootsButRejectsSiblings() throws IOException {
+        File cache = temporaryFolder.newFolder("cache");
+        File externalFiles = temporaryFolder.newFolder("external-files");
+        File cachedInvoice = new File(cache, "INV-100.pdf");
+        File externalInvoice = new File(externalFiles, "INV-101.pdf");
+        File sibling = temporaryFolder.newFolder("cache-private");
+        File privateInvoice = new File(sibling, "INV-102.pdf");
+        assertTrue(cachedInvoice.createNewFile());
+        assertTrue(externalInvoice.createNewFile());
+        assertTrue(privateInvoice.createNewFile());
 
-        assertTrue(AurumFileNotificationsPlugin.isWithinDirectory(documents, invoice));
-        assertFalse(AurumFileNotificationsPlugin.isWithinDirectory(documents, privateInvoice));
-        assertFalse(AurumFileNotificationsPlugin.isWithinDirectory(documents, documents));
+        assertTrue(
+            AurumFileNotificationsPlugin.isAllowedDownloadedFile(
+                cache,
+                externalFiles,
+                cachedInvoice
+            )
+        );
+        assertTrue(
+            AurumFileNotificationsPlugin.isAllowedDownloadedFile(
+                cache,
+                externalFiles,
+                externalInvoice
+            )
+        );
+        assertFalse(
+            AurumFileNotificationsPlugin.isAllowedDownloadedFile(
+                cache,
+                externalFiles,
+                privateInvoice
+            )
+        );
+        assertFalse(
+            AurumFileNotificationsPlugin.isAllowedDownloadedFile(
+                cache,
+                externalFiles,
+                cache
+            )
+        );
     }
 
     @Test

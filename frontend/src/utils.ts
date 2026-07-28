@@ -34,10 +34,11 @@ export const formatWeight = (weight: number): string => {
 };
 
 const notifyFileDownloaded = async (uri: string) => {
-  try {
-    await AurumFileNotifications.showDownloadedFile({ uri });
-  } catch (notificationErr) {
-    console.error('Error showing downloaded file notification:', notificationErr);
+  const result = await AurumFileNotifications.showDownloadedFile({ uri });
+  if (!result.displayed) {
+    throw new Error(
+      'The file was downloaded, but Android notifications are disabled. Allow notifications and try again.',
+    );
   }
 };
 

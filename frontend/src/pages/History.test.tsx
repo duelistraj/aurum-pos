@@ -157,6 +157,18 @@ describe('Transactions', () => {
     });
   });
 
+  it('shows an invoice download handoff failure to the cashier', async () => {
+    const user = userEvent.setup();
+    vi.mocked(downloadUrl).mockRejectedValueOnce(new Error('Unable to open invoice'));
+    renderTransactions('/transactions?tab=invoices');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Download INV-2026-000001' }),
+    );
+
+    expect(await screen.findByText('Unable to open invoice')).toBeInTheDocument();
+  });
+
   it('falls back to activity for an unknown tab', async () => {
     renderTransactions('/transactions?tab=unknown');
 

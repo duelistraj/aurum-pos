@@ -10,7 +10,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -135,14 +134,31 @@ public class AurumFileNotificationsPlugin extends Plugin {
             throw new IllegalArgumentException("Downloaded file must use a file URI");
         }
 
-        File documents = Environment
-            .getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            .getCanonicalFile();
         File file = new File(uri.getPath()).getCanonicalFile();
-        if (!isWithinDirectory(documents, file) || !file.isFile()) {
-            throw new IllegalArgumentException("Downloaded file is outside Documents or missing");
+        File externalFiles = getContext().getExternalFilesDir(null);
+        if (
+            !isAllowedDownloadedFile(getContext().getCacheDir(), externalFiles, file) ||
+            !file.isFile()
+        ) {
+            throw new IllegalArgumentException(
+                "Downloaded file is outside app-owned storage or missing"
+            );
         }
         return file;
+    }
+
+    static boolean isAllowedDownloadedFile(
+        File cacheDirectory,
+        File externalFilesDirectory,
+        File candidate
+    ) throws IOException {
+        return (
+            isWithinDirectory(cacheDirectory, candidate) ||
+            (
+                externalFilesDirectory != null &&
+                isWithinDirectory(externalFilesDirectory, candidate)
+            )
+        );
     }
 
     static boolean isWithinDirectory(File directory, File candidate) throws IOException {
