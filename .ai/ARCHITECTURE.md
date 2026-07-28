@@ -111,8 +111,12 @@ Evidence:
 ### Production release health
 
 The production API exposes a database-free liveness endpoint, a database-backed readiness endpoint, a database-backed worker-heartbeat endpoint, and a version endpoint that reports the source revision, immutable image reference, and non-secret runtime configuration revision.
-The private operations repository refreshes runtime configuration from SSM, migrates before API replacement, verifies the new API before starting the worker, and serializes host changes with a deployment lock.
+The private operations repository retrieves each required runtime key from its own KMS-encrypted SSM SecureString, atomically assembles the host `.env`, migrates before API replacement, verifies the new API before starting the worker, and serializes host changes with a deployment lock.
+The migration administrator URL is fetched separately and is never installed in the API or worker runtime file.
 The public operator template validates the restricted runtime role, pauses the worker before migration, verifies the API release identity, and requires a heartbeat from the uniquely identified replacement worker.
+The official client is Android-first.
+Its signed AAB is released directly to Google Play Internal Testing from an explicitly selected revision that already passed CI.
+Backend production promotion is an independent immutable-digest pull request in the private operations repository.
 
 Evidence:
 - `app/main.py::health`

@@ -6,12 +6,15 @@ self-hosting from the same public source tree.
 
 ## Product model
 
+- Aurum POS is Android-first.
+- The hosted web surface supports the Android app and public account, legal, and recovery flows, but it is not the primary product distribution channel.
 - Self-hosted deployments are unlimited and do not use billing.
 - Aurum Cloud's free tier permits 50 active inventory records per shop.
-- Aurum Cloud Pro removes the hosted item limit. The official Android app
-  uses Google Play Billing with monthly and annual base plans.
-- Owners can use verified email/password or Google. Staff join only through a
-  shop invitation. Roles and entitlements are loaded from PostgreSQL.
+- Aurum Cloud Pro removes the hosted item limit.
+- The official Android app uses Google Play Billing with monthly and annual base plans.
+- Owners can use verified email/password or Google.
+- Staff join only through a shop invitation.
+- Roles and entitlements are loaded from PostgreSQL.
 
 Every tenant-facing business table has a `shop_id`, shop-scoped constraints, and forced PostgreSQL row-level security.
 Global durable-job control tables use composite tenant foreign keys and are accessed only by trusted backend code.
@@ -141,11 +144,17 @@ environment.
 ## Production
 
 `compose.cloud.yml` is the lean single-EC2 topology: a loopback-only two-process API and a reliable worker behind host Nginx, with Aiven PostgreSQL.
-`AURUM_IMAGE` must be a GHCR digest.
-Create an untracked `.env` from `.env.example`, assign the runtime values, and provision it securely on the host.
-Compose loads that file into the application containers.
+The official hosted deployment is controlled by the private `aurum-pos-ops` repository.
+Production values are already stored as individual KMS-encrypted SecureStrings under `/aurum-pos/production/` in AWS Systems Manager Parameter Store.
+The operations deployment retrieves the exact required parameters and atomically creates `/opt/aurum-pos/.env` on EC2.
+Operators do not populate a local production `.env`, and secret values are not passed through GitHub Actions.
+`MIGRATION_DATABASE_URL` is stored separately and is exposed only to the one-shot migration container.
+Application images are promoted by immutable GHCR digest through an operations pull request.
+
+The public `compose.cloud.yml` and `deploy/deploy.sh` files are reference templates for self-hosted or recovery use.
+They are not the normal Aurum Cloud production deployment path.
 Database pool and bounded worker concurrency settings are explicit so the current host can be tuned without changing application code as traffic grows.
-See [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for SSM deployment, TLS, SES, private invoice storage, Google RTDN, provider-managed recovery, and scaling gates.
+See [`deploy/OPERATIONS.md`](deploy/OPERATIONS.md) for the release flow and the boundary between public templates and private production operations.
 
 Aurum Cloud uses the private `aurum-pos-prod-duelistraj` bucket in `ap-southeast-1`.
 The application automatically uses temporary credentials from the EC2 instance role and never requires static AWS access keys in production.

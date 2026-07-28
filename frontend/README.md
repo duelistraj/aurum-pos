@@ -1,6 +1,9 @@
 # Frontend - Aurum POS
 
-React + TypeScript frontend for Aurum POS with:
+React + TypeScript client for the Android-first Aurum POS product.
+The official build is packaged with Capacitor and distributed through Google Play, while the browser build supports development and self-hosting.
+
+It includes:
 
 - **Responsive Design**: Mobile-first approach with Tailwind CSS
 - **Fast Performance**: Optimized with Vite and React

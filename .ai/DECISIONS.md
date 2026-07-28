@@ -51,12 +51,13 @@ Status: accepted
 Basis: source-backed
 Decision: The public repository publishes generic digest-addressable GHCR images and contains operator templates, but it does not deploy production infrastructure.
 Rationale: Credentials, customer data, and deployment authority remain outside the public repository.
-Consequences: Operators supply `.env`, DNS, AWS/Aiven resources, signing configuration, and the selected image digest.
+Consequences: Self-hosters supply `.env`, DNS, AWS/Aiven resources, signing configuration, and the selected image digest.
+Official production instead retrieves its configured SecureStrings through the private operations deployment.
 
 Evidence:
 - `.github/workflows/ci.yml::publish-image`
 - `compose.cloud.yml::services`
-- `deploy/OPERATIONS.md::Required preparation`
+- `deploy/OPERATIONS.md::Production source of truth`
 
 ### Deliver official Android bundles directly to Google Play
 
@@ -78,20 +79,20 @@ Evidence:
 Recorded: 2026-07-24
 Status: accepted
 Basis: user-confirmed
-Decision: Keep one backend runtime key contract in `.env.example`, keep the
-frontend example and local files on one Vite key contract, and provision the
-production runtime file through an encrypted AWS parameter.
+Decision: Keep one backend runtime key contract in `.env.example`, keep the frontend example and local files on one Vite key contract, and store each official production runtime value in its own KMS-encrypted SSM SecureString.
 Rationale: The user explicitly requested fewer environment files and aligned
 variables across backend and frontend configuration. The user explicitly made
 database backup and retention an infrastructure-provider responsibility.
-Consequences: Automated tests detect runtime key drift. Cloud Compose loads the
-SSM-provisioned `.env` into the API and worker. No application-managed database
-backup configuration is part of the runtime contract.
+Consequences: Automated tests detect runtime key drift.
+The private operations deployment retrieves the authoritative key list and atomically creates the host `.env` for the API and worker.
+Operators do not populate a local production `.env`.
+`MIGRATION_DATABASE_URL` remains a separate parameter available only to the migration container.
+No application-managed database backup configuration is part of the runtime contract.
 
 Evidence:
 - `tests/test_env_contract.py::test_backend_environment_template_matches_settings`
 - `compose.cloud.yml::services.api.env_file`
-- `deploy/OPERATIONS.md::Backup and restore`
+- `deploy/OPERATIONS.md::Data protection and recovery`
 
 ### Promote production through a private operations repository
 
@@ -103,14 +104,15 @@ Production uses host Nginx and Certbot in front of the loopback-only API.
 Rationale: The user selected private operations CD, digest promotion by pull request, and host Nginx while keeping production authority outside the open-source repository.
 Consequences: Public pull requests cannot access production credentials.
 Production changes are auditable digest updates, and mutable image tags are never deployment inputs.
-Every deployment refreshes the validated runtime file from SSM, uses both workflow and host concurrency controls, pauses the worker before migration, keeps the old API running until migration succeeds, and verifies the public immutable image and configuration revisions.
+Every deployment retrieves the exact required KMS-encrypted SecureStrings from SSM, atomically assembles the validated host runtime file, uses both workflow and host concurrency controls, pauses the worker before migration, keeps the old API running until migration succeeds, and verifies the public immutable image and configuration revisions.
+The separate migration administrator URL is exposed only to the one-shot migration container.
 Application rollback redeploys an earlier immutable digest without automatically downgrading the database.
 
 Evidence:
 - `.github/workflows/ci.yml::publish-image`
 - `compose.cloud.yml::services.api`
 - `deploy/nginx-api.conf`
-- `deploy/OPERATIONS.md::Deployment`
+- `deploy/OPERATIONS.md::Production deployment behavior`
 
 ### License future releases under AGPL version 3 only
 

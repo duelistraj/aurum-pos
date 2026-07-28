@@ -1,102 +1,72 @@
-# Aurum Cloud lean operations
+# Aurum Cloud operations
 
-The validation deployment is one ARM64 `t4g.medium` instance plus Aiven PostgreSQL.
-The instance has an Elastic IP, exposes only ports 80/443, and is administered
-through SSM. `api.aurumpos.net` points to the Elastic IP. Host Nginx proxies to
-the loopback-only API port, and Certbot manages TLS.
+## Production source of truth
 
-## Required preparation
+The private `aurum-pos-ops` repository owns Aurum Cloud deployment authority, the selected image digest, the production runtime key manifest, host bootstrap, rollback, and AWS deployment workflows.
+This public repository owns application CI, immutable GHCR image publishing, the Android build, and the signed Google Play release workflow.
+The public `compose.cloud.yml` and `deploy/deploy.sh` files are reference templates for self-hosting and recovery.
+They are not used for routine Aurum Cloud deployment.
 
-- Attach a least-privilege instance role for SSM, CloudWatch, SES, and object-scoped `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` access to `arn:aws:s3:::aurum-pos-prod-duelistraj/shops/*`.
-- Install Nginx, Certbot with its Nginx plugin, Docker Compose, AWS CLI, and Git.
-- Allowlist the Elastic IP in Aiven and use a TLS pool URL for the application.
-- Retrieve the restricted runtime configuration from an encrypted AWS parameter and install it as `.env` on the host with mode `0600`; never commit the file.
-- Store the migration administrator URL separately and inject it as `MIGRATION_DATABASE_URL` only into the one-shot migration container.
-- The runtime role must be `NOSUPERUSER NOBYPASSRLS` and must not own application tables.
-- The migration and runtime principals must never be the same role.
-- Configure SES DKIM/SPF/DMARC for `aurumpos.net`, Google service credentials,
-  Pub/Sub authenticated push (including the exact OIDC service-account email),
-  and `api.aurumpos.net` DNS before deployment.
-- Set `EMAIL_FROM` to the verified SES mailbox or display-name form used for verification, password-reset, invitation, and deletion email.
-- Set `GOOGLE_WEB_CLIENT_ID` to the Web OAuth client ID used both for server-side token verification and public Android provider discovery.
-- Keep `aurum-pos-prod-duelistraj` private in `ap-southeast-1` with Block Public Access enabled.
-- Set `AWS_REGION=ap-southeast-1`, `S3_INVOICE_BUCKET=aurum-pos-prod-duelistraj`, `S3_INVOICE_PREFIX=shops`, and `S3_PRESIGNED_URL_EXPIRY_SECONDS=600` in the runtime environment.
-- Tune `DATABASE_POOL_SIZE` and `DATABASE_MAX_OVERFLOW` so the API and worker containers together remain below the Aiven connection limit.
-- Keep `DATABASE_STATEMENT_TIMEOUT_MS=30000` unless a measured endpoint requires a narrower limit.
-- Keep the bounded worker defaults unless monitoring shows a need to change `WORKER_EMAIL_CONCURRENCY`, `WORKER_RECONCILIATION_BATCH_SIZE`, or `WORKER_RECONCILIATION_CONCURRENCY`.
-- Grant the instance role permission to create and write only the `/aurum-pos/api` and `/aurum-pos/worker` CloudWatch log groups.
-- Enable S3 versioning and a recovery lifecycle for invoice objects while API and worker share one instance identity.
+## Current hosted configuration
 
-The boto3 credential chain automatically obtains temporary credentials from the EC2 instance role.
-Never add `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` to the production runtime file.
-Local operators may use `aws configure`, `AWS_PROFILE`, or temporary credentials exported in their shell.
+Production runtime values are already configured as individual Standard SecureStrings under `/aurum-pos/production/` in AWS Systems Manager Parameter Store.
+SecureString values are encrypted at rest with AWS KMS.
+The private operations repository contains the authoritative runtime key list.
+Every deployment fetches those exact parameters, validates the complete contract, and atomically writes `/opt/aurum-pos/.env` with mode `0600`.
+An operator does not need a local production `.env`, and GitHub Actions does not receive the secret values.
 
-PostgreSQL is the authoritative invoice index, and the API reads exact object keys from authorized sale rows.
-The application never lists the bucket.
-`s3:DeleteObject` is required only so the account-deletion worker can remove exact invoice keys read from PostgreSQL before permanently deleting a shop.
-`s3:ListBucket` remains intentionally unnecessary.
-The IAM policy should scope all three object actions to `arn:aws:s3:::aurum-pos-prod-duelistraj/shops/*` and should not grant bucket-wide listing.
+`DATABASE_URL` uses the restricted application role.
+`MIGRATION_DATABASE_URL` contains the database administrator connection used for schema migrations.
+It is stored as a separate SecureString, excluded from the runtime `.env`, and passed only to the one-shot migration container.
+This separation lets migrations change the schema without giving the API or worker administrator privileges.
 
-Nginx provides a coarse per-IP limit for sensitive authentication routes.
-The application adds durable per-IP and per-account fixed-window limits in PostgreSQL.
-Compose assigns a fixed `172.30.0.1` gateway to the host proxy path and configures Uvicorn to trust only that address.
-Nginx overwrites `X-Forwarded-For` with the direct client address instead of accepting a caller-provided chain.
+The hosted topology is one ARM64 EC2 instance with host Nginx and Certbot in front of loopback-only API and worker containers, backed by Aiven PostgreSQL.
+The application uses the EC2 instance role for SSM, SES, and object-scoped private S3 access instead of static AWS access keys.
+Provider credentials, HTTPS DNS, TLS certificates, Google Play integration, and the production Parameter Store values are provisioned.
+Bootstrap instructions in the private operations repository are only for a replacement host or disaster recovery.
 
-## Deployment
+## Android-first release flow
 
-Set `AURUM_IMAGE`, `AURUM_GIT_SHA`, `AURUM_CONFIG_REVISION`, `MIGRATION_DATABASE_URL`, and `AURUM_PUBLIC_API_URL`, then run `deploy/deploy.sh` through SSM.
-The script refuses mutable tags, validates the restricted runtime role, acquires a deployment lock, pauses the worker, runs migration with the operator-only credential, verifies the API revision, starts a uniquely identified worker, and verifies its new heartbeat.
-Failure traps restore the prior application image and restart the previous worker.
-Nginx remains a host service and proxies to `127.0.0.1:8000`.
+The official product is distributed through Google Play.
+The web build supports the Android package and public account, legal, and recovery pages.
 
-Keep the prior image digest for application rollback. Database migrations must
-remain backward-compatible after the initial clean-database SaaS cutover. The
-legacy BMR rollback is its isolated old deployment, not an application rollback
-against the new schema.
+1. Push application code to `main` and wait for public CI to succeed.
+2. Run `Release Android to Play Internal Testing` with the full tested commit SHA.
+3. The workflow builds a signed AAB and uploads it directly to the Google Play Internal Testing track.
+4. Promote the tested Play release to later tracks without rebuilding it.
+5. Promote the backend image separately by opening an `aurum-pos-ops` pull request that changes only `production/image.env` to the immutable digest for the approved revision.
+6. Merging that operations pull request deploys through GitHub OIDC and AWS SSM.
 
-The worker uses expiring PostgreSQL leases with unique fencing tokens for email, invoice generation, subscription reconciliation, and account deletion work.
-Independent worker queues execute concurrently inside the lean worker process so slow deletion or provider calls do not stall invoice and email progress.
-Invoice PDFs are generated off the async event loop, retried with a stable object key, and exposed only after successful S3 upload metadata commits.
-Invoice delivery stops automatic retries after `WORKER_INVOICE_MAX_ATTEMPTS`; an authenticated download request requeues a failed job.
-Email delivery stops retrying after `WORKER_EMAIL_MAX_ATTEMPTS` and leaves the row in `failed` state for operator review.
-Account deletion cancels active Play renewals and removes exact S3 invoice objects before deleting a sole-owned shop.
-Once external deletion cleanup starts, cancellation is permanently disabled and failures remain retryable or require explicit operator intervention.
+The automatic debug APK is a smoke-test artifact.
+It is not the signed Play release.
 
-The old EC2/database deployment remains an isolated rollback environment. The
-SaaS cutover deploys `compose.cloud.yml` with a digest-pinned API and worker; it
-must not run the destructive non-item reset against the live BMR database.
+## Production deployment behavior
 
-## Backup and restore
+The private deployment refreshes Parameter Store configuration, acquires a host lock, pauses the worker, and runs migrations before replacing the API.
+It verifies liveness, database readiness, source revision, image digest, configuration revision, public HTTPS, and the replacement worker heartbeat.
+Configuration-only Parameter Store changes require an explicit operations workflow dispatch because changing a parameter alone does not restart containers.
+Rollback promotes a previous immutable image digest and does not automatically downgrade the database.
+Production migrations must therefore remain compatible with the immediately previous application image.
 
-Database backup, retention, and restoration are configured and operated
-directly through the selected infrastructure providers. Aurum POS does not run
-application-managed backup jobs.
+## Public operator template
 
-For the initial launch, require a provider recovery point objective of at most 24 hours and a recovery time objective of at most four hours.
-Before sustained traffic reaches 10,000 active users, tighten those objectives to at most one hour of data loss and at most two hours to restore service.
-Record the configured point-in-time recovery window, backup retention, backup region, and responsible operator in the private operations repository.
+Self-hosters who use `compose.cloud.yml` must provide their own untracked `.env`, immutable `AURUM_IMAGE` digest, release metadata, HTTPS origin, provider credentials, TLS setup, and AWS permissions.
+The public Compose template uses the CloudWatch logging driver and therefore requires access to its configured log groups.
+Those inputs belong to a self-hosted deployment and are not missing tasks for the already provisioned Aurum Cloud environment.
 
-Run a restore drill before launch and at least quarterly:
+Never store `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` in a production runtime file.
+Use an instance role or another temporary AWS credential source.
 
-1. Restore the latest backup or point-in-time snapshot into an isolated database project.
-2. Connect using a temporary migration administrator credential and run `alembic current` plus `alembic check`.
-3. Start the tested application digest against the restored database and verify login, shop selection, inventory counts, recent sales, invoice metadata, and worker heartbeat.
-4. Compare row counts for users, shops, memberships, items, sales, sale items, invoice jobs, and subscriptions against the source checkpoint.
-5. Record achieved recovery point and recovery time, investigate every mismatch, then destroy the isolated restore and its temporary credentials.
+## Data protection and recovery
 
-## Scale triggers
+PostgreSQL is the authoritative invoice index.
+The application reads and deletes only exact private S3 object keys recorded in authorized sale rows and does not list the bucket.
+Database backup, retention, and restoration are operated through AWS and Aiven rather than application-managed backup jobs.
+Run an isolated restore drill before launch and at least quarterly.
 
-Start Terraform and an ALB/multi-instance design before adding a second host or when sustained CPU exceeds 60%, memory exceeds 70%, API p95 exceeds 500 ms, or single-host availability is no longer acceptable.
-The API is stateless; session, durable jobs, outbox, entitlement, and worker-lease state live in PostgreSQL.
-Before raising API worker counts, keep the sum of every process's `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` below the Aiven connection limit with room for migrations and operations.
-Run the repository k6 scenario at 100 concurrent users before launch and after every material query or topology change.
-Before a 10,000-user test, deploy at least two API instances, run workers independently from API capacity, place a connection pooler in front of PostgreSQL if the measured connection budget requires it, and alert on p95 latency, error rate, database saturation, and oldest pending job age.
+## Scale gates
 
-## Required alarms
-
-- Alert when API 5xx responses exceed 1% for five minutes or p95 latency exceeds 500 ms for ten minutes.
-- Alert when the worker heartbeat is stale, reports the wrong revision, or any durable queue's oldest pending record exceeds five minutes.
-- Alert on database connection saturation, statement timeouts, storage growth, failed backups, and replication or provider health warnings.
-- Alert on terminal email or invoice jobs, repeated billing acknowledgement failures, and account deletions requiring operator intervention.
-- Alert on certificate expiry within 21 days and any public HTTP response that is not a redirect to HTTPS.
-- Alert on unusual SES volume and S3 delete volume while the lean topology shares one EC2 identity.
+The single-host topology is pragmatic for the expected launch traffic.
+Run the repository k6 scenario at 100 concurrent users before launch and after material query or topology changes.
+Plan an ALB and multiple API instances before single-host availability becomes unacceptable or sustained CPU, memory, latency, database connections, or worker lag approach their limits.
+Before a 10,000-user test, separate worker capacity from API capacity and validate the PostgreSQL connection budget with representative data.
