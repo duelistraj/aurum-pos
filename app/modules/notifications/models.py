@@ -18,6 +18,12 @@ class EmailOutbox(Base):
             "created_at",
             postgresql_where=text("status IN ('pending', 'processing')"),
         ),
+        Index(
+            "ix_email_outbox_reclaim",
+            "claimed_at",
+            "created_at",
+            postgresql_where=text("status = 'processing'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

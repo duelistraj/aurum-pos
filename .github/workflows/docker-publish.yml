@@ -61,3 +61,17 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke-test published ARM64 runtime
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          IMAGE_TAG="$(printf '%s\n' "$IMAGE_TAGS" | head -n 1)"
+          docker run --rm --platform linux/arm64 \
+            -e DATABASE_URL=postgresql+asyncpg://runtime:unused@localhost/unused \
+            -e JWT_SECRET_KEY=container-smoke-test-secret-key-32-bytes \
+            -e ENV=test \
+            -e AWS_REGION=ap-southeast-1 \
+            -e S3_INVOICE_BUCKET=container-smoke-test \
+            "$IMAGE_TAG" \
+            python -c "from app.main import app; assert app.title == 'Aurum POS'"

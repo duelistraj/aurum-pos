@@ -8,7 +8,7 @@ import { Alert, Button, Card, Input } from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import { AurumGoogleAuth, createNonce } from '../native/googleAuth';
 import { getAccessToken, setAuthData } from '../utils/auth';
-import { isCloudDistribution } from '../utils/apiConfig';
+import { getRecoveryPageUrl, isCloudDistribution } from '../utils/apiConfig';
 import { getDeviceInfo, getDeviceUUID } from '../utils/device';
 import { safeReturnPath } from '../utils/navigation';
 
@@ -68,6 +68,7 @@ export const Login: React.FC = () => {
     React.useState<GoogleOnboarding | null>(null);
   const [verificationEmail, setVerificationEmail] = React.useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = React.useState(0);
+  const [resetPasswordUrl, setResetPasswordUrl] = React.useState('#');
   const navigate = useNavigate();
   const location = useLocation();
   const returnPath = safeReturnPath(location.state);
@@ -79,6 +80,10 @@ export const Login: React.FC = () => {
     status: supportsGoogleAuth ? 'loading' : 'disabled',
     clientId: null,
   });
+
+  React.useEffect(() => {
+    void getRecoveryPageUrl('reset-password.html').then(setResetPasswordUrl);
+  }, []);
 
   React.useEffect(() => {
     const token = new URLSearchParams(location.search).get('token');
@@ -498,7 +503,7 @@ export const Login: React.FC = () => {
           {isLogin ? (
             <a
               className="auth-forgot"
-              href="https://aurumpos.net/reset-password.html"
+              href={resetPasswordUrl}
               target="_blank"
               rel="noreferrer"
             >

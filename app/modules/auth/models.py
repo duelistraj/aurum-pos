@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -50,6 +50,7 @@ class UserIdentity(Base):
 
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
+    __table_args__ = (Index("ix_auth_sessions_retention", "expires_at", "revoked_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -71,6 +72,7 @@ class AuthSession(Base):
 
 class AuthToken(Base):
     __tablename__ = "auth_tokens"
+    __table_args__ = (Index("ix_auth_tokens_retention", "expires_at", "consumed_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -87,6 +89,7 @@ class AuthToken(Base):
 
 class GoogleNonce(Base):
     __tablename__ = "google_nonces"
+    __table_args__ = (Index("ix_google_nonces_retention", "consumed_at"),)
 
     nonce_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     consumed_at: Mapped[datetime] = mapped_column(
@@ -96,6 +99,16 @@ class GoogleNonce(Base):
 
 class AccountDeletionRequest(Base):
     __tablename__ = "account_deletion_requests"
+    __table_args__ = (
+        Index(
+            "ix_account_deletion_cleanup_due",
+            "cleanup_next_attempt_at",
+            "cleanup_started_at",
+            postgresql_where=text(
+                "confirmed_at IS NOT NULL AND cancelled_at IS NULL AND completed_at IS NULL"
+            ),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -108,6 +121,7 @@ class AccountDeletionRequest(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     execute_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    external_cleanup_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleanup_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleanup_lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     cleanup_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

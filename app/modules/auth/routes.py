@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import anyio
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token as google_id_token
@@ -71,6 +71,20 @@ from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, Sho
 from app.modules.shops.service import create_shop
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+REFRESH_COOKIE_NAME = "aurum_refresh"
+
+
+def _set_browser_refresh_cookie(response: Response, token_response: TokenResponse) -> None:
+    response.set_cookie(
+        REFRESH_COOKIE_NAME,
+        token_response.refresh_token,
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        httponly=True,
+        secure=settings.env in {"staging", "production"},
+        samesite="strict",
+        path="/api/v1/auth",
+    )
+    token_response.refresh_token = ""
 
 
 async def _accept_invitation(db: AsyncSession, *, token: str, user: User) -> ShopMembership:
@@ -117,11 +131,13 @@ async def auth_providers() -> AuthProvidersResponse:
 @router.post("/register", status_code=201)
 async def register(data: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     await enforce_auth_rate_limit(request, scope="register", account=data.email)
+    password_hash = await hash_password(data.password)
     if await db.scalar(select(User.id).where(User.email == data.email)):
-        raise HTTPException(status_code=409, detail="An account already exists for this email")
+        await resend_verification_email(db, data.email)
+        return {"message": "Check your email to verify your account"}
     user = User(
         email=data.email,
-        password_hash=await hash_password(data.password),
+        password_hash=password_hash,
         full_name=data.full_name.strip(),
     )
     db.add(user)
@@ -161,22 +177,49 @@ async def resend_verification(
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def login(
+    data: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     await enforce_auth_rate_limit(request, scope="login", account=data.email)
-    return await authenticate_user(db, data)
+    token_response = await authenticate_user(db, data)
+    if data.platform == "web":
+        _set_browser_refresh_cookie(response, token_response)
+    return token_response
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(data: RefreshRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    await enforce_auth_rate_limit(request, scope="refresh", account=hash_token(data.refresh_token))
-    return await refresh_access_token(db, data.refresh_token, device_uuid=data.device_uuid)
+async def refresh(
+    data: RefreshRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    cookie_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = data.refresh_token or cookie_token
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token is required")
+    await enforce_auth_rate_limit(request, scope="refresh", account=hash_token(refresh_token))
+    token_response = await refresh_access_token(
+        db,
+        refresh_token,
+        device_uuid=data.device_uuid,
+    )
+    if cookie_token:
+        _set_browser_refresh_cookie(response, token_response)
+    return token_response
 
 
 @router.post("/logout")
 async def logout(
-    context: AuthContext = Depends(get_auth_context), db: AsyncSession = Depends(get_db)
+    response: Response,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
 ):
     await revoke_session(db, context.session_id)
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/api/v1/auth")
     return {"message": "Successfully logged out"}
 
 
@@ -289,7 +332,7 @@ async def cancel_account_deletion(
         raise HTTPException(status_code=400, detail="Deletion token is invalid")
     if request.cancelled_at is not None:
         return {"message": "Account deletion is already cancelled"}
-    if request.cleanup_started_at is not None:
+    if request.external_cleanup_started_at is not None:
         raise HTTPException(status_code=409, detail="Account deletion is already in progress")
     request.cancelled_at = datetime.now(UTC)
     return {"message": "Account deletion cancelled"}
@@ -299,6 +342,7 @@ async def cancel_account_deletion(
 async def accept_invitation(
     data: InvitationAcceptRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     await enforce_auth_rate_limit(request, scope="invitation", account=data.email)
@@ -316,13 +360,17 @@ async def accept_invitation(
         raise HTTPException(status_code=401, detail="Email or password is incorrect")
     await _accept_invitation(db, token=data.token, user=user)
     await register_device(db, user=user, data=data)
-    return await issue_session(db, user=user, device_uuid=data.device_uuid)
+    token_response = await issue_session(db, user=user, device_uuid=data.device_uuid)
+    if data.platform == "web":
+        _set_browser_refresh_cookie(response, token_response)
+    return token_response
 
 
 @router.post("/google", response_model=TokenResponse)
 async def google_auth(
     data: GoogleAuthRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     await enforce_auth_rate_limit(request, scope="google")
@@ -421,7 +469,10 @@ async def google_auth(
     elif data.shop_name and not has_active_membership:
         await create_shop(db, name=data.shop_name, owner_id=user.id)
     await register_device(db, user=user, data=data)
-    return await issue_session(db, user=user, device_uuid=data.device_uuid)
+    token_response = await issue_session(db, user=user, device_uuid=data.device_uuid)
+    if data.platform == "web":
+        _set_browser_refresh_cookie(response, token_response)
+    return token_response
 
 
 @router.get("/devices", response_model=list[DeviceResponse], dependencies=[RequireAdmin])

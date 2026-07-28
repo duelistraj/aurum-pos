@@ -105,12 +105,13 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             )
             assert login.status_code == 200, login.text
             login_data = login.json()
+            assert login_data["refresh_token"] == ""
+            assert "HttpOnly" in login.headers["set-cookie"]
             user_id = UUID(login_data["user_id"])
             shop_id = UUID(login_data["memberships"][0]["shop_id"])
             wrong_refresh_device = await client.post(
                 "/api/v1/auth/refresh",
                 json={
-                    "refresh_token": login_data["refresh_token"],
                     "device_uuid": "different-device",
                 },
             )
@@ -118,7 +119,6 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             refreshed = await client.post(
                 "/api/v1/auth/refresh",
                 json={
-                    "refresh_token": login_data["refresh_token"],
                     "device_uuid": device_uuid,
                 },
             )
@@ -484,6 +484,25 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             )
             assert hidden_invoice_list.status_code == 404
 
+            checkout_scan = await client.get(
+                f"/api/v1/items/pos/scan/{barcode}",
+                headers=headers,
+            )
+            assert checkout_scan.status_code == 200, checkout_scan.text
+            confirmed_total = checkout_scan.json()["pricing"]["final_price"]
+            changed_pricing = await client.post(
+                "/api/v1/sales/",
+                headers={**headers, "Idempotency-Key": f"sale-stale-{suffix}"},
+                json={
+                    "items": [{"item_id": str(item_id), "quantity": 1}],
+                    "customer_name": "Integration Customer",
+                    "customer_phone": "9999999999",
+                    "total_amount": confirmed_total + 1,
+                },
+            )
+            assert changed_pricing.status_code == 409
+            assert changed_pricing.json()["detail"]["code"] == "pricing_changed"
+
             sale = await client.post(
                 "/api/v1/sales/",
                 headers={**headers, "Idempotency-Key": f"sale-{suffix}"},
@@ -492,6 +511,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                     "customer_name": "Integration Customer",
                     "customer_phone": "9999999999",
                     "customer_address": "Kolkata",
+                    "total_amount": confirmed_total,
                 },
             )
             assert sale.status_code == 200, sale.text
@@ -548,6 +568,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                     "customer_name": "Integration Customer",
                     "customer_phone": "9999999999",
                     "customer_address": "Kolkata",
+                    "total_amount": confirmed_total,
                 },
             )
             assert replay.status_code == 200

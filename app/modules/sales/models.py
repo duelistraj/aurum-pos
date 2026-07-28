@@ -167,6 +167,8 @@ class SaleItem(Base):
         ForeignKeyConstraint(("shop_id", "item_id"), ("items.shop_id", "items.id")),
         Index("ix_sale_items_shop_sale", "shop_id", "sale_id"),
         Index("ix_sale_items_shop_item", "shop_id", "item_id"),
+        CheckConstraint("quantity > 0", name="sale_items_quantity_positive"),
+        CheckConstraint("price >= 0", name="sale_items_price_nonnegative"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -271,6 +273,12 @@ class InvoiceJob(Base):
             "next_attempt_at",
             "created_at",
             postgresql_where=text("status IN ('pending', 'processing')"),
+        ),
+        Index(
+            "ix_invoice_jobs_reclaim",
+            "lease_until",
+            "created_at",
+            postgresql_where=text("status = 'processing'"),
         ),
     )
 

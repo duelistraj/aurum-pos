@@ -18,7 +18,8 @@ services:
     restart: unless-stopped
 
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.31.0.2
 
   certbot:
     image: certbot/certbot
@@ -35,12 +36,21 @@ services:
 
     env_file:
       - .env
+    environment:
+      ENV: production
+      DEPLOYMENT_MODE: self_hosted
+      MIGRATION_DATABASE_URL: ""
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:?Set the self-hosted HTTPS origin}
+      FORWARDED_ALLOW_IPS: 172.31.0.2
+      AURUM_IMAGE_DIGEST: ${AURUM_IMAGE:?Set AURUM_IMAGE}
+      GIT_SHA: ${AURUM_GIT_SHA:?Set AURUM_GIT_SHA}
+      AURUM_CONFIG_REVISION: ${AURUM_CONFIG_REVISION:?Set AURUM_CONFIG_REVISION}
 
     expose:
       - "8000"
 
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health/ready" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -53,8 +63,34 @@ services:
         max-file: "3"
 
     networks:
-      - backend
+      backend:
+        ipv4_address: 172.31.0.3
+
+  worker:
+    image: ${AURUM_IMAGE:?Set AURUM_IMAGE to an immutable image digest}
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENV: production
+      DEPLOYMENT_MODE: self_hosted
+      MIGRATION_DATABASE_URL: ""
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:?Set the self-hosted HTTPS origin}
+      AURUM_IMAGE_DIGEST: ${AURUM_IMAGE:?Set AURUM_IMAGE}
+      GIT_SHA: ${AURUM_GIT_SHA:?Set AURUM_GIT_SHA}
+      AURUM_CONFIG_REVISION: ${AURUM_CONFIG_REVISION:?Set AURUM_CONFIG_REVISION}
+      WORKER_INSTANCE_ID: ${AURUM_WORKER_INSTANCE_ID:?Set AURUM_WORKER_INSTANCE_ID}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      backend:
+        ipv4_address: 172.31.0.4
 
 networks:
   backend:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24

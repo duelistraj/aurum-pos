@@ -141,6 +141,37 @@ def analyze_migration(path: Path) -> list[Finding]:
             )
             continue
 
+        if operation == "create_index":
+            keywords = _keyword_by_name(node)
+            if not (
+                isinstance(keywords.get("postgresql_concurrently"), ast.Constant)
+                and keywords["postgresql_concurrently"].value is True
+            ):
+                findings.append(
+                    _finding(
+                        path=path,
+                        lines=lines,
+                        node=node,
+                        severity="warning",
+                        message=(
+                            "review non-concurrent index creation against production table size"
+                        ),
+                    )
+                )
+            continue
+
+        if operation == "create_check_constraint":
+            findings.append(
+                _finding(
+                    path=path,
+                    lines=lines,
+                    node=node,
+                    severity="warning",
+                    message=("review constraint validation for blocking scans on populated tables"),
+                )
+            )
+            continue
+
         if operation == "alter_column":
             keywords = _keyword_by_name(node)
             if _is_false(keywords.get("nullable")):

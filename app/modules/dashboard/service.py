@@ -9,6 +9,7 @@ from app.core.changelog.models import ChangeLog
 from app.modules.items.models import Item, ItemHistory
 from app.modules.metal_rates.models import MetalRateHistory
 from app.modules.sales.models import Sale, SaleItem
+from app.modules.shops.models import Shop
 
 HUNDRED = Decimal("100")
 FIXED_MAKING_CATEGORIES = ("ring", "other", "pendant")
@@ -331,9 +332,7 @@ async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
         metal="all",
         use_current_state=True,
     )
-    total_sales_amount = await db.scalar(
-        select(func.coalesce(func.sum(Sale.total_amount), 0)).where(Sale.shop_id == shop_id)
-    )
+    total_sales_amount = await db.scalar(select(Shop.total_sales_amount).where(Shop.id == shop_id))
     activity_result = await db.execute(
         select(ChangeLog)
         .where(ChangeLog.shop_id == shop_id)

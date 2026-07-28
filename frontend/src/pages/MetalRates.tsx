@@ -48,7 +48,11 @@ export const MetalRates: React.FC = () => {
   });
   const updateRate = useMutation({
     mutationFn: (rate: MetalRate) => apiClient.addMetalRate(rate),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.metalRates(shopId) }),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.metalRates(shopId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+      queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'analytics'] }),
+    ]),
   });
   const rates = ratesQuery.data ?? [];
   const availableMetals = metalsQuery.data ?? EMPTY_METALS;

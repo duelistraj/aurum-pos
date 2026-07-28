@@ -24,6 +24,7 @@ vi.mock('@capacitor/file-transfer', () => ({
 
 vi.mock('@capacitor/filesystem', () => ({
   Directory: {
+    Cache: 'CACHE',
     Documents: 'DOCUMENTS',
   },
   Filesystem: {
@@ -65,14 +66,14 @@ describe('signed URL downloads', () => {
     expect(anchor.download).toBe('invoice.pdf');
   });
 
-  it('streams native downloads directly to the Documents directory', async () => {
+  it('streams native downloads to app-private cache', async () => {
     mocks.isNative = true;
 
     await downloadUrl('https://example.invalid/signed', 'invoice.pdf');
 
     expect(mocks.getUri).toHaveBeenCalledWith({
       path: 'invoice.pdf',
-      directory: 'DOCUMENTS',
+      directory: 'CACHE',
     });
     expect(mocks.downloadFile).toHaveBeenCalledWith({
       url: 'https://example.invalid/signed',

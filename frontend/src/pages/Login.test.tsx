@@ -63,7 +63,10 @@ vi.mock('../native/googleAuth', () => ({
   AurumGoogleAuth: { signIn: vi.fn() },
   createNonce: vi.fn(() => 'nonce-value-that-is-long-enough'),
 }));
-vi.mock('../utils/apiConfig', () => ({ isCloudDistribution: true }));
+vi.mock('../utils/apiConfig', () => ({
+  getRecoveryPageUrl: vi.fn(async () => 'https://aurumpos.net/reset-password.html'),
+  isCloudDistribution: true,
+}));
 vi.mock('../utils/auth', () => ({
   getAccessToken: vi.fn(),
   setAuthData: vi.fn(),

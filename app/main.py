@@ -3,11 +3,13 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from fastapi.responses import FileResponse
+from sqlalchemy import select, text
 
 from app.core.config import settings
 from app.core.database import engine, get_db
@@ -39,6 +41,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+SITE_DIRECTORY = Path(__file__).resolve().parent.parent / "site"
 
 
 @app.middleware("http")
@@ -116,6 +119,21 @@ async def health() -> dict[str, str]:
     }
 
 
+@app.get("/reset-password.html", include_in_schema=False)
+async def reset_password_page() -> FileResponse:
+    return FileResponse(SITE_DIRECTORY / "reset-password.html")
+
+
+@app.get("/verify-email.html", include_in_schema=False)
+async def verify_email_page() -> FileResponse:
+    return FileResponse(SITE_DIRECTORY / "verify-email.html")
+
+
+@app.get("/account-deletion.html", include_in_schema=False)
+async def account_deletion_page() -> FileResponse:
+    return FileResponse(SITE_DIRECTORY / "account-deletion.html")
+
+
 @app.get("/health/ready", tags=["Health"])
 async def readiness(db=Depends(get_db)) -> dict[str, str]:
     await db.execute(text("SELECT 1"))
@@ -123,8 +141,19 @@ async def readiness(db=Depends(get_db)) -> dict[str, str]:
 
 
 @app.get("/health/worker", tags=["Health"])
-async def worker_readiness(db=Depends(get_db)) -> dict[str, str]:
-    heartbeat = await db.get(WorkerHeartbeat, "primary")
+async def worker_readiness(
+    worker_id: str | None = Query(default=None, max_length=100),
+    db=Depends(get_db),
+) -> dict[str, str]:
+    if worker_id:
+        heartbeat = await db.get(WorkerHeartbeat, worker_id)
+    else:
+        heartbeat = await db.scalar(
+            select(WorkerHeartbeat)
+            .where(WorkerHeartbeat.revision == settings.git_sha)
+            .order_by(WorkerHeartbeat.last_seen_at.desc())
+            .limit(1)
+        )
     if (
         heartbeat is None
         or heartbeat.status != "running"
@@ -134,10 +163,47 @@ async def worker_readiness(db=Depends(get_db)) -> dict[str, str]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Worker heartbeat is stale",
         )
+    queue_health = (
+        await db.execute(
+            text(
+                """
+                SELECT
+                    LEAST(
+                        (
+                            SELECT MIN(created_at)
+                            FROM email_outbox
+                            WHERE status IN ('pending', 'processing')
+                        ),
+                        (
+                            SELECT MIN(created_at)
+                            FROM invoice_jobs
+                            WHERE status IN ('pending', 'processing')
+                        )
+                    ) AS oldest_pending_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM email_outbox
+                        WHERE status = 'failed'
+                    ) + (
+                        SELECT COUNT(*)
+                        FROM invoice_jobs
+                        WHERE status = 'failed'
+                    ) AS terminal_failures
+                """
+            )
+        )
+    ).one()
     return {
         "status": "ready",
+        "worker_id": heartbeat.worker_name,
         "revision": heartbeat.revision,
         "last_seen_at": heartbeat.last_seen_at.isoformat(),
+        "oldest_pending_at": (
+            queue_health.oldest_pending_at.isoformat()
+            if queue_health.oldest_pending_at is not None
+            else ""
+        ),
+        "terminal_failures": str(queue_health.terminal_failures),
     }
 
 

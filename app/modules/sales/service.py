@@ -314,6 +314,23 @@ async def _execute_create_sale(
 
     # Calculate invoice total (AFTER all items)
     sale.total_amount = sum((si.price for si in sale_items), start=Decimal(0))
+    if data.total_amount is None and settings.is_hosted:
+        raise HTTPException(
+            status_code=422,
+            detail="A confirmed checkout total is required",
+        )
+    if data.total_amount is not None:
+        confirmed_total = Decimal(str(data.total_amount)).quantize(Decimal("0.01"))
+        if confirmed_total != sale.total_amount:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "pricing_changed",
+                    "message": "Pricing changed. Review the updated total before checkout.",
+                    "current_total": float(sale.total_amount),
+                },
+            )
+    shop.total_sales_amount += sale.total_amount
 
     # Decrement inventory and mark items sold if fully depleted
     for si in sale_items:

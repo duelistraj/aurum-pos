@@ -10,9 +10,10 @@ the loopback-only API port, and Certbot manages TLS.
 - Attach a least-privilege instance role for SSM, CloudWatch, SES, and object-scoped `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` access to `arn:aws:s3:::aurum-pos-prod-duelistraj/shops/*`.
 - Install Nginx, Certbot with its Nginx plugin, Docker Compose, AWS CLI, and Git.
 - Allowlist the Elastic IP in Aiven and use a TLS pool URL for the application.
-- Retrieve the runtime configuration from an encrypted AWS parameter and
-  install it as `.env` on the host with mode `0600`; never commit the file.
-  Compose loads that file into the API and worker containers.
+- Retrieve the restricted runtime configuration from an encrypted AWS parameter and install it as `.env` on the host with mode `0600`; never commit the file.
+- Store the migration administrator URL separately and inject it as `MIGRATION_DATABASE_URL` only into the one-shot migration container.
+- The runtime role must be `NOSUPERUSER NOBYPASSRLS` and must not own application tables.
+- The migration and runtime principals must never be the same role.
 - Configure SES DKIM/SPF/DMARC for `aurumpos.net`, Google service credentials,
   Pub/Sub authenticated push (including the exact OIDC service-account email),
   and `api.aurumpos.net` DNS before deployment.
@@ -23,6 +24,8 @@ the loopback-only API port, and Certbot manages TLS.
 - Tune `DATABASE_POOL_SIZE` and `DATABASE_MAX_OVERFLOW` so the API and worker containers together remain below the Aiven connection limit.
 - Keep `DATABASE_STATEMENT_TIMEOUT_MS=30000` unless a measured endpoint requires a narrower limit.
 - Keep the bounded worker defaults unless monitoring shows a need to change `WORKER_EMAIL_CONCURRENCY`, `WORKER_RECONCILIATION_BATCH_SIZE`, or `WORKER_RECONCILIATION_CONCURRENCY`.
+- Grant the instance role permission to create and write only the `/aurum-pos/api` and `/aurum-pos/worker` CloudWatch log groups.
+- Enable S3 versioning and a recovery lifecycle for invoice objects while API and worker share one instance identity.
 
 The boto3 credential chain automatically obtains temporary credentials from the EC2 instance role.
 Never add `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` to the production runtime file.
@@ -41,8 +44,9 @@ Nginx overwrites `X-Forwarded-For` with the direct client address instead of acc
 
 ## Deployment
 
-Set `AURUM_IMAGE` to the tested GHCR digest, then run `deploy/deploy.sh` through SSM.
-The script refuses mutable tags, pauses the worker, runs the migration from the same image, verifies API readiness, starts the worker, and verifies its database heartbeat.
+Set `AURUM_IMAGE`, `AURUM_GIT_SHA`, `AURUM_CONFIG_REVISION`, `MIGRATION_DATABASE_URL`, and `AURUM_PUBLIC_API_URL`, then run `deploy/deploy.sh` through SSM.
+The script refuses mutable tags, validates the restricted runtime role, acquires a deployment lock, pauses the worker, runs migration with the operator-only credential, verifies the API revision, starts a uniquely identified worker, and verifies its new heartbeat.
+Failure traps restore the prior application image and restart the previous worker.
 Nginx remains a host service and proxies to `127.0.0.1:8000`.
 
 Keep the prior image digest for application rollback. Database migrations must
@@ -56,7 +60,7 @@ Invoice PDFs are generated off the async event loop, retried with a stable objec
 Invoice delivery stops automatic retries after `WORKER_INVOICE_MAX_ATTEMPTS`; an authenticated download request requeues a failed job.
 Email delivery stops retrying after `WORKER_EMAIL_MAX_ATTEMPTS` and leaves the row in `failed` state for operator review.
 Account deletion cancels active Play renewals and removes exact S3 invoice objects before deleting a sole-owned shop.
-Do not manually delete a scheduled account while its cleanup is in progress.
+Once external deletion cleanup starts, cancellation is permanently disabled and failures remain retryable or require explicit operator intervention.
 
 The old EC2/database deployment remains an isolated rollback environment. The
 SaaS cutover deploys `compose.cloud.yml` with a digest-pinned API and worker; it
@@ -87,3 +91,12 @@ The API is stateless; session, durable jobs, outbox, entitlement, and worker-lea
 Before raising API worker counts, keep the sum of every process's `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` below the Aiven connection limit with room for migrations and operations.
 Run the repository k6 scenario at 100 concurrent users before launch and after every material query or topology change.
 Before a 10,000-user test, deploy at least two API instances, run workers independently from API capacity, place a connection pooler in front of PostgreSQL if the measured connection budget requires it, and alert on p95 latency, error rate, database saturation, and oldest pending job age.
+
+## Required alarms
+
+- Alert when API 5xx responses exceed 1% for five minutes or p95 latency exceeds 500 ms for ten minutes.
+- Alert when the worker heartbeat is stale, reports the wrong revision, or any durable queue's oldest pending record exceeds five minutes.
+- Alert on database connection saturation, statement timeouts, storage growth, failed backups, and replication or provider health warnings.
+- Alert on terminal email or invoice jobs, repeated billing acknowledgement failures, and account deletions requiring operator intervention.
+- Alert on certificate expiry within 21 days and any public HTTP response that is not a redirect to HTTPS.
+- Alert on unusual SES volume and S3 delete volume while the lean topology shares one EC2 identity.

@@ -48,7 +48,7 @@ Sensitive auth routes use both PostgreSQL-backed account/IP limits and coarse Ng
 Password work runs in a capacity-limited thread pool, and every authenticated request must present the device UUID bound to its session.
 Session, user, and registered-device state are loaded in one database query, and first shop-device access uses a conflict-safe PostgreSQL insert.
 Deletion cleanup cancels Play renewals and deletes exact invoice object keys before sole-owned shops and user rows are removed.
-Sole-owned shops are atomically locked and deactivated before external cleanup, and ownership plus the invoice-key set are revalidated before database deletion.
+Sole-owned shops are atomically locked and deactivated before external cleanup, an immutable marker permanently closes cancellation once processing starts, and ownership plus the invoice-key set are revalidated before database deletion.
 
 Evidence:
 - `app/modules/auth/security.py::create_access_token`
@@ -78,11 +78,12 @@ Evidence:
 The Android bridge queries and launches Play subscriptions.
 The API verifies purchase tokens with Android Publisher, checks the obfuscated shop identifier, encrypts tokens at rest, acknowledges purchases, and derives entitlements from server state.
 External Google Play calls run outside database transactions, and a token-scoped PostgreSQL advisory lock serializes purchase application.
+Pending Google Play acknowledgement is durable database state and remains eligible for worker reconciliation until Google confirms it.
 The current Fernet key encrypts new token values while configured previous keys support gradual rotation.
 Authenticated RTDN pushes and periodic lease-based reconciliation keep state current and drain the due backlog in bounded batches.
 The worker also delivers branded multipart HTML and plain-text messages from the PostgreSQL email outbox through SES.
 Email, invoice, Play, and deletion work is claimed with expiring database leases plus unique fencing tokens, processed with bounded concurrency, and finalized only by the current lease owner.
-Independent job modules run concurrently inside the lean worker process so a slow provider or deletion path does not stall unrelated queues.
+Independent perpetual queue loops run concurrently inside the lean worker process so a slow provider or deletion path does not stall unrelated queues.
 Failed email delivery uses bounded attempts and a durable failed state.
 
 Evidence:
@@ -111,7 +112,7 @@ Evidence:
 
 The production API exposes a database-free liveness endpoint, a database-backed readiness endpoint, a database-backed worker-heartbeat endpoint, and a version endpoint that reports the source revision, immutable image reference, and non-secret runtime configuration revision.
 The private operations repository refreshes runtime configuration from SSM, migrates before API replacement, verifies the new API before starting the worker, and serializes host changes with a deployment lock.
-The public operator template also pauses the worker before migration and requires both API readiness and worker heartbeat recovery.
+The public operator template validates the restricted runtime role, pauses the worker before migration, verifies the API release identity, and requires a heartbeat from the uniquely identified replacement worker.
 
 Evidence:
 - `app/main.py::health`

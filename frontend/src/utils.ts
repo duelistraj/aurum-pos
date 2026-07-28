@@ -33,17 +33,6 @@ export const formatWeight = (weight: number): string => {
   return `${weight.toFixed(2)}g`;
 };
 
-const requestPublicStoragePermission = async () => {
-  try {
-    const fsPermission = await Filesystem.checkPermissions();
-    if (fsPermission.publicStorage !== 'granted') {
-      await Filesystem.requestPermissions();
-    }
-  } catch (permissionErr) {
-    console.error('Error checking/requesting filesystem permissions:', permissionErr);
-  }
-};
-
 const notifyFileDownloaded = async (uri: string) => {
   try {
     await AurumFileNotifications.showDownloadedFile({ uri });
@@ -77,12 +66,10 @@ export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) =
         base64Data = window.btoa(binary);
       }
 
-      await requestPublicStoragePermission();
-
       const savedFile = await Filesystem.writeFile({
         path: filename,
         data: base64Data,
-        directory: Directory.Documents,
+        directory: Directory.Cache,
       });
 
       await notifyFileDownloaded(savedFile.uri);
@@ -105,10 +92,9 @@ export const downloadBlob = async (data: Blob | ArrayBuffer, filename: string) =
 
 export const downloadUrl = async (url: string, filename: string) => {
   if (Capacitor.isNativePlatform()) {
-    await requestPublicStoragePermission();
     const destination = await Filesystem.getUri({
       path: filename,
-      directory: Directory.Documents,
+      directory: Directory.Cache,
     });
     await FileTransfer.downloadFile({
       url,

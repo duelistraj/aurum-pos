@@ -70,6 +70,15 @@ export const POS: React.FC = () => {
     cartRef.current = cart;
   }, [cart]);
 
+  React.useEffect(() => {
+    setCart([]);
+    setCustomerDetails({ name: '', phone: '', address: '' });
+    setShowCheckout(false);
+    setError('');
+    setSuccess('');
+    void clearCheckoutIdempotencyKey();
+  }, [shopId]);
+
   // Open scanner if scan query param is present
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -274,12 +283,18 @@ export const POS: React.FC = () => {
     (sum, item) => sum + item.pricing.making_charge * item.cartQuantity,
     0
   );
-  const subtotalBeforeTax = subtotal + makingCharges;
-  const taxRatePercent = cart[0]?.tax_rate_percent ?? 0;
-  const gstAmount = parseFloat(
-    (subtotalBeforeTax * taxRatePercent / 100).toFixed(2),
+  const gstAmount = cart.reduce(
+    (sum, item) => sum + item.pricing.gst_amount * item.cartQuantity,
+    0,
   );
-  const totalWithGst = parseFloat((subtotalBeforeTax + gstAmount).toFixed(2));
+  const totalWithGst = parseFloat(
+    cart.reduce(
+      (sum, item) => sum + item.pricing.final_price * item.cartQuantity,
+      0,
+    ).toFixed(2),
+  );
+  const gstRates = new Set(cart.map((item) => item.pricing.gst_rate_percent));
+  const gstLabel = gstRates.size === 1 ? `GST (${[...gstRates][0]}%)` : 'GST (item-specific)';
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,7 +314,12 @@ export const POS: React.FC = () => {
       };
       const idempotencyKey = await getCheckoutIdempotencyKey(salePayload);
       const sale = await apiClient.createSale(salePayload, idempotencyKey);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'items'] }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'invoices'] }),
+      ]);
 
       // Download invoice PDF
       try {
@@ -471,7 +491,7 @@ export const POS: React.FC = () => {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500 dark:text-slate-400 font-medium">GST ({taxRatePercent}%):</span>
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">{gstLabel}:</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200 text-base">
                       {formatCurrency(gstAmount)}
                     </span>
@@ -581,7 +601,7 @@ export const POS: React.FC = () => {
                   <span className="font-bold text-slate-800 dark:text-slate-200">{totalUnits}</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
-                  <span>GST ({taxRatePercent}%):</span>
+                  <span>{gstLabel}:</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {formatCurrency(gstAmount)}
                   </span>

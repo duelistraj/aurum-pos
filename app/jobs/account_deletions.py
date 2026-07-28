@@ -235,6 +235,8 @@ async def _process_account_deletion(
                 user_id=request.user_id,
                 delete_owned_shops=request.delete_owned_shops,
             )
+            if request.external_cleanup_started_at is None:
+                request.external_cleanup_started_at = datetime.now(UTC)
         shop_ids = await _claim_owned_shops_for_deletion(target)
         if shop_ids and not target.delete_owned_shops:
             raise RuntimeError("Owned shops must be transferred before account deletion")

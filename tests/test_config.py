@@ -4,8 +4,8 @@ from pydantic import ValidationError
 from app.core.config import Settings
 
 
-@pytest.mark.parametrize("environment", ["local", "test", "LOCAL", " TEST "])
-def test_auth_tokens_are_exposed_in_non_production_environments(environment: str) -> None:
+@pytest.mark.parametrize("environment", ["test", " TEST "])
+def test_auth_tokens_are_exposed_only_in_test(environment: str) -> None:
     settings = Settings(
         database_url="postgresql+asyncpg://example",
         jwt_secret_key="test-secret-key",
@@ -15,12 +15,24 @@ def test_auth_tokens_are_exposed_in_non_production_environments(environment: str
     assert settings.exposes_auth_tokens is True
 
 
-@pytest.mark.parametrize("environment", ["staging", "production"])
+@pytest.mark.parametrize("environment", ["local", "staging", "production"])
 def test_auth_tokens_are_hidden_in_deployed_environments(environment: str) -> None:
+    release = (
+        {
+            "git_sha": "abc123",
+            "aurum_image_digest": "repo@sha256:abc",
+            "aurum_config_revision": "config-1",
+            "public_site_url": "https://self-hosted.example.com",
+            "cors_origins": ("https://self-hosted.example.com",),
+        }
+        if environment in {"staging", "production"}
+        else {}
+    )
     settings = Settings(
         database_url="postgresql+asyncpg://example",
-        jwt_secret_key="test-secret-key",
+        jwt_secret_key="a-unique-secret-that-is-at-least-32-bytes",
         env=environment,
+        **release,
     )
 
     assert settings.exposes_auth_tokens is False
@@ -59,6 +71,41 @@ def test_invoice_storage_defaults_and_prefix_normalization() -> None:
     assert settings.s3_invoice_bucket == "invoice-bucket"
     assert settings.s3_invoice_prefix == "shops"
     assert settings.s3_presigned_url_expiry_seconds == 600
+
+
+def test_production_rejects_placeholder_release_identity_and_secret() -> None:
+    with pytest.raises(ValidationError, match="unique JWT secret"):
+        Settings(
+            database_url="postgresql+asyncpg://example",
+            jwt_secret_key="replace-with-a-long-random-secret",
+            env="production",
+        )
+
+
+def test_self_hosted_production_requires_own_public_site() -> None:
+    with pytest.raises(ValidationError, match="own PUBLIC_SITE_URL"):
+        Settings(
+            database_url="postgresql+asyncpg://example",
+            jwt_secret_key="a-unique-secret-that-is-at-least-32-bytes",
+            env="production",
+            git_sha="abc123",
+            aurum_image_digest="repo@sha256:abc",
+            aurum_config_revision="config-1",
+        )
+
+
+def test_hosted_production_requires_provider_configuration() -> None:
+    with pytest.raises(ValidationError, match="provider configuration"):
+        Settings(
+            database_url="postgresql+asyncpg://example",
+            jwt_secret_key="a-unique-secret-that-is-at-least-32-bytes",
+            env="production",
+            deployment_mode="hosted",
+            git_sha="abc123",
+            aurum_image_digest="repo@sha256:abc",
+            aurum_config_revision="config-1",
+            cors_origins=("https://aurumpos.net",),
+        )
 
 
 def test_email_sender_accepts_display_name_and_address() -> None:

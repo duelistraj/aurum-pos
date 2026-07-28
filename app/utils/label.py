@@ -12,6 +12,13 @@ LABEL_HEIGHT = 15 * mm
 PDF_LABEL_WIDTH = 50 * mm
 PDF_LABEL_HEIGHT = 25 * mm
 HALF_WIDTH = LABEL_WIDTH / 2
+SPREADSHEET_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def _spreadsheet_literal(value: object) -> object:
+    if isinstance(value, str) and value.startswith(SPREADSHEET_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
 
 
 def _draw_single_label(c, item):
@@ -210,7 +217,7 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         # Names (columns 1-3)
         for j in range(3):
             if i + j < len(items_list):
-                row_data.append(items_list[i + j].name)
+                row_data.append(_spreadsheet_literal(items_list[i + j].name))
             else:
                 row_data.append("")
 
@@ -255,7 +262,7 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         # Barcodes (columns 13-15)
         for j in range(3):
             if i + j < len(items_list):
-                row_data.append(items_list[i + j].barcode or "")
+                row_data.append(_spreadsheet_literal(items_list[i + j].barcode or ""))
             else:
                 row_data.append("")
 

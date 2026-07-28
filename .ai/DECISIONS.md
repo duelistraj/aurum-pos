@@ -167,7 +167,7 @@ Status: accepted
 Basis: user-confirmed
 Decision: Export and import BMR items exactly into a clean SaaS database; do not migrate other legacy BMR rows. Keep the old deployment isolated for 30 days.
 Rationale: The user explicitly identified the items table as valuable and allowed all other current BMR data to be removed.
-Consequences: The item manifest is counted and checksummed; the general complimentary grant expires at `2027-01-01T00:00:00Z`; there is no BMR-specific entitlement branch.
+Consequences: The item manifest is counted and checksummed; every imported item receives an analytics baseline at its imported creation timestamp; the general complimentary grant expires at `2027-01-01T00:00:00Z`; there is no BMR-specific entitlement branch.
 
 Evidence:
 - `scripts/export_legacy_items.py::export`

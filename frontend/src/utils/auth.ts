@@ -38,8 +38,11 @@ export const setAuthData = async (
   try {
     await setSecureValues({
       [AUTH_KEYS.ACCESS_TOKEN]: accessToken,
-      [AUTH_KEYS.REFRESH_TOKEN]: refreshToken,
+      ...(refreshToken ? { [AUTH_KEYS.REFRESH_TOKEN]: refreshToken } : {}),
     });
+    if (!refreshToken) {
+      await clearSecureValues([AUTH_KEYS.REFRESH_TOKEN]);
+    }
     await setPreference(AUTH_KEYS.USER_INFO, JSON.stringify(userInfo));
     if (activeShopId) await setPreference(AUTH_KEYS.ACTIVE_SHOP_ID, activeShopId);
   } catch {
@@ -65,6 +68,9 @@ export const getActiveShopId = (): Promise<string | null> =>
 
 export const setActiveShopId = (shopId: string): Promise<void> =>
   setPreference(AUTH_KEYS.ACTIVE_SHOP_ID, shopId);
+
+export const clearActiveShopId = (): Promise<void> =>
+  removePreference(AUTH_KEYS.ACTIVE_SHOP_ID);
 
 export const getUserInfo = async (): Promise<UserInfo | null> => {
   const value = await getPreference(AUTH_KEYS.USER_INFO);

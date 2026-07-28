@@ -11,7 +11,8 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.jobs import account_deletions as worker
 from app.modules.auth.models import AccountDeletionRequest, User
-from app.modules.billing.service import _encrypt_token
+from app.modules.auth.security import hash_token
+from app.modules.billing.service import _encrypt_token, record_play_acknowledgement
 from app.modules.sales.models import Sale
 from app.modules.shops.models import Shop, ShopInvitation, ShopMembership
 from app.modules.subscriptions.models import PlaySubscription, Subscription
@@ -20,6 +21,75 @@ pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(os.getenv("RUN_INTEGRATION") != "1", reason="PostgreSQL not requested"),
 ]
+
+
+@pytest.mark.asyncio
+async def test_play_acknowledgement_failure_remains_durable_until_success() -> None:
+    shop_id = uuid4()
+    subscription_id = uuid4()
+    purchase_token = "durable-acknowledgement-token"
+    previous_key = settings.billing_token_encryption_key
+    settings.billing_token_encryption_key = Fernet.generate_key().decode()
+    try:
+        async with AsyncSessionLocal.begin() as session:
+            session.add(Shop(id=shop_id, name="Ack Test", slug=f"ack-{shop_id}"))
+            await session.flush()
+            await session.execute(
+                text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+                {"shop_id": str(shop_id)},
+            )
+            subscription = Subscription(
+                id=subscription_id,
+                shop_id=shop_id,
+                source="play",
+                plan="pro",
+                status="active",
+                starts_at=datetime.now(UTC),
+            )
+            session.add(subscription)
+            await session.flush()
+            session.add(
+                PlaySubscription(
+                    subscription_id=subscription_id,
+                    shop_id=shop_id,
+                    package_name=settings.google_play_package_name,
+                    product_id=settings.google_play_product_id,
+                    purchase_token=_encrypt_token(purchase_token),
+                    purchase_token_hash=hash_token(purchase_token),
+                    state="SUBSCRIPTION_STATE_ACTIVE",
+                    last_verified_at=datetime.now(UTC),
+                    acknowledgement_pending=True,
+                )
+            )
+
+        async with AsyncSessionLocal.begin() as session:
+            await record_play_acknowledgement(
+                session,
+                purchase_token=purchase_token,
+                error=RuntimeError("provider unavailable"),
+            )
+        async with AsyncSessionLocal.begin() as session:
+            play = await session.get(PlaySubscription, subscription_id)
+            assert play is not None
+            assert play.acknowledgement_pending is True
+            assert play.acknowledgement_attempts == 1
+            assert play.acknowledgement_next_attempt_at is not None
+
+        async with AsyncSessionLocal.begin() as session:
+            await record_play_acknowledgement(
+                session,
+                purchase_token=purchase_token,
+                error=None,
+            )
+        async with AsyncSessionLocal.begin() as session:
+            play = await session.get(PlaySubscription, subscription_id)
+            assert play is not None
+            assert play.acknowledgement_pending is False
+            assert play.acknowledged_at is not None
+    finally:
+        settings.billing_token_encryption_key = previous_key
+        async with AsyncSessionLocal.begin() as session:
+            await session.execute(delete(Shop).where(Shop.id == shop_id))
 
 
 @pytest.mark.asyncio
@@ -283,6 +353,8 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
             request = await session.get(AccountDeletionRequest, request_id)
             assert request is not None
             assert request.completed_at is None
+            assert request.external_cleanup_started_at is not None
+            assert request.cleanup_started_at is None
             assert request.cleanup_last_error_code == "RuntimeError"
     finally:
         async with AsyncSessionLocal.begin() as session:

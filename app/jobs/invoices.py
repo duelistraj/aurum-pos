@@ -72,6 +72,10 @@ async def _finish_invoice_job(
 ) -> None:
     now = datetime.now(UTC)
     async with AsyncSessionLocal.begin() as session:
+        await session.execute(
+            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+            {"shop_id": str(target.shop_id)},
+        )
         job = await session.scalar(
             select(InvoiceJob)
             .where(
@@ -96,26 +100,17 @@ async def _finish_invoice_job(
         else:
             job.status = "pending"
             job.next_attempt_at = now + timedelta(minutes=min(60, 2**job.attempts))
-        status = job.status
-        attempts = job.attempts
-        next_attempt_at = job.next_attempt_at
-        last_error_code = job.last_error_code
-    async with AsyncSessionLocal.begin() as session:
-        await session.execute(
-            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-            {"shop_id": str(target.shop_id)},
-        )
         sale = await session.scalar(
             select(Sale)
             .where(Sale.id == target.sale_id, Sale.shop_id == target.shop_id)
             .with_for_update()
         )
         if sale is not None:
-            sale.invoice_pdf_status = "failed" if status == "failed" else "pending"
-            sale.invoice_pdf_attempts = attempts
-            sale.invoice_pdf_next_attempt_at = next_attempt_at
+            sale.invoice_pdf_status = "failed" if job.status == "failed" else "pending"
+            sale.invoice_pdf_attempts = job.attempts
+            sale.invoice_pdf_next_attempt_at = job.next_attempt_at
             sale.invoice_pdf_lease_until = None
-            sale.invoice_pdf_last_error_code = last_error_code
+            sale.invoice_pdf_last_error_code = job.last_error_code
 
 
 async def process_invoice_jobs(*, storage: InvoiceStorage | None = None) -> None:

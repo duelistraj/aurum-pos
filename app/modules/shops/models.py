@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     String,
     UniqueConstraint,
@@ -48,6 +49,9 @@ class Shop(Base):
     next_invoice_sequence: Mapped[int] = mapped_column(
         BigInteger, default=1, server_default="1", nullable=False
     )
+    total_sales_amount: Mapped[Decimal] = mapped_column(
+        Numeric(16, 2), default=Decimal(0), server_default="0", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True, server_default=func.now()
     )
@@ -76,6 +80,7 @@ class ShopMembership(Base):
 
 class ShopInvitation(Base):
     __tablename__ = "shop_invitations"
+    __table_args__ = (Index("ix_shop_invitations_retention", "expires_at", "accepted_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id: Mapped[uuid.UUID] = mapped_column(

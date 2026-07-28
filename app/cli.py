@@ -9,10 +9,12 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.orm import configure_mappers
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.modules.auth.models import User
 from app.modules.auth.security import get_password_hash
-from app.modules.items.models import Item
+from app.modules.items.models import Item, ItemHistory
+from app.modules.items.schemas import ItemBase
 
 # Importing the related mapper lets Item relationships configure in CLI-only processes.
 from app.modules.sales.models import SaleItem
@@ -158,6 +160,7 @@ async def import_items(args: argparse.Namespace) -> None:
         )
         if await session.scalar(select(Item.id).limit(1)):
             raise ValueError("Target shop already contains items")
+        imported_items: list[Item] = []
         for row in items:
             missing = set(ITEM_FIELDS) - set(row)
             if missing:
@@ -169,16 +172,52 @@ async def import_items(args: argparse.Namespace) -> None:
             values["id"] = UUID(values["id"])
             values["created_at"] = datetime.fromisoformat(values["created_at"])
             values["updated_at"] = datetime.fromisoformat(values["updated_at"])
-            session.add(Item(shop_id=shop.id, **values))
+            status = str(values["status"])
+            if status not in {"in_stock", "sold", "reserved", "archived"}:
+                raise ValueError(f"Unsupported item status: {status}")
+            validated = ItemBase.model_validate(
+                {field: values[field] for field in ItemBase.model_fields}
+            )
+            values.update(validated.model_dump())
+            imported_items.append(Item(shop_id=shop.id, **values))
+        session.add_all(imported_items)
+        await session.flush()
+        session.add_all(
+            [
+                ItemHistory(
+                    shop_id=item.shop_id,
+                    item_id=item.id,
+                    event_type="baseline",
+                    sku=item.sku,
+                    category=item.category,
+                    metal=item.metal,
+                    purity=item.purity,
+                    net_weight=item.net_weight,
+                    making_charge=item.making_charge,
+                    quantity=item.quantity,
+                    status=item.status,
+                    effective_from=item.created_at,
+                )
+                for item in imported_items
+            ]
+        )
         await session.flush()
         print(f"Imported {len(items)} items into {shop.slug}; sha256={actual_digest}")
 
 
 async def validate_runtime_db(_args: argparse.Namespace) -> None:
     async with AsyncSessionLocal.begin() as session:
-        ssl_enabled = await session.scalar(text("SHOW ssl"))
-        if ssl_enabled != "on":
-            raise RuntimeError("PostgreSQL TLS is not enabled")
+        connection_ssl = await session.scalar(
+            text(
+                """
+                SELECT ssl
+                FROM pg_stat_ssl
+                WHERE pid = pg_backend_pid()
+                """
+            )
+        )
+        if settings.env in {"staging", "production"} and connection_ssl is not True:
+            raise RuntimeError("Runtime PostgreSQL connection is not encrypted")
         role = (
             await session.execute(
                 text(

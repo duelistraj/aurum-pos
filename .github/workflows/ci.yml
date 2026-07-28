@@ -26,7 +26,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql+asyncpg://aurum:change-me@localhost:5432/aurum_pos_test
+      DATABASE_URL: postgresql+asyncpg://aurum_runtime:runtime-test-password@localhost:5432/aurum_pos_test
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://aurum:change-me@localhost:5432/aurum_pos_test
       APP_NAME: Aurum POS Test
       ENV: test
       JWT_SECRET_KEY: test-secret-key-that-is-long-enough-for-ci
@@ -59,6 +60,29 @@ jobs:
 
       - name: Run migrations
         run: uv run alembic upgrade head
+
+      - name: Create restricted runtime database role
+        env:
+          PGPASSWORD: change-me
+        run: |
+          psql -h localhost -U aurum -d aurum_pos_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE aurum_runtime
+            LOGIN
+            PASSWORD 'runtime-test-password'
+            NOSUPERUSER
+            NOCREATEDB
+            NOCREATEROLE
+            NOINHERIT
+            NOBYPASSRLS;
+          GRANT CONNECT ON DATABASE aurum_pos_test TO aurum_runtime;
+          GRANT USAGE ON SCHEMA public TO aurum_runtime;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+            TO aurum_runtime;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO aurum_runtime;
+          SQL
+
+      - name: Validate runtime database isolation
+        run: uv run python -m app.cli validate-runtime-db
 
       - name: Check schema matches SQLAlchemy metadata
         run: uv run alembic check

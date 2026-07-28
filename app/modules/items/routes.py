@@ -6,12 +6,13 @@ import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.modules.auth.dependencies import RequireManager, ShopContext, get_shop_context
 from app.modules.items.models import Item
-from app.modules.items.pricing import calculate_suggested_price
+from app.modules.items.pricing import lock_price_at_sale
 from app.modules.items.schemas import (
     ItemCreate,
     ItemOut,
@@ -39,6 +40,7 @@ from app.modules.metal_rates.service import (
 from app.utils.label import generate_batch_labels_pdf, generate_batch_labels_xlsx
 
 router = APIRouter(prefix="/items", tags=["Items"])
+LABEL_EXPORT_LIMITER = anyio.CapacityLimiter(2)
 
 
 @router.post("/", response_model=ItemOut, dependencies=[RequireManager])
@@ -47,7 +49,15 @@ async def create(
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
-    return await create_item(db, data, shop_id=context.shop.id)
+    try:
+        return await create_item(db, data, shop_id=context.shop.id)
+    except IntegrityError as exc:
+        if getattr(exc.orig, "constraint_name", None) == "uq_items_shop_barcode":
+            raise HTTPException(
+                status_code=409,
+                detail="An item with this barcode already exists",
+            ) from exc
+        raise
 
 
 @router.get("/", response_model=ItemPaginationOut)
@@ -135,12 +145,16 @@ async def pos_scan(
         base_rate_per_gram=base_rate.rate_per_gram,
     )
 
-    pricing = calculate_suggested_price(
+    pricing = lock_price_at_sale(
+        metal=item.metal,
         category=item.category,
+        purity=item.purity,
         net_weight=item.net_weight,
         rate_per_gram=rate_per_gram,
         making_charge=item.making_charge,
+        tax_rate_percent=context.shop.tax_rate_percent,
     )
+    pricing["suggested_price"] = pricing["subtotal"]
     return {
         **ItemPOS.model_validate(item).model_dump(),
         "pricing": pricing,
@@ -162,15 +176,24 @@ async def print_labels_for_all_items(
             status_code=422,
             detail="All-item label exports are limited to 500 items; use a batch export",
         )
+    await db.commit()
 
     if output_format == "pdf":
-        document = await anyio.to_thread.run_sync(generate_batch_labels_pdf, items)
+        document = await anyio.to_thread.run_sync(
+            generate_batch_labels_pdf,
+            items,
+            limiter=LABEL_EXPORT_LIMITER,
+        )
         return StreamingResponse(
             iter([document]),
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=all-item-labels.pdf"},
         )
-    document = await anyio.to_thread.run_sync(generate_batch_labels_xlsx, items)
+    document = await anyio.to_thread.run_sync(
+        generate_batch_labels_xlsx,
+        items,
+        limiter=LABEL_EXPORT_LIMITER,
+    )
     return StreamingResponse(
         iter([document]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -195,15 +218,24 @@ async def print_labels_batch(
     items = result.scalars().all()
     if not items:
         raise HTTPException(status_code=404, detail="None of the selected items exist")
+    await db.commit()
 
     if output_format == "pdf":
-        document = await anyio.to_thread.run_sync(generate_batch_labels_pdf, items)
+        document = await anyio.to_thread.run_sync(
+            generate_batch_labels_pdf,
+            items,
+            limiter=LABEL_EXPORT_LIMITER,
+        )
         return StreamingResponse(
             iter([document]),
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=jewellery-labels.pdf"},
         )
-    document = await anyio.to_thread.run_sync(generate_batch_labels_xlsx, items)
+    document = await anyio.to_thread.run_sync(
+        generate_batch_labels_xlsx,
+        items,
+        limiter=LABEL_EXPORT_LIMITER,
+    )
     return StreamingResponse(
         iter([document]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -232,6 +264,13 @@ async def update(
 ):
     try:
         return await update_item(db, item_id, data, shop_id=context.shop.id)
+    except IntegrityError as exc:
+        if getattr(exc.orig, "constraint_name", None) == "uq_items_shop_barcode":
+            raise HTTPException(
+                status_code=409,
+                detail="An item with this barcode already exists",
+            ) from exc
+        raise
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "does not exist" in message else 400

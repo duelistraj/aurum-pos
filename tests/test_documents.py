@@ -45,6 +45,22 @@ def test_xlsx_labels_have_matching_fifteen_columns() -> None:
     assert headers[-3:] == ["Barcode 1", "Barcode 2", "Barcode 3"]
 
 
+def test_xlsx_labels_treat_user_values_as_literals() -> None:
+    workbook = load_workbook(
+        BytesIO(
+            generate_batch_labels_xlsx(
+                [_item(name='=HYPERLINK("https://invalid")', barcode="+123")]
+            )
+        )
+    )
+    worksheet = workbook.active
+
+    assert worksheet["A2"].data_type == "s"
+    assert worksheet["A2"].value.startswith("'=")
+    assert worksheet["M2"].data_type == "s"
+    assert worksheet["M2"].value == "'+123"
+
+
 def test_invoice_is_generated_from_locked_sale_values() -> None:
     item = _item()
     sale_item = SimpleNamespace(

@@ -85,3 +85,15 @@ def test_batch_operation_drop_fails(tmp_path: Path) -> None:
     findings = analyze_migration(write_migration(tmp_path, '    batch_op.drop_column("legacy")'))
 
     assert [finding.severity for finding in findings] == ["error"]
+
+
+def test_blocking_index_and_constraint_operations_warn(tmp_path: Path) -> None:
+    findings = analyze_migration(
+        write_migration(
+            tmp_path,
+            '    op.create_index("ix_sales_created", "sales", ["created_at"])\n'
+            '    op.create_check_constraint("sales_total_positive", "sales", "total >= 0")',
+        )
+    )
+
+    assert [finding.severity for finding in findings] == ["warning", "warning"]

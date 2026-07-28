@@ -46,6 +46,7 @@ export const Items: React.FC = () => {
   const queryClient = useQueryClient();
   const { canManage, activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
+  const activeShopRef = React.useRef(shopId);
   const entitlementQuery = useQuery({
     queryKey: queryKeys.entitlement(shopId),
     queryFn: () => apiClient.getEntitlement(),
@@ -119,6 +120,18 @@ export const Items: React.FC = () => {
     notes: '',
   });
 
+  React.useEffect(() => {
+    activeShopRef.current = shopId;
+    setItems([]);
+    setTotalItems(0);
+    setTotalPages(0);
+    setSelectedItems(new Set());
+    setEditingItem(null);
+    setShowModal(false);
+    setCurrentPage(1);
+    setError('');
+  }, [shopId]);
+
   // Category and Status drop-down options config
   const categoryOptions = [
     { value: 'all', label: 'All Categories', icon: LayoutGrid, bg: 'bg-orange-50 text-orange-500 dark:bg-orange-950/20 dark:text-orange-400' },
@@ -139,8 +152,10 @@ export const Items: React.FC = () => {
   ];
 
   const loadMetals = React.useCallback(async () => {
+    const requestedShopId = shopId;
     try {
       const metals = await apiClient.getAvailableMetals();
+      if (activeShopRef.current !== requestedShopId) return;
       setAvailableMetals(metals);
       
       const metalKeys = Object.keys(metals);
@@ -154,7 +169,7 @@ export const Items: React.FC = () => {
     } catch (err) {
       console.error('Failed to load available metals:', err);
     }
-  }, []);
+  }, [shopId]);
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -191,8 +206,10 @@ export const Items: React.FC = () => {
   }, []);
 
   const loadSummary = React.useCallback(async () => {
+    const requestedShopId = shopId;
     try {
       const data = await apiClient.getItemsSummary();
+      if (activeShopRef.current !== requestedShopId) return;
       setSummary(data);
     } catch (err) {
       console.warn('Failed to load items summary from backend, calculating locally:', err);
@@ -218,9 +235,10 @@ export const Items: React.FC = () => {
         console.error('Failed to compute local fallback summary:', innerErr);
       }
     }
-  }, []);
+  }, [shopId]);
 
   const loadItems = React.useCallback(async () => {
+    const requestedShopId = shopId;
     setLoading(true);
     try {
       const response = await apiClient.getItems({
@@ -231,6 +249,7 @@ export const Items: React.FC = () => {
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         status: selectedStatus !== 'all' ? selectedStatus : undefined,
       });
+      if (activeShopRef.current !== requestedShopId) return;
 
       let itemsList: Item[] = [];
       let total = 0;
@@ -267,16 +286,18 @@ export const Items: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage, debouncedSearch, selectedMetal, selectedCategory, selectedStatus]);
+  }, [shopId, currentPage, rowsPerPage, debouncedSearch, selectedMetal, selectedCategory, selectedStatus]);
 
   const loadLatestItem = React.useCallback(async () => {
+    const requestedShopId = shopId;
     try {
       const item = await apiClient.getLatestItem();
+      if (activeShopRef.current !== requestedShopId) return;
       setLatestItem(item);
     } catch {
       setLatestItem(null);
     }
-  }, []);
+  }, [shopId]);
 
   const refreshItems = async () => {
     await Promise.all([loadItems(), loadSummary(), loadLatestItem()]);
@@ -440,6 +461,9 @@ export const Items: React.FC = () => {
       await Promise.all([
         refreshItems(),
         queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'analytics'] }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'change-log'] }),
       ]);
     } catch (err) {
       setError(
@@ -470,6 +494,9 @@ export const Items: React.FC = () => {
       await Promise.all([
         refreshItems(),
         queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'analytics'] }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'change-log'] }),
       ]);
     } catch (err) {
       setError(

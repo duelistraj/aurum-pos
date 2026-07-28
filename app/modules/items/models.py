@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -27,6 +28,20 @@ class Item(Base):
     __table_args__ = (
         UniqueConstraint("shop_id", "barcode", name="uq_items_shop_barcode"),
         UniqueConstraint("shop_id", "id", name="uq_items_shop_id"),
+        CheckConstraint("quantity >= 0", name="items_quantity_nonnegative"),
+        CheckConstraint("purity >= 0 AND purity <= 100", name="items_purity_range"),
+        CheckConstraint(
+            "net_weight >= 0 AND making_charge >= 0",
+            name="items_nonnegative_money_weight",
+        ),
+        CheckConstraint(
+            "status IN ('in_stock', 'sold', 'reserved', 'archived')",
+            name="items_status_allowed",
+        ),
+        CheckConstraint(
+            "(category = 'unique' AND net_weight = 0) OR (category <> 'unique' AND net_weight > 0)",
+            name="items_unique_weight_contract",
+        ),
         Index(
             "ix_items_shop_status_updated_at",
             "shop_id",
@@ -166,6 +181,11 @@ class ItemHistory(Base):
             "ix_item_history_shop_effective",
             "shop_id",
             text("effective_from DESC"),
+        ),
+        CheckConstraint(
+            "quantity >= 0 AND purity >= 0 AND purity <= 100 "
+            "AND net_weight >= 0 AND making_charge >= 0",
+            name="item_history_values_valid",
         ),
     )
 

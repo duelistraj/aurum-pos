@@ -3,12 +3,13 @@ from app.modules.sales.models import InvoiceJob, Sale, SaleIdempotency, SaleItem
 from app.core.changelog.models import ChangeLog  # noqa
 from app.core.health import WorkerHeartbeat  # noqa
 from app.modules.metal_rates.models import MetalRate, MetalRateHistory  # noqa
-from app.modules.auth.models import AccountDeletionRequest, AuthSession, AuthToken, Device, GoogleNonce, User, UserIdentity  # noqa
+import app.modules.auth.models  # noqa: F401
 from app.modules.notifications.models import EmailOutbox  # noqa
 from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, ShopMembership  # noqa
 from app.modules.subscriptions.models import BillingEvent, PlaySubscription, Subscription  # noqa
 
 
+import os
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -22,8 +23,12 @@ from app.core.config import settings
 # this is the Alembic Config object
 config = context.config
 
-# Override DB URL from .env
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Migrations must use an administrator credential that is never exposed to API
+# or worker containers. Local development may fall back to the runtime URL.
+config.set_main_option(
+    "sqlalchemy.url",
+    os.getenv("MIGRATION_DATABASE_URL") or settings.database_url,
+)
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:
@@ -73,7 +78,6 @@ def run_migrations_online() -> None:
         await connectable.dispose()
 
     asyncio.run(run_async_migrations())
-
 
 
 if context.is_offline_mode():

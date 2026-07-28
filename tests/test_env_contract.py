@@ -10,6 +10,7 @@ DEPLOYMENT_PROVIDED_BACKEND_KEYS = frozenset(
         "AURUM_CONFIG_REVISION",
         "AURUM_IMAGE_DIGEST",
         "GIT_SHA",
+        "WORKER_INSTANCE_ID",
     }
 )
 FRONTEND_KEYS = frozenset(

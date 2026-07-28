@@ -88,7 +88,7 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=32, max_length=256)
+    refresh_token: str | None = Field(default=None, min_length=32, max_length=256)
     device_uuid: str = Field(min_length=8, max_length=100)
 
 

@@ -25,10 +25,17 @@ import { getDeviceUUID } from '../utils/device';
 import { getApiBaseUrl } from '../utils/apiConfig';
 
 const client: AxiosInstance = axios.create({
+  timeout: 15_000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+let requestShopId: string | null | undefined;
+
+export const setRequestShopId = (shopId: string | null) => {
+  requestShopId = shopId;
+};
 
 // Error message mapping for different status codes
 const ERROR_MESSAGES: Record<number, string> = {
@@ -50,7 +57,7 @@ const CREDENTIAL_ENDPOINTS = new Set([
 
 client.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const [apiBaseUrl, token, deviceUuid, shopId] = await Promise.all([
+    const [apiBaseUrl, token, deviceUuid, persistedShopId] = await Promise.all([
       getApiBaseUrl(),
       getAccessToken(),
       getDeviceUUID(),
@@ -64,6 +71,7 @@ client.interceptors.request.use(
     if (deviceUuid) {
       config.headers['X-Device-UUID'] = deviceUuid;
     }
+    const shopId = requestShopId === undefined ? persistedShopId : requestShopId;
     if (shopId) {
       config.headers['X-Shop-ID'] = shopId;
     }
@@ -211,17 +219,18 @@ client.interceptors.response.use(
       return (async () => {
         try {
           const refreshToken = await getRefreshToken();
-          if (!refreshToken) {
-            throw new Error('No refresh token available');
-          }
           const [apiBaseUrl, deviceUuid] = await Promise.all([
             getApiBaseUrl(),
             getDeviceUUID(),
           ]);
-          const { data } = await axios.post<TokenResponse>(`${apiBaseUrl}/api/v1/auth/refresh`, {
-            refresh_token: refreshToken,
-            device_uuid: deviceUuid,
-          });
+          const { data } = await axios.post<TokenResponse>(
+            `${apiBaseUrl}/api/v1/auth/refresh`,
+            {
+              refresh_token: refreshToken || undefined,
+              device_uuid: deviceUuid,
+            },
+            { withCredentials: true },
+          );
           await setAuthData(data.access_token, data.refresh_token, {
             full_name: data.full_name,
             user_id: data.user_id,
@@ -235,6 +244,7 @@ client.interceptors.response.use(
         } catch (err) {
           processQueue(err);
           await clearAuthData();
+          setRequestShopId(null);
           window.location.href = '/';
           return Promise.reject(err);
         } finally {
@@ -436,6 +446,7 @@ export const apiClient = {
       await client.post('/auth/logout');
     } finally {
       await clearAuthData();
+      setRequestShopId(null);
     }
   },
 

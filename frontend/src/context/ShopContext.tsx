@@ -1,8 +1,9 @@
 import React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../api/client';
+import { apiClient, setRequestShopId } from '../api/client';
 import {
   getActiveShopId,
+  clearActiveShopId,
   getUserInfo,
   MembershipInfo,
   setActiveShopId as persistActiveShopId,
@@ -52,6 +53,12 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     )
       ? savedShopId
       : currentUser?.memberships[0]?.shop_id ?? null;
+    if (selectedShopId && selectedShopId !== savedShopId) {
+      await persistActiveShopId(selectedShopId);
+    } else if (!selectedShopId && savedShopId) {
+      await clearActiveShopId();
+    }
+    setRequestShopId(selectedShopId);
     setActiveShopId(selectedShopId);
   }, []);
 
@@ -61,6 +68,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectShop = React.useCallback(async (shopId: string) => {
     if (!user?.memberships.some((membership) => membership.shop_id === shopId)) return;
+    setRequestShopId(shopId);
     await persistActiveShopId(shopId);
     setActiveShopId(shopId);
     queryClient.clear();

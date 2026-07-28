@@ -76,6 +76,10 @@ class PricingBreakdown(BaseModel):
     metal_value: float
     making_charge: float
     suggested_price: float
+    subtotal: float
+    gst_rate_percent: float
+    gst_amount: float
+    final_price: float
 
 
 class ItemPOS(BaseModel):

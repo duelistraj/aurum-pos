@@ -4,7 +4,13 @@ services:
     env_file:
       - .env
     environment:
+      ENV: production
+      DEPLOYMENT_MODE: hosted
+      MIGRATION_DATABASE_URL: ""
       FORWARDED_ALLOW_IPS: "172.30.0.1"
+      AURUM_IMAGE_DIGEST: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
+      GIT_SHA: ${AURUM_GIT_SHA:?Set AURUM_GIT_SHA}
+      AURUM_CONFIG_REVISION: ${AURUM_CONFIG_REVISION:?Set AURUM_CONFIG_REVISION}
     restart: unless-stopped
     init: true
     read_only: true
@@ -26,14 +32,26 @@ services:
       retries: 5
       start_period: 20s
     logging:
-      driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:?Set AWS_REGION}
+        awslogs-group: /aurum-pos/api
+        awslogs-stream: ${AURUM_GIT_SHA:?Set AURUM_GIT_SHA}
+        awslogs-create-group: "true"
 
   worker:
     image: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
     command: ["python", "-m", "app.worker"]
     env_file:
       - .env
+    environment:
+      ENV: production
+      DEPLOYMENT_MODE: hosted
+      MIGRATION_DATABASE_URL: ""
+      AURUM_IMAGE_DIGEST: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
+      GIT_SHA: ${AURUM_GIT_SHA:?Set AURUM_GIT_SHA}
+      AURUM_CONFIG_REVISION: ${AURUM_CONFIG_REVISION:?Set AURUM_CONFIG_REVISION}
+      WORKER_INSTANCE_ID: ${AURUM_WORKER_INSTANCE_ID:?Set AURUM_WORKER_INSTANCE_ID}
     restart: unless-stopped
     init: true
     read_only: true
@@ -56,8 +74,33 @@ services:
       retries: 5
       start_period: 30s
     logging:
-      driver: json-file
-      options: {max-size: "10m", max-file: "3"}
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:?Set AWS_REGION}
+        awslogs-group: /aurum-pos/worker
+        awslogs-stream: ${AURUM_WORKER_INSTANCE_ID:?Set AURUM_WORKER_INSTANCE_ID}
+        awslogs-create-group: "true"
+
+  migrate:
+    image: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
+    command: ["alembic", "upgrade", "head"]
+    profiles: ["operator"]
+    env_file:
+      - .env
+    environment:
+      ENV: production
+      DEPLOYMENT_MODE: hosted
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set MIGRATION_DATABASE_URL}
+      AURUM_IMAGE_DIGEST: ${AURUM_IMAGE:?Set AURUM_IMAGE to a ghcr.io digest}
+      GIT_SHA: ${AURUM_GIT_SHA:?Set AURUM_GIT_SHA}
+      AURUM_CONFIG_REVISION: ${AURUM_CONFIG_REVISION:?Set AURUM_CONFIG_REVISION}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 networks:
   default:

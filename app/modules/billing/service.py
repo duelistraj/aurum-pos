@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -174,4 +174,38 @@ async def apply_play_purchase(
     )
 
     needs_acknowledgement = purchase.get("acknowledgementState") == "ACKNOWLEDGEMENT_STATE_PENDING"
+    existing_play.acknowledgement_pending = needs_acknowledgement
+    if needs_acknowledgement:
+        existing_play.acknowledgement_next_attempt_at = datetime.now(UTC)
+    else:
+        existing_play.acknowledgement_next_attempt_at = None
+        existing_play.acknowledgement_last_error_code = None
+        existing_play.acknowledged_at = existing_play.acknowledged_at or datetime.now(UTC)
     return subscription, state, needs_acknowledgement
+
+
+async def record_play_acknowledgement(
+    db: AsyncSession,
+    *,
+    purchase_token: str,
+    error: Exception | None,
+) -> None:
+    row = await db.scalar(
+        select(PlaySubscription)
+        .where(PlaySubscription.purchase_token_hash == hash_token(purchase_token))
+        .with_for_update()
+    )
+    if row is None:
+        return
+    if error is None:
+        row.acknowledgement_pending = False
+        row.acknowledgement_next_attempt_at = None
+        row.acknowledgement_last_error_code = None
+        row.acknowledged_at = datetime.now(UTC)
+        return
+    row.acknowledgement_pending = True
+    row.acknowledgement_attempts += 1
+    row.acknowledgement_last_error_code = type(error).__name__[:100]
+    row.acknowledgement_next_attempt_at = datetime.now(UTC) + timedelta(
+        minutes=min(60, 2 ** min(row.acknowledgement_attempts, 6))
+    )

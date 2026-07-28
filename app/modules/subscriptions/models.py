@@ -6,9 +6,12 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -50,6 +53,12 @@ class PlaySubscription(Base):
             ondelete="CASCADE",
             name="fk_play_subscriptions_shop_subscription",
         ),
+        Index(
+            "ix_play_subscriptions_ack_due",
+            "acknowledgement_next_attempt_at",
+            postgresql_where=text("acknowledgement_pending"),
+        ),
+        Index("ix_play_subscriptions_lease", "verification_lease_until"),
     )
 
     subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -70,11 +79,23 @@ class PlaySubscription(Base):
     )
     verification_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verification_lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    acknowledgement_pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    acknowledgement_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    acknowledgement_next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    acknowledgement_last_error_code: Mapped[str | None] = mapped_column(String(100))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deletion_cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BillingEvent(Base):
     __tablename__ = "billing_events"
+    __table_args__ = (Index("ix_billing_events_retention", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider_event_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)

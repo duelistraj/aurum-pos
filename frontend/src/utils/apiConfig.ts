@@ -12,3 +12,10 @@ export const getApiBaseUrl = async (): Promise<string> => {
   if (isCloudDistribution) return CLOUD_API_URL;
   return migrateLegacyLocalApiUrl(normalizeApiUrl(BUILD_DEFAULT_API_URL));
 };
+
+export const getRecoveryPageUrl = async (page: string): Promise<string> => {
+  if (isCloudDistribution) {
+    return `https://aurumpos.net/${page}`;
+  }
+  return `${await getApiBaseUrl()}/${page}`;
+};

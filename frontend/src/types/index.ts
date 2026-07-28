@@ -29,6 +29,10 @@ export interface ItemPOSWithPrice {
     metal_value: number;
     making_charge: number;
     suggested_price: number;
+    subtotal: number;
+    gst_rate_percent: number;
+    gst_amount: number;
+    final_price: number;
   };
 }
 

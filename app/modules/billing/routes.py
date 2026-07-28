@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import logging
 from datetime import UTC, datetime
 
 import anyio
@@ -16,12 +17,17 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.modules.auth.dependencies import RequireOwner, ShopContext, get_shop_context
 from app.modules.billing.google_play import GooglePlayClient, GooglePlayError
-from app.modules.billing.service import apply_play_purchase, fetch_play_purchase
+from app.modules.billing.service import (
+    apply_play_purchase,
+    fetch_play_purchase,
+    record_play_acknowledgement,
+)
 from app.modules.subscriptions.models import BillingEvent, PlaySubscription, Subscription
 from app.modules.subscriptions.schemas import PlayPurchaseRequest, PlayPurchaseResponse
 from app.modules.subscriptions.service import get_entitlement_response
 
 router = APIRouter(prefix="/billing/google-play", tags=["Billing"])
+LOGGER = logging.getLogger("aurum.billing")
 
 
 @router.post("/purchases", response_model=PlayPurchaseResponse, dependencies=[RequireOwner])
@@ -51,10 +57,18 @@ async def submit_purchase(
         )
         entitlement = await get_entitlement_response(session, shop_id)
     if needs_acknowledgement:
+        acknowledgement_error: Exception | None = None
         try:
             await play_client.acknowledge(data.purchase_token)
         except GooglePlayError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            acknowledgement_error = exc
+            LOGGER.exception("Play acknowledgement deferred for shop %s", shop_id)
+        async with AsyncSessionLocal.begin() as session:
+            await record_play_acknowledgement(
+                session,
+                purchase_token=data.purchase_token,
+                error=acknowledgement_error,
+            )
     return PlayPurchaseResponse(
         entitlement=entitlement,
         subscription_state=state,
@@ -150,10 +164,18 @@ async def receive_rtdn(
             purchase=purchase,
         )
     if needs_acknowledgement:
+        acknowledgement_error: Exception | None = None
         try:
             await play_client.acknowledge(purchase_token)
         except GooglePlayError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            acknowledgement_error = exc
+            LOGGER.exception("RTDN Play acknowledgement deferred for shop %s", shop_id)
+        async with AsyncSessionLocal.begin() as session:
+            await record_play_acknowledgement(
+                session,
+                purchase_token=purchase_token,
+                error=acknowledgement_error,
+            )
     async with AsyncSessionLocal.begin() as session:
         event = await session.scalar(
             select(BillingEvent)
