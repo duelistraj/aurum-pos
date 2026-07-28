@@ -1,4 +1,6 @@
-name: Build Signed Android AAB
+name: Release Android to Play Internal Testing
+
+run-name: Play Internal Testing from ${{ inputs.ref }}
 
 on:
   workflow_dispatch:
@@ -12,6 +14,10 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: aurum-pos-play-internal
+  cancel-in-progress: false
+
 jobs:
   release-aab:
     runs-on: ubuntu-latest
@@ -24,12 +30,13 @@ jobs:
       CAPACITOR_APP_ID: com.duelistraj.aurumpos
 
     steps:
-      - name: Require Android signing secrets
+      - name: Require Android release secrets
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           set -Eeuo pipefail
           missing=()
@@ -37,8 +44,9 @@ jobs:
           [[ -n "$ANDROID_KEYSTORE_PASSWORD" ]] || missing+=(ANDROID_KEYSTORE_PASSWORD)
           [[ -n "$ANDROID_KEY_ALIAS" ]] || missing+=(ANDROID_KEY_ALIAS)
           [[ -n "$ANDROID_KEY_PASSWORD" ]] || missing+=(ANDROID_KEY_PASSWORD)
+          [[ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]] || missing+=(PLAY_SERVICE_ACCOUNT_JSON)
           if (( ${#missing[@]} )); then
-            printf '::error::Missing required Android signing secret: %s\n' "${missing[@]}"
+            printf '::error::Missing required Android release secret: %s\n' "${missing[@]}"
             exit 1
           fi
 
@@ -81,7 +89,10 @@ jobs:
           }
 
       - name: Set Android version code
-        run: echo "ANDROID_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >>"$GITHUB_ENV"
+        run: |
+          echo \
+            "ANDROID_VERSION_CODE=$((200000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" \
+            >>"$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -141,12 +152,20 @@ jobs:
             -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
 
-      - name: Record signed artifact checksum
+      - name: Remove temporary keystore
+        if: always()
+        working-directory: frontend/android
+        run: rm -f release.keystore
+
+      - name: Record signed bundle checksum
         working-directory: frontend/android
         run: sha256sum app/build/outputs/bundle/release/app-release.aab
 
-      - name: Upload signed AAB
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Release signed AAB to Play Internal Testing
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
-          name: aurum-pos-play-internal-aab-${{ github.run_number }}
-          path: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.duelistraj.aurumpos
+          releaseFiles: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          tracks: internal
+          status: completed

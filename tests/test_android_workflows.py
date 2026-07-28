@@ -26,9 +26,9 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
 
     assert 'VITE_GOOGLE_AUTH_ENABLED: "true"' in source
     assert "VITE_GOOGLE_WEB_CLIENT_ID" not in source
-    assert "Missing required Android signing secret" in source
-    assert "ANDROID_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" in source
-    assert "aurum-pos-play-internal-aab-" in source
+    assert "Missing required Android release secret" in source
+    assert "PLAY_SERVICE_ACCOUNT_JSON" in source
+    assert "GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT" in source
     assert "ref must be a full 40-character commit SHA" in source
     assert "not reachable from main" in source
     assert "has no successful CI run" in source
@@ -38,6 +38,20 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
         "./gradlew :app:connectedDebugAndroidTest"
     )
     assert "environment: play-internal" in source
+    assert "group: aurum-pos-play-internal" in source
+    assert "cancel-in-progress: false" in source
+    assert "rm -f release.keystore" in source
+
+
+def test_signed_aab_releases_directly_to_play_without_github_artifact() -> None:
+    source = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "actions/upload-artifact@" not in source
+    assert "r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5" in source
+    assert "packageName: com.duelistraj.aurumpos" in source
+    assert "tracks: internal" in source
+    assert "status: completed" in source
+    assert "tracks: production" not in source
 
 
 def test_android_version_code_comes_from_release_environment() -> None:

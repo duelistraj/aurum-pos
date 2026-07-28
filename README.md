@@ -97,10 +97,15 @@ VITE_GOOGLE_AUTH_ENABLED=false
 `VITE_API_URL` is mandatory for self-hosted production builds and cannot be changed from inside the application.
 Self-hosters that enable Google authentication must configure their own backend Google Web client ID, Android OAuth client, package name, and signing certificate.
 
-The manually triggered signed-AAB workflow requires `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` as encrypted GitHub secrets.
-Its monotonically increasing version code supports repeated uploads to the existing Play Internal Testing track.
+The manually triggered signed-AAB workflow requires `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and `PLAY_SERVICE_ACCOUNT_JSON` as encrypted secrets in the `play-internal` GitHub environment.
+The Play credential belongs to a dedicated service account restricted to Aurum POS testing-track releases.
+Its monotonically increasing version code remains unique across new runs and workflow reruns.
 Run it with the full 40-character SHA of a revision that has a successful CI run.
-The workflow executes Android unit tests and lint before bundling, and native access and refresh tokens are encrypted with Android Keystore.
+The workflow executes Android unit tests and lint before bundling, removes the temporary keystore, and uploads the signed AAB directly to Google Play Internal Testing.
+It never stores the signed AAB as a GitHub Actions artifact.
+Promote that exact Play release from Internal Testing to Closed Testing and then Production without rebuilding it.
+When testing requires a code change, create a new AAB with a new version code in Internal Testing and restart the promotion path.
+Native access and refresh tokens are encrypted with Android Keystore.
 
 ## Entitlement administration
 

@@ -58,6 +58,21 @@ Evidence:
 - `compose.cloud.yml::services`
 - `deploy/OPERATIONS.md::Required preparation`
 
+### Deliver official Android bundles directly to Google Play
+
+Recorded: 2026-07-28
+Status: accepted
+Basis: user-confirmed
+Decision: Build official signed Android bundles on standard public-repository runners and upload them directly to the Google Play Internal Testing track without creating GitHub Actions artifacts.
+Promote the same Play release from Internal Testing to Closed Testing and then Production without rebuilding it.
+Rationale: The user wants to retain free public-repository build capacity while preventing official signed AABs from being distributed through GitHub.
+Consequences: The release workflow uses a dedicated testing-track Play service account, removes the temporary keystore after signing, has no artifact-upload step, and never accepts a production track as an input.
+A code change always creates a new version code and restarts testing from the Internal Testing track.
+
+Evidence:
+- `.github/workflows/android-release.yml::release-aab`
+- `tests/test_android_workflows.py::test_signed_aab_releases_directly_to_play_without_github_artifact`
+
 ### Use one runtime environment contract
 
 Recorded: 2026-07-24
