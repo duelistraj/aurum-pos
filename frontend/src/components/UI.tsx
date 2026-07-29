@@ -174,11 +174,13 @@ export const Button: React.FC<ButtonProps> = ({
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
+  trailingAction?: React.ReactNode;
 }
 
 export const Input: React.FC<InputProps> = ({
   label,
   error,
+  trailingAction,
   className = '',
   ...props
 }) => {
@@ -189,10 +191,15 @@ export const Input: React.FC<InputProps> = ({
           {label}
         </label>
       )}
-      <input
-        className={`ui-input ${error ? 'ui-input--error' : ''} ${className}`}
-        {...props}
-      />
+      <div className="ui-input-shell">
+        <input
+          className={`ui-input ${error ? 'ui-input--error' : ''} ${
+            trailingAction ? 'ui-input--with-trailing' : ''
+          } ${className}`}
+          {...props}
+        />
+        {trailingAction}
+      </div>
       {error && <p className="ui-field-error">{error}</p>}
     </div>
   );

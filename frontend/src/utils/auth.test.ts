@@ -29,6 +29,10 @@ const userInfo = {
   email: 'owner@example.com',
   memberships: [{
     shop_id: 'shop-id',
+    organization_id: 'organization-id',
+    organization_name: 'Test Organization',
+    is_primary: true,
+    access_mode: 'read_write' as const,
     shop_name: 'Test Shop',
     shop_slug: 'test-shop',
     role: 'OWNER' as const,

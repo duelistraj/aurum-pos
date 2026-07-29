@@ -17,4 +17,8 @@ router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 async def entitlement(
     context: ShopContext = Depends(get_shop_context), db: AsyncSession = Depends(get_db)
 ):
-    return await get_entitlement_response(db, context.shop.id)
+    return await get_entitlement_response(
+        db,
+        context.organization.id,
+        context.shop.id,
+    )

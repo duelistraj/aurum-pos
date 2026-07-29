@@ -9,7 +9,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.auth.dependencies import ShopContext, get_shop_context
+from app.modules.auth.dependencies import (
+    RequireWritableShop,
+    ShopContext,
+    get_shop_context,
+)
 from app.modules.sales.models import InvoiceJob, SaleIdempotency
 from app.modules.sales.schemas import (
     InvoiceDownloadOut,
@@ -26,7 +30,7 @@ from app.modules.sales.storage import InvoiceStorage, InvoiceStorageError, get_i
 router = APIRouter(prefix="/sales", tags=["Sales"])
 
 
-@router.post("/", response_model=SaleOut)
+@router.post("/", response_model=SaleOut, dependencies=[RequireWritableShop])
 async def create(
     data: SaleCreate,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=100)],

@@ -47,6 +47,7 @@ export const Subscription: React.FC = () => {
       !isCloudDistribution
       || Capacitor.getPlatform() !== 'android'
       || activeMembership?.role !== 'OWNER'
+      || entitlement.data?.plan === 'pro'
     ) return;
     setBillingAvailability('loading');
     setBillingError('');
@@ -67,7 +68,7 @@ export const Subscription: React.FC = () => {
             : 'Google Play Billing is temporarily unavailable.',
         );
       });
-  }, [activeMembership?.role]);
+  }, [activeMembership?.role, entitlement.data?.plan]);
 
   const refreshEntitlement = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) });
@@ -82,7 +83,7 @@ export const Subscription: React.FC = () => {
         productId: PLAY_PRODUCT_ID,
         basePlanId,
         obfuscatedAccountId: await sha256(user.user_id),
-        obfuscatedProfileId: await sha256(activeMembership.shop_id),
+        obfuscatedProfileId: await sha256(activeMembership.organization_id),
       });
       await apiClient.submitPlayPurchase(result.purchaseToken);
       await refreshEntitlement();
@@ -104,11 +105,13 @@ export const Subscription: React.FC = () => {
           await apiClient.submitPlayPurchase(purchaseResult.purchaseToken);
           restoredCount += 1;
         } catch {
-          // A Google account can hold purchases for several Aurum shops.
-          // The server accepts only the token linked to the selected shop.
+          // A Google account can hold purchases for several organizations.
+          // The server accepts only the token linked to the selected organization.
         }
       }
-      if (restoredCount === 0) throw new Error('No purchase belongs to this shop.');
+      if (restoredCount === 0) {
+        throw new Error('No purchase belongs to this organization.');
+      }
       await refreshEntitlement();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Restore failed');
@@ -124,7 +127,7 @@ export const Subscription: React.FC = () => {
     <div className="app-page app-page__container mx-auto max-w-2xl space-y-5 p-6 text-slate-900 dark:text-slate-100">
       <div className="app-page__header app-page__header--stacked">
         <h1>Aurum Cloud</h1>
-        <p>Manage this shop's plan and Google Play purchases.</p>
+        <p>Manage your organization's plan and Google Play purchases.</p>
       </div>
       {error && <Alert type="error" message={error} />}
       <Card className="p-6">
@@ -137,6 +140,28 @@ export const Subscription: React.FC = () => {
               {entitlement.data.active_item_count} of {entitlement.data.active_item_limit} active items
             </p>
           )}
+          {entitlement.data && (
+            <div className="grid gap-3 pt-2 sm:grid-cols-2">
+              <div className="rounded-app-control bg-slate-50 p-4 dark:bg-slate-950">
+                <p className="text-sm text-slate-500 dark:text-slate-400">Shops</p>
+                <p className="mt-1 font-bold">
+                  {entitlement.data.shop_count}
+                  {entitlement.data.shop_limit === null
+                    ? ' active'
+                    : ` of ${entitlement.data.shop_limit}`}
+                </p>
+              </div>
+              <div className="rounded-app-control bg-slate-50 p-4 dark:bg-slate-950">
+                <p className="text-sm text-slate-500 dark:text-slate-400">Team seats</p>
+                <p className="mt-1 font-bold">
+                  {entitlement.data.team_seat_usage}
+                  {entitlement.data.team_seat_limit === null
+                    ? ' used'
+                    : ` of ${entitlement.data.team_seat_limit}`}
+                </p>
+              </div>
+            </div>
+          )}
           {entitlement.data?.expires_at && (
             <p className="text-slate-600 dark:text-slate-300">
               Pro until {new Date(entitlement.data.expires_at).toLocaleDateString()}
@@ -145,7 +170,9 @@ export const Subscription: React.FC = () => {
         </div>
       </Card>
 
-      {activeMembership.role === 'OWNER' && isCloudDistribution && (
+      {activeMembership.role === 'OWNER'
+        && isCloudDistribution
+        && entitlement.data?.plan !== 'pro' && (
         <>
           {Capacitor.getPlatform() !== 'android' && (
             <Alert
@@ -213,15 +240,27 @@ export const Subscription: React.FC = () => {
           )}
         </>
       )}
+      {activeMembership.role === 'OWNER'
+        && isCloudDistribution
+        && entitlement.data?.plan === 'pro' && (
+        <Alert
+          type="success"
+          title="Pro is active for your organization"
+          message="All organization shops share this entitlement. Manage renewal from Google Play subscriptions."
+        />
+      )}
       {activeMembership.role !== 'OWNER' && isCloudDistribution && (
         <Alert
           type="info"
           title="Owner access required"
-          message="Only a shop owner can purchase or restore Aurum Cloud Pro for this shop."
+          message="Only the organization owner can purchase or restore Aurum Cloud Pro."
         />
       )}
       {!isCloudDistribution && (
-        <Alert type="success" message="Self-hosted Aurum POS includes unlimited active inventory." />
+        <Alert
+          type="success"
+          message="Self-hosted Aurum POS includes unlimited shops, team seats, and active inventory."
+        />
       )}
     </div>
   );

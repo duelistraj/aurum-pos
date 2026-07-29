@@ -14,8 +14,9 @@ from app.modules.auth.models import AccountDeletionRequest, User
 from app.modules.auth.security import hash_token
 from app.modules.billing.service import _encrypt_token, record_play_acknowledgement
 from app.modules.sales.models import Sale
-from app.modules.shops.models import Shop, ShopInvitation, ShopMembership
+from app.modules.shops.models import Organization, Shop, ShopInvitation, ShopMembership
 from app.modules.subscriptions.models import PlaySubscription, Subscription
+from tests.support import create_test_shop
 
 pytestmark = [
     pytest.mark.integration,
@@ -32,15 +33,19 @@ async def test_play_acknowledgement_failure_remains_durable_until_success() -> N
     settings.billing_token_encryption_key = Fernet.generate_key().decode()
     try:
         async with AsyncSessionLocal.begin() as session:
-            session.add(Shop(id=shop_id, name="Ack Test", slug=f"ack-{shop_id}"))
-            await session.flush()
+            await create_test_shop(
+                session,
+                shop_id=shop_id,
+                name="Ack Test",
+                slug=f"ack-{shop_id}",
+            )
             await session.execute(
                 text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
                 {"shop_id": str(shop_id)},
             )
             subscription = Subscription(
                 id=subscription_id,
-                shop_id=shop_id,
+                organization_id=shop_id,
                 source="play",
                 plan="pro",
                 status="active",
@@ -51,7 +56,7 @@ async def test_play_acknowledgement_failure_remains_durable_until_success() -> N
             session.add(
                 PlaySubscription(
                     subscription_id=subscription_id,
-                    shop_id=shop_id,
+                    organization_id=shop_id,
                     package_name=settings.google_play_package_name,
                     product_id=settings.google_play_product_id,
                     purchase_token=_encrypt_token(purchase_token),
@@ -89,7 +94,7 @@ async def test_play_acknowledgement_failure_remains_durable_until_success() -> N
     finally:
         settings.billing_token_encryption_key = previous_key
         async with AsyncSessionLocal.begin() as session:
-            await session.execute(delete(Shop).where(Shop.id == shop_id))
+            await session.execute(delete(Organization).where(Organization.id == shop_id))
 
 
 @pytest.mark.asyncio
@@ -115,8 +120,12 @@ async def test_shop_cleanup_cancels_billing_and_deletes_exact_invoice_keys(monke
 
     try:
         async with AsyncSessionLocal.begin() as session:
-            session.add(Shop(id=shop_id, name="Deletion Test", slug=f"delete-{shop_id}"))
-            await session.flush()
+            await create_test_shop(
+                session,
+                shop_id=shop_id,
+                name="Deletion Test",
+                slug=f"delete-{shop_id}",
+            )
             await session.execute(
                 text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
                 {"shop_id": str(shop_id)},
@@ -136,7 +145,7 @@ async def test_shop_cleanup_cancels_billing_and_deletes_exact_invoice_keys(monke
             )
             subscription = Subscription(
                 id=subscription_id,
-                shop_id=shop_id,
+                organization_id=shop_id,
                 source="play",
                 plan="pro",
                 status="active",
@@ -147,7 +156,7 @@ async def test_shop_cleanup_cancels_billing_and_deletes_exact_invoice_keys(monke
             session.add(
                 PlaySubscription(
                     subscription_id=subscription_id,
-                    shop_id=shop_id,
+                    organization_id=shop_id,
                     package_name=settings.google_play_package_name,
                     product_id=settings.google_play_product_id,
                     purchase_token=_encrypt_token("purchase-token"),
@@ -168,7 +177,7 @@ async def test_shop_cleanup_cancels_billing_and_deletes_exact_invoice_keys(monke
     finally:
         settings.billing_token_encryption_key = previous_key
         async with AsyncSessionLocal.begin() as session:
-            await session.execute(delete(Shop).where(Shop.id == shop_id))
+            await session.execute(delete(Organization).where(Organization.id == shop_id))
 
 
 @pytest.mark.asyncio
@@ -194,25 +203,21 @@ async def test_confirmed_deletion_removes_user_and_sole_owned_shop(monkeypatch) 
                 is_active=True,
             )
         )
-        session.add_all(
-            [
-                Shop(id=shop_id, name="Owned Shop", slug=f"owned-{shop_id}"),
-                Shop(
-                    id=surviving_shop_id,
-                    name="Surviving Shop",
-                    slug=f"surviving-{surviving_shop_id}",
-                ),
-            ]
+        await create_test_shop(
+            session,
+            shop_id=shop_id,
+            name="Owned Shop",
+            slug=f"owned-{shop_id}",
+            owner_user_id=user_id,
         )
-        await session.flush()
+        await create_test_shop(
+            session,
+            shop_id=surviving_shop_id,
+            name="Surviving Shop",
+            slug=f"surviving-{surviving_shop_id}",
+        )
         session.add_all(
             [
-                ShopMembership(
-                    shop_id=shop_id,
-                    user_id=user_id,
-                    role="OWNER",
-                    is_active=True,
-                ),
                 ShopInvitation(
                     id=invitation_id,
                     shop_id=surviving_shop_id,
@@ -255,7 +260,7 @@ async def test_confirmed_deletion_removes_user_and_sole_owned_shop(monkeypatch) 
         await session.execute(
             delete(AccountDeletionRequest).where(AccountDeletionRequest.id == request_id)
         )
-        await session.execute(delete(Shop).where(Shop.id == surviving_shop_id))
+        await session.execute(delete(Organization).where(Organization.id == surviving_shop_id))
 
 
 @pytest.mark.asyncio
@@ -278,18 +283,17 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
                     email=f"replacement-{replacement_id}@example.com",
                     full_name="Replacement Owner",
                 ),
-                Shop(id=shop_id, name="Transfer Race Shop", slug=f"race-{shop_id}"),
             ]
         )
-        await session.flush()
+        await create_test_shop(
+            session,
+            shop_id=shop_id,
+            name="Transfer Race Shop",
+            slug=f"race-{shop_id}",
+            owner_user_id=owner_id,
+        )
         session.add_all(
             [
-                ShopMembership(
-                    shop_id=shop_id,
-                    user_id=owner_id,
-                    role="OWNER",
-                    is_active=True,
-                ),
                 ShopMembership(
                     shop_id=shop_id,
                     user_id=replacement_id,
@@ -312,10 +316,10 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
 
     async def transfer_during_cleanup(
         _shop_id,
-        *,
-        request_id=None,
-        lease_token=None,
+        **kwargs,
     ) -> None:
+        request_id = kwargs.get("request_id")
+        lease_token = kwargs.get("lease_token")
         assert request_id is not None
         assert lease_token is None
         async with AsyncSessionLocal.begin() as session:
@@ -339,6 +343,9 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
                 .where(ShopMembership.id == by_user[replacement_id])
                 .values(role="OWNER")
             )
+            organization = await session.get(Organization, shop_id)
+            assert organization is not None
+            organization.owner_user_id = replacement_id
 
     monkeypatch.setattr(worker, "_cleanup_shop_external_data", transfer_during_cleanup)
 
@@ -361,5 +368,5 @@ async def test_account_deletion_revalidates_ownership_after_external_cleanup(mon
             await session.execute(
                 delete(AccountDeletionRequest).where(AccountDeletionRequest.id == request_id)
             )
-            await session.execute(delete(Shop).where(Shop.id == shop_id))
+            await session.execute(delete(Organization).where(Organization.id == shop_id))
             await session.execute(delete(User).where(User.id.in_((owner_id, replacement_id))))

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,6 +44,10 @@ describe('Transactions', () => {
       memberships: [],
       activeMembership: {
         shop_id: 'shop-1',
+        organization_id: 'organization-1',
+        organization_name: 'Demo Organization',
+        is_primary: true,
+        access_mode: 'read_write',
         shop_name: 'Demo Shop',
         shop_slug: 'demo',
         role: 'CASHIER',
@@ -155,6 +159,29 @@ describe('Transactions', () => {
         'INV-2026-000001.pdf',
       );
     });
+  });
+
+  it('expands one compact invoice row into complete mobile details', async () => {
+    const user = userEvent.setup();
+    renderTransactions('/transactions?tab=invoices');
+
+    const disclosure = await screen.findByRole('button', {
+      name: 'Show details for INV-2026-000001',
+    });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(disclosure);
+
+    expect(screen.getByRole('button', { name: 'Hide details for INV-2026-000001' }))
+      .toHaveAttribute('aria-expanded', 'true');
+    const details = document.getElementById('invoice-details-sale-1');
+    expect(details).not.toBeNull();
+    expect(within(details!).getByText('Aditi Customer')).toBeInTheDocument();
+    expect(within(details!).getByText('9999999999')).toBeInTheDocument();
+    expect(within(details!).getByText('₹12,500.00')).toBeInTheDocument();
+    expect(within(details!).getByRole('button', {
+      name: 'Download INV-2026-000001 from details',
+    })).toBeEnabled();
   });
 
   it('shows an invoice download handoff failure to the cashier', async () => {

@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     deployment_mode: DeploymentMode = DeploymentMode.SELF_HOSTED
     free_active_item_limit: int = 50
+    free_shop_limit: int = Field(default=1, ge=1)
+    pro_shop_limit: int = Field(default=3, ge=1)
+    free_team_seat_limit: int = Field(default=2, ge=1)
+    pro_team_seat_limit: int = Field(default=10, ge=1)
     source_repository_url: str = "https://github.com/duelistraj/aurum-pos"
     git_sha: str = "development"
     aurum_image_digest: str = "development"

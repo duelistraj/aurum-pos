@@ -111,15 +111,27 @@ async def grant_subscription(args: argparse.Namespace) -> None:
     async with AsyncSessionLocal.begin() as session:
         shop = await _get_shop(session, args.shop)
         await session.execute(
-            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-            {"shop_id": str(shop.id)},
+            text(
+                """
+                SELECT set_config('app.current_shop_id', :shop_id, true),
+                       set_config(
+                         'app.current_organization_id',
+                         :organization_id,
+                         true
+                       )
+                """
+            ),
+            {
+                "shop_id": str(shop.id),
+                "organization_id": str(shop.organization_id),
+            },
         )
         starts_at = datetime.fromisoformat(args.starts_at).astimezone(UTC)
         expires_at = (
             datetime.fromisoformat(args.expires_at).astimezone(UTC) if args.expires_at else None
         )
         subscription = Subscription(
-            shop_id=shop.id,
+            organization_id=shop.organization_id,
             source=args.source,
             plan="pro",
             status="active",
@@ -158,7 +170,7 @@ async def import_items(args: argparse.Namespace) -> None:
             text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
             {"shop_id": str(shop.id)},
         )
-        if await session.scalar(select(Item.id).limit(1)):
+        if await session.scalar(select(Item.id).where(Item.shop_id == shop.id).limit(1)):
             raise ValueError("Target shop already contains items")
         imported_items: list[Item] = []
         for row in items:

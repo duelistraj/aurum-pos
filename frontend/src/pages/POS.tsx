@@ -20,7 +20,7 @@ import {
   getCheckoutIdempotencyKey,
 } from '../utils/checkout';
 
-const FIXED_MAKING_CATEGORIES = new Set(['ring', 'other', 'pendant']);
+const FIXED_MAKING_CATEGORIES = new Set(['unique', 'other']);
 
 const isFixedMakingCategory = (category: string) =>
   FIXED_MAKING_CATEGORIES.has(category.toLowerCase());
@@ -45,6 +45,7 @@ export const POS: React.FC = () => {
   const queryClient = useQueryClient();
   const { activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
+  const isReadOnly = activeMembership?.access_mode === 'read_only';
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [barcode, setBarcode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -82,10 +83,10 @@ export const POS: React.FC = () => {
   // Open scanner if scan query param is present
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (params.get('scan') === 'true') {
+    if (params.get('scan') === 'true' && !isReadOnly) {
       setShowCameraScanner(true);
     }
-  }, [location.search]);
+  }, [isReadOnly, location.search]);
 
   const stopCamera = React.useCallback(() => {
     if (streamRef.current) {
@@ -97,6 +98,10 @@ export const POS: React.FC = () => {
   const scanBarcode = React.useCallback(async (barcodeValue: string) => {
     const trimmedValue = barcodeValue.trim();
     if (!trimmedValue) return;
+    if (isReadOnly) {
+      setError('Restore Pro to process sales in this additional shop.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -141,7 +146,7 @@ export const POS: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isReadOnly]);
 
   const handleScanBarcode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -298,6 +303,10 @@ export const POS: React.FC = () => {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) {
+      setError('Restore Pro to process sales in this additional shop.');
+      return;
+    }
     if (!customerDetails.name || !customerDetails.phone) {
       setError('Customer name and phone are required');
       return;
@@ -360,6 +369,13 @@ export const POS: React.FC = () => {
 
         {/* Alerts */}
         <div className="flex-shrink-0 space-y-2 mb-4">
+          {isReadOnly && (
+            <Alert
+              type="warning"
+              title="This shop is read-only"
+              message="Your organization is on the Free plan. Restore Pro to scan inventory or complete sales in this additional shop."
+            />
+          )}
           {error && (
             <Alert
               type="error"
@@ -390,13 +406,14 @@ export const POS: React.FC = () => {
                     placeholder="Scan or type barcode here..."
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
+                    disabled={isReadOnly}
                     autoFocus
                     className="flex-1 text-lg py-3 rounded-app-control focus:ring-amber-500"
                   />
                   <Button
                     type="submit"
                     isLoading={loading}
-                    disabled={!barcode.trim()}
+                    disabled={isReadOnly || !barcode.trim()}
                     className="px-6 py-3 rounded-app-control h-[46px] flex items-center justify-center"
                   >
                     <Plus className="w-5 h-5" />
@@ -519,7 +536,7 @@ export const POS: React.FC = () => {
               <div className="space-y-3 flex-shrink-0 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <Button
                   onClick={() => setShowCheckout(true)}
-                  disabled={cart.length === 0}
+                  disabled={isReadOnly || cart.length === 0}
                   className="w-full py-3.5 text-base font-bold rounded-app-control shadow-md"
                 >
                   Proceed to Checkout
@@ -554,6 +571,7 @@ export const POS: React.FC = () => {
               <Button
                 onClick={handleCheckout}
                 isLoading={loading}
+                disabled={isReadOnly}
                 className="rounded-app-control px-5"
               >
                 Complete Sale

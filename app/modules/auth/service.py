@@ -134,11 +134,14 @@ async def build_token_response(
         memberships=[
             MembershipResponse(
                 shop_id=membership.shop_id,
+                organization_id=organization.id,
+                organization_name=organization.name,
+                is_primary=organization.primary_shop_id == shop.id,
                 shop_name=shop.name,
                 shop_slug=shop.slug,
                 role=membership.role,
             )
-            for membership, shop in memberships
+            for membership, shop, organization in memberships
         ],
     )
 

@@ -22,7 +22,7 @@ from app.modules.sales.storage import (
     InvoiceUploadMetadata,
     get_invoice_storage,
 )
-from app.modules.shops.models import Shop, ShopMembership
+from app.modules.shops.models import Organization, ShopMembership
 from app.worker import process_invoice_jobs
 
 pytestmark = [
@@ -759,35 +759,15 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 headers=headers,
                 json={"target_membership_id": second_membership["id"]},
             )
-            assert transferred.status_code == 200, transferred.text
-            assert transferred.json()["role"] == "OWNER"
-            old_owner_cannot_transfer = await client.post(
-                f"/api/v1/shops/{shop_id}/ownership",
-                headers=headers,
-                json={"target_membership_id": second_membership["id"]},
-            )
-            assert old_owner_cannot_transfer.status_code == 403
-            new_owner_staff = await client.get(
-                f"/api/v1/shops/{shop_id}/members",
-                headers=second_primary_headers,
-            )
-            assert new_owner_staff.status_code == 200, new_owner_staff.text
-            original_owner = next(
-                member for member in new_owner_staff.json() if member["email"] == email
-            )
-            transferred_back = await client.post(
-                f"/api/v1/shops/{shop_id}/ownership",
-                headers=second_primary_headers,
-                json={"target_membership_id": original_owner["id"]},
-            )
-            assert transferred_back.status_code == 200, transferred_back.text
+            assert transferred.status_code == 409, transferred.text
+            assert transferred.json()["detail"] == ("The target already owns another organization")
     finally:
         app.dependency_overrides.pop(get_invoice_storage, None)
         async with AsyncSessionLocal.begin() as session:
             if second_shop_id is not None:
-                await session.execute(delete(Shop).where(Shop.id == second_shop_id))
+                await session.execute(delete(Organization).where(Organization.id == second_shop_id))
             if shop_id is not None:
-                await session.execute(delete(Shop).where(Shop.id == shop_id))
+                await session.execute(delete(Organization).where(Organization.id == shop_id))
             if second_user_id is not None:
                 await session.execute(delete(User).where(User.id == second_user_id))
             if user_id is not None:

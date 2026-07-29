@@ -7,5 +7,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts"]
+  "include": ["releaseVersion.ts", "vite.config.ts", "vitest.config.ts"]
 }

@@ -12,8 +12,7 @@ import {
   LogOut,
   Moon,
   Package,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Plus,
   Settings,
   ShoppingCart,
   Store,
@@ -25,6 +24,9 @@ import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
+import { APP_VERSION } from '../utils/version';
+import { setActiveShopId as persistActiveShopId } from '../utils/auth';
+import { Button, Modal } from './UI';
 import { BrandLockup } from './Brand';
 
 type OpenMenu = 'shop' | 'account' | null;
@@ -47,14 +49,12 @@ const NAV_ITEMS: NavItem[] = [
 interface NavbarProps {
   collapsed: boolean;
   mobileOpen: boolean;
-  onToggleCollapsed: () => void;
   onCloseMobile: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   collapsed,
   mobileOpen,
-  onToggleCollapsed,
   onCloseMobile,
 }) => {
   const { appName, isDarkMode, toggleDarkMode } = useConfig();
@@ -75,13 +75,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   });
   const [openMenu, setOpenMenu] = React.useState<OpenMenu>(null);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [showCreateShop, setShowCreateShop] = React.useState(false);
+  const [newShopName, setNewShopName] = React.useState('');
+  const [creatingShop, setCreatingShop] = React.useState(false);
+  const [createShopError, setCreateShopError] = React.useState('');
   const menuAreaRef = React.useRef<HTMLDivElement>(null);
   const shopTriggerRef = React.useRef<HTMLButtonElement>(null);
   const accountTriggerRef = React.useRef<HTMLButtonElement>(null);
   const shopOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const isPro = entitlement.data?.plan === 'pro';
   const planDescription = isPro
-    ? 'Active for this shop'
+    ? 'Active for this organization'
     : entitlement.data
       ? `${entitlement.data.active_item_count}/${entitlement.data.active_item_limit} active items`
       : 'View plan and billing';
@@ -166,6 +170,32 @@ export const Navbar: React.FC<NavbarProps> = ({
     onCloseMobile();
   };
 
+  const createShop = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!activeMembership || !newShopName.trim() || creatingShop) return;
+    setCreatingShop(true);
+    setCreateShopError('');
+    try {
+      const created = await apiClient.createShop(
+        activeMembership.organization_id,
+        newShopName.trim(),
+      );
+      await persistActiveShopId(created.id);
+      await reload();
+      queryClient.clear();
+      setNewShopName('');
+      setShowCreateShop(false);
+      setOpenMenu(null);
+      navigate('/', { replace: true });
+    } catch (caught) {
+      setCreateShopError(
+        caught instanceof Error ? caught.message : 'Unable to create shop',
+      );
+    } finally {
+      setCreatingShop(false);
+    }
+  };
+
   return (
     <>
       {mobileOpen ? (
@@ -179,17 +209,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${mobileOpen ? ' sidebar--mobile-open' : ''}`}>
         <div className="sidebar__topline">
           <Link to="/" className="sidebar__brand" aria-label={`${appName} dashboard`} onClick={handleNavigation}>
-            <BrandLockup appName={appName || 'Aurum POS'} isPro={isPro} compact={collapsed} />
+            <BrandLockup appName={appName || 'Aurum POS'} isPro={isPro} />
           </Link>
-          <button
-            type="button"
-            className="sidebar__icon-button sidebar__collapse-button"
-            onClick={onToggleCollapsed}
-            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-            title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-          >
-            {collapsed ? <PanelLeftOpen className="sidebar__icon" /> : <PanelLeftClose className="sidebar__icon" />}
-          </button>
           <button
             type="button"
             className="sidebar__icon-button sidebar__mobile-close"
@@ -269,6 +290,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     );
                   })}
+                  {activeMembership?.role === 'OWNER' ? (
+                    <>
+                      <div className="sidebar__menu-divider" />
+                      <button
+                        type="button"
+                        className="sidebar__menu-option"
+                        disabled={
+                          !entitlement.data
+                          || (
+                            entitlement.data.plan === 'pro'
+                            && !entitlement.data.can_create_shop
+                          )
+                        }
+                        onClick={() => {
+                          setOpenMenu(null);
+                          if (entitlement.data?.can_create_shop) {
+                            setShowCreateShop(true);
+                          } else {
+                            navigate('/subscription');
+                            onCloseMobile();
+                          }
+                        }}
+                      >
+                        <Plus className="sidebar__menu-icon" />
+                        <span>
+                          {entitlement.data?.can_create_shop
+                            ? 'Add another shop'
+                            : entitlement.data?.plan === 'free'
+                              ? 'Upgrade to add a shop'
+                              : 'Shop limit reached'}
+                        </span>
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -318,7 +373,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span className="sidebar__menu-option-description">{planDescription}</span>
                   </span>
                 </Link>
-                {activeMembership && ['OWNER', 'ADMIN'].includes(activeMembership.role) ? (
+                {activeMembership
+                  && activeMembership.access_mode !== 'read_only'
+                  && ['OWNER', 'ADMIN'].includes(activeMembership.role) ? (
                   <Link
                     to="/manage-shop"
                     role="menuitem"
@@ -349,6 +406,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <ExternalLink className="sidebar__menu-icon" />
                   <span>View source on GitHub</span>
                 </a>
+                <div className="sidebar__version">
+                  <span>Version</span>
+                  <span className="sidebar__version-number">{APP_VERSION}</span>
+                </div>
                 <div className="sidebar__menu-divider" />
                 <button
                   type="button"
@@ -366,6 +427,57 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
       </aside>
+      <Modal
+        isOpen={showCreateShop}
+        title="Add another shop"
+        onClose={() => {
+          if (!creatingShop) {
+            setShowCreateShop(false);
+            setCreateShopError('');
+          }
+        }}
+        footer={(
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={creatingShop}
+              onClick={() => setShowCreateShop(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="create-shop-form"
+              isLoading={creatingShop}
+            >
+              Create shop
+            </Button>
+          </>
+        )}
+      >
+        <form id="create-shop-form" className="space-y-4" onSubmit={(event) => void createShop(event)}>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            The new shop starts with its own empty inventory, rates, and invoice sequence.
+          </p>
+          {createShopError ? (
+            <p className="text-sm font-semibold text-red-600" role="alert">
+              {createShopError}
+            </p>
+          ) : null}
+          <label className="block text-sm font-semibold">
+            Shop name
+            <input
+              type="text"
+              required
+              maxLength={150}
+              value={newShopName}
+              onChange={(event) => setNewShopName(event.target.value)}
+              className="mt-2 w-full rounded-app-control border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-950"
+            />
+          </label>
+        </form>
+      </Modal>
     </>
   );
 };

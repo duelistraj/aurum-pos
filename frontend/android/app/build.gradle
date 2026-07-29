@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+def appVersionName = file('../../../VERSION').getText('UTF-8').trim()
+if (!appVersionName) {
+    throw new GradleException('VERSION must contain the Aurum POS release version')
+}
+
 android {
     namespace = "com.duelistraj.aurumpos"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -11,7 +16,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode Integer.parseInt(System.getenv("ANDROID_VERSION_CODE") ?: "1")
-        versionName "1.0"
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

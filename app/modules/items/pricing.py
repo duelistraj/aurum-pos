@@ -5,7 +5,7 @@ from app.modules.items.tax import get_tax_profile
 type DecimalLike = Decimal | int | float | str
 MONEY_QUANTUM = Decimal("0.01")
 HUNDRED = Decimal("100")
-FIXED_MAKING_CATEGORIES = frozenset({"unique", "ring", "other", "pendant"})
+FIXED_MAKING_CATEGORIES = frozenset({"unique", "other"})
 
 
 def as_decimal(value: DecimalLike) -> Decimal:

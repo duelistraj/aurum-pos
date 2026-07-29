@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { RELEASE_VERSION } from './releaseVersion'
 
 const LOCAL_API_URL = 'http://localhost:8080'
 const LOCAL_DEV_PORT = 5174
@@ -31,6 +32,9 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [react()],
+    define: {
+      __APP_VERSION__: JSON.stringify(RELEASE_VERSION),
+    },
     server: {
       port: LOCAL_DEV_PORT,
       strictPort: true,

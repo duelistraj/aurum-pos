@@ -2,6 +2,7 @@ import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -101,6 +102,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
   const [page, setPage] = React.useState(1);
   const [cursorByPage, setCursorByPage] = React.useState<Record<number, InvoiceCursor>>({});
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
+  const [expandedInvoiceId, setExpandedInvoiceId] = React.useState<string | null>(null);
   const [downloadError, setDownloadError] = React.useState('');
   const queryParams = {
     page,
@@ -123,6 +125,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     setAppliedFilters({ ...filters });
     setPage(1);
     setCursorByPage({});
+    setExpandedInvoiceId(null);
   };
 
   const resetFilters = () => {
@@ -130,6 +133,24 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     setAppliedFilters(EMPTY_FILTERS);
     setPage(1);
     setCursorByPage({});
+    setExpandedInvoiceId(null);
+  };
+
+  React.useEffect(() => {
+    setExpandedInvoiceId(null);
+  }, [shopId]);
+
+  const toggleExpandedInvoice = (saleId: string) => {
+    setExpandedInvoiceId((current) => current === saleId ? null : saleId);
+  };
+
+  const handleMobileRowClick = (
+    event: React.MouseEvent<HTMLTableRowElement>,
+    saleId: string,
+  ) => {
+    if (window.matchMedia?.('(min-width: 640px)').matches) return;
+    if ((event.target as HTMLElement).closest('button, input, a')) return;
+    toggleExpandedInvoice(saleId);
   };
 
   const downloadInvoice = async (invoice: InvoiceSummary) => {
@@ -259,68 +280,161 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left">
+            <table className="w-full table-fixed text-left sm:min-w-[820px] sm:table-auto">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-950/60 dark:text-slate-400">
                 <tr>
-                  <th className="px-5 py-3 font-bold">Invoice</th>
-                  <th className="px-5 py-3 font-bold">Customer</th>
-                  <th className="px-5 py-3 font-bold">Date</th>
-                  <th className="px-5 py-3 text-right font-bold">Amount</th>
-                  <th className="px-5 py-3 font-bold">Status</th>
-                  <th className="px-5 py-3 text-right font-bold">Action</th>
+                  <th className="w-[7.5rem] px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Invoice</th>
+                  <th className="hidden px-5 py-3 font-bold sm:table-cell">Customer</th>
+                  <th className="hidden px-5 py-3 font-bold sm:table-cell">Date</th>
+                  <th className="w-[5.5rem] px-2 py-3 text-right text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Amount</th>
+                  <th className="w-[5.5rem] px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Status</th>
+                  <th className="hidden px-5 py-3 text-right font-bold sm:table-cell">Action</th>
+                  <th className="w-11 px-1 py-3 sm:hidden">
+                    <span className="sr-only">Details</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {invoices.map((invoice) => {
                   const status = STATUS_PRESENTATION[invoice.pdf_status];
                   const isDownloading = downloadingId === invoice.sale_id;
+                  const isExpanded = expandedInvoiceId === invoice.sale_id;
+                  const detailsId = `invoice-details-${invoice.sale_id}`;
                   return (
-                    <tr
-                      key={invoice.sale_id}
-                      className="bg-white transition-colors hover:bg-slate-50/70 dark:bg-slate-900 dark:hover:bg-slate-800/50"
-                    >
-                      <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">
-                        {invoice.invoice_no}
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">
-                          {invoice.customer_name}
-                        </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {invoice.customer_phone}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
-                        <span className="flex items-center gap-2">
-                          <CalendarDays className="h-4 w-4 text-slate-400" />
-                          {formatDate(invoice.created_at)}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right font-bold text-slate-900 dark:text-white">
-                        {formatCurrency(invoice.total_amount)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge variant={status.variant}>{status.label}</Badge>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
-                          isLoading={isDownloading}
-                          disabled={downloadingId !== null}
-                          aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no}`}
-                          onClick={() => void downloadInvoice(invoice)}
-                        >
-                          {invoice.pdf_status === 'failed' ? (
-                            <RefreshCw className="h-4 w-4" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
-                          <span>{invoice.pdf_status === 'failed' ? 'Retry' : 'Download'}</span>
-                        </Button>
-                      </td>
-                    </tr>
+                    <React.Fragment key={invoice.sale_id}>
+                      <tr
+                        onClick={(event) => handleMobileRowClick(event, invoice.sale_id)}
+                        className="bg-white transition-colors hover:bg-slate-50/70 max-sm:cursor-pointer dark:bg-slate-900 dark:hover:bg-slate-800/50"
+                      >
+                        <td className="min-w-0 px-2 py-3 font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4">
+                          <span title={invoice.invoice_no} className="block truncate text-xs sm:text-base">
+                            {invoice.invoice_no}
+                          </span>
+                        </td>
+                        <td className="hidden px-5 py-4 sm:table-cell">
+                          <p className="font-semibold text-slate-800 dark:text-slate-200">
+                            {invoice.customer_name}
+                          </p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {invoice.customer_phone}
+                          </p>
+                        </td>
+                        <td className="hidden px-5 py-4 text-sm text-slate-600 dark:text-slate-300 sm:table-cell">
+                          <span className="flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4 text-slate-400" />
+                            {formatDate(invoice.created_at)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-3 text-right text-xs font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4 sm:text-base">
+                          {formatCurrency(invoice.total_amount)}
+                        </td>
+                        <td className="px-2 py-3 sm:px-5 sm:py-4">
+                          <Badge variant={status.variant}>{status.label}</Badge>
+                        </td>
+                        <td className="hidden px-5 py-4 text-right sm:table-cell">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
+                            isLoading={isDownloading}
+                            disabled={downloadingId !== null}
+                            aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no}`}
+                            onClick={() => void downloadInvoice(invoice)}
+                          >
+                            {invoice.pdf_status === 'failed' ? (
+                              <RefreshCw className="h-4 w-4" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                            <span>{invoice.pdf_status === 'failed' ? 'Retry' : 'Download'}</span>
+                          </Button>
+                        </td>
+                        <td className="px-1 py-2 sm:hidden">
+                          <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            aria-controls={detailsId}
+                            aria-label={`${isExpanded ? 'Hide' : 'Show'} details for ${invoice.invoice_no}`}
+                            onClick={() => toggleExpandedInvoice(invoice.sale_id)}
+                            className="flex h-11 w-11 items-center justify-center rounded-app-control text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                          >
+                            <ChevronDown
+                              aria-hidden="true"
+                              className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded ? (
+                        <tr id={detailsId} className="bg-slate-50/60 dark:bg-slate-950/40 sm:hidden">
+                          <td colSpan={4} className="px-3 pb-4 pt-2">
+                            <div className="grid grid-cols-2 gap-3 rounded-app-inset border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                              <div className="col-span-2">
+                                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                  Invoice
+                                </p>
+                                <p className="mt-1 break-all text-sm font-bold text-slate-900 dark:text-white">
+                                  {invoice.invoice_no}
+                                </p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                  Customer
+                                </p>
+                                <p className="mt-1 break-words text-sm font-bold text-slate-900 dark:text-white">
+                                  {invoice.customer_name}
+                                </p>
+                                <p className="mt-0.5 break-all text-sm text-slate-500 dark:text-slate-400">
+                                  {invoice.customer_phone}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                  Date
+                                </p>
+                                <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                  {formatDate(invoice.created_at)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                  Total
+                                </p>
+                                <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
+                                  {formatCurrency(invoice.total_amount)}
+                                </p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                                  PDF status
+                                </p>
+                                <Badge variant={status.variant}>{status.label}</Badge>
+                              </div>
+                              <div className="col-span-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+                                <Button
+                                  type="button"
+                                  className="w-full"
+                                  variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
+                                  isLoading={isDownloading}
+                                  disabled={downloadingId !== null}
+                                  aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no} from details`}
+                                  onClick={() => void downloadInvoice(invoice)}
+                                >
+                                  {invoice.pdf_status === 'failed' ? (
+                                    <RefreshCw className="h-4 w-4" />
+                                  ) : (
+                                    <Download className="h-4 w-4" />
+                                  )}
+                                  <span>
+                                    {invoice.pdf_status === 'failed' ? 'Retry invoice' : 'Download invoice'}
+                                  </span>
+                                </Button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -335,7 +449,10 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
               size="sm"
               variant="secondary"
               disabled={page <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() => {
+                setPage((current) => Math.max(1, current - 1));
+                setExpandedInvoiceId(null);
+              }}
             >
               <ChevronLeft className="h-4 w-4" />
               <span>Previous</span>
@@ -357,6 +474,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                   [page + 1]: { createdAt, id },
                 }));
                 setPage((current) => current + 1);
+                setExpandedInvoiceId(null);
               }}
             >
               <span>Next</span>

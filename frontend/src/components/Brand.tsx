@@ -24,8 +24,8 @@ export const BrandLockup: React.FC<BrandLockupProps> = ({ appName, isPro, compac
     <AurumMark className="brand-mark" />
     {!compact ? (
       <span className="brand-lockup__name">
-        {appName}
-        {isPro ? <sup>Pro</sup> : null}
+        <span className="brand-lockup__title">{appName}</span>
+        {isPro ? <sup className="brand-lockup__plan">Pro</sup> : null}
       </span>
     ) : null}
   </div>

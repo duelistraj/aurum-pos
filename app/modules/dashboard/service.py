@@ -7,12 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
 from app.modules.items.models import Item, ItemHistory
+from app.modules.items.pricing import FIXED_MAKING_CATEGORIES
 from app.modules.metal_rates.models import MetalRateHistory
 from app.modules.sales.models import Sale, SaleItem
 from app.modules.shops.models import Shop
 
 HUNDRED = Decimal("100")
-FIXED_MAKING_CATEGORIES = ("ring", "other", "pendant")
 
 
 def _change_percentage(current: Decimal | int, previous: Decimal | int) -> float:

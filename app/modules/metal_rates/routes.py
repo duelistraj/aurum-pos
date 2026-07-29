@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.auth.dependencies import RequireManager, ShopContext, get_shop_context
+from app.modules.auth.dependencies import (
+    RequireManager,
+    RequireWritableShop,
+    ShopContext,
+    get_shop_context,
+)
 from app.modules.metal_rates.schemas import MetalRateCreate
 from app.modules.metal_rates.service import (
     add_metal_rate,
@@ -31,7 +36,7 @@ async def get_metals(
     return metals
 
 
-@router.post("/", dependencies=[RequireManager])
+@router.post("/", dependencies=[RequireManager, RequireWritableShop])
 async def create_rate(
     data: MetalRateCreate,
     context: ShopContext = Depends(get_shop_context),

@@ -1,6 +1,13 @@
 import React from 'react';
 import { Capacitor } from '@capacitor/core';
-import { ArrowLeft, CheckCircle2, MailCheck, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  MailCheck,
+  ShieldCheck,
+} from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, apiClient, type TokenResponse } from '../api/client';
 import { BrandLockup } from '../components/Brand';
@@ -58,6 +65,7 @@ export const Login: React.FC = () => {
   const [mode, setMode] = React.useState<AuthMode>('login');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [passwordVisible, setPasswordVisible] = React.useState(false);
   const [fullName, setFullName] = React.useState('');
   const [shopName, setShopName] = React.useState('');
   const [invitationToken, setInvitationToken] = React.useState('');
@@ -147,6 +155,7 @@ export const Login: React.FC = () => {
 
   const changeMode = (nextMode: AuthMode) => {
     setMode(nextMode);
+    setPasswordVisible(false);
     setError('');
     setMessage('');
     setGoogleOnboarding(null);
@@ -172,6 +181,7 @@ export const Login: React.FC = () => {
           await apiClient.verifyEmail(response.verification_token);
           setMessage('Account verified. You can now sign in.');
           setMode('login');
+          setPasswordVisible(false);
         } else {
           setVerificationEmail(email.trim().toLowerCase());
           setResendCooldown(VERIFICATION_RESEND_COOLDOWN_SECONDS);
@@ -492,13 +502,28 @@ export const Login: React.FC = () => {
           <Input
             id="password"
             label="Password"
-            type="password"
+            type={passwordVisible ? 'text' : 'password'}
             required
             minLength={isRegister || mode === 'staff' ? 12 : undefined}
             autoComplete={isLogin ? 'current-password' : 'new-password'}
             placeholder={isLogin ? 'Enter your password' : 'At least 12 characters'}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            trailingAction={(
+              <button
+                type="button"
+                className="ui-input__trailing-action"
+                aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                aria-pressed={passwordVisible}
+                onClick={() => setPasswordVisible((current) => !current)}
+              >
+                {passwordVisible ? (
+                  <EyeOff aria-hidden="true" />
+                ) : (
+                  <Eye aria-hidden="true" />
+                )}
+              </button>
+            )}
           />
           {isLogin ? (
             <a

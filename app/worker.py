@@ -16,6 +16,7 @@ from app.core.logging import configure_logging
 from app.jobs.account_deletions import process_account_deletions
 from app.jobs.emails import process_email_batch
 from app.jobs.invoices import process_invoice_jobs
+from app.jobs.ownership_transfers import process_organization_ownership_transfers
 from app.modules.billing.service import (
     apply_play_purchase,
     decrypt_purchase_token,
@@ -33,7 +34,7 @@ WORKER_STARTED_AT = datetime.now(UTC)
 @dataclass(frozen=True)
 class PlayTarget:
     subscription_id: UUID
-    shop_id: UUID
+    organization_id: UUID
     purchase_token: str
     product_id: str
     lease_token: UUID
@@ -74,7 +75,7 @@ async def _claim_play_reconciliation() -> list[PlayTarget]:
         return [
             PlayTarget(
                 subscription_id=row.subscription_id,
-                shop_id=row.shop_id,
+                organization_id=row.organization_id,
                 purchase_token=decrypt_purchase_token(row.purchase_token),
                 product_id=row.product_id,
                 lease_token=row.verification_lease_token,
@@ -88,14 +89,14 @@ async def _reconcile_play_target(target: PlayTarget) -> None:
     needs_acknowledgement = False
     try:
         purchase, play_client = await fetch_play_purchase(
-            shop_id=target.shop_id,
+            organization_id=target.organization_id,
             purchase_token=target.purchase_token,
             product_id=target.product_id,
         )
         async with AsyncSessionLocal.begin() as session:
             await session.execute(
-                text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-                {"shop_id": str(target.shop_id)},
+                text("SELECT set_config('app.current_organization_id', :organization_id, true)"),
+                {"organization_id": str(target.organization_id)},
             )
             row = await session.scalar(
                 select(PlaySubscription)
@@ -109,7 +110,7 @@ async def _reconcile_play_target(target: PlayTarget) -> None:
                 return
             _subscription, _state, needs_acknowledgement = await apply_play_purchase(
                 session,
-                shop_id=target.shop_id,
+                organization_id=target.organization_id,
                 purchase_token=target.purchase_token,
                 product_id=target.product_id,
                 purchase=purchase,
@@ -137,7 +138,10 @@ async def _reconcile_play_target(target: PlayTarget) -> None:
             row.verification_lease_until = None
             row.verification_lease_token = None
     except Exception as exc:
-        LOGGER.exception("Play reconciliation failed for shop %s", target.shop_id)
+        LOGGER.exception(
+            "Play reconciliation failed for organization %s",
+            target.organization_id,
+        )
         async with AsyncSessionLocal.begin() as session:
             row = await session.scalar(
                 select(PlaySubscription)
@@ -277,6 +281,7 @@ async def run_once(*, reconcile: bool, cleanup: bool = False) -> None:
         process_email_batch(),
         process_invoice_jobs(),
         process_account_deletions(),
+        process_organization_ownership_transfers(),
     ]
     if reconcile:
         tasks.append(reconcile_play_subscriptions())
@@ -304,6 +309,11 @@ async def run_forever() -> None:
         periodic("email", process_email_batch, interval_seconds=2),
         periodic("invoice", process_invoice_jobs, interval_seconds=2),
         periodic("account-deletion", process_account_deletions, interval_seconds=10),
+        periodic(
+            "ownership-transfer",
+            process_organization_ownership_transfers,
+            interval_seconds=10,
+        ),
         periodic("play-reconciliation", reconcile_play_subscriptions, interval_seconds=30),
         periodic("retention-cleanup", cleanup_expired_records, interval_seconds=3600),
     )

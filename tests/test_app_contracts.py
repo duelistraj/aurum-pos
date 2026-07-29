@@ -91,6 +91,7 @@ async def test_version_reports_deployment_identity() -> None:
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     assert len(response.headers["x-request-id"]) == 36
+    assert response.json()["version"] == "0.2.0"
     assert response.json()["revision"] == "development"
     assert response.json()["image_digest"] == "development"
     assert response.json()["config_revision"] == "development"

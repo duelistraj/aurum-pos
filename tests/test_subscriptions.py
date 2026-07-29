@@ -22,7 +22,9 @@ async def test_self_hosted_entitlement_uses_pro_plan() -> None:
 
     assert entitlement.plan == "pro"
     assert entitlement.source == "self_hosted"
-    assert entitlement.limit is None
+    assert entitlement.item_limit is None
+    assert entitlement.shop_limit is None
+    assert entitlement.team_seat_limit is None
 
 
 @pytest.mark.asyncio
@@ -33,7 +35,7 @@ async def test_play_purchase_rejects_old_product() -> None:
         with pytest.raises(HTTPException) as caught:
             await verify_play_purchase(
                 cast(AsyncSession, None),
-                shop_id=uuid4(),
+                organization_id=uuid4(),
                 purchase_token="purchase-token",
                 product_id="aurum_cloud_premium",
             )

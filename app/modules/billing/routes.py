@@ -36,33 +36,53 @@ async def submit_purchase(
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
+    organization_id = context.organization.id
     shop_id = context.shop.id
     await db.commit()
     purchase, play_client = await fetch_play_purchase(
-        shop_id=shop_id,
+        organization_id=organization_id,
         purchase_token=data.purchase_token,
         product_id=data.product_id,
     )
     async with AsyncSessionLocal.begin() as session:
         await session.execute(
-            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-            {"shop_id": str(shop_id)},
+            text(
+                """
+                SELECT set_config('app.current_shop_id', :shop_id, true),
+                       set_config(
+                         'app.current_organization_id',
+                         :organization_id,
+                         true
+                       )
+                """
+            ),
+            {
+                "shop_id": str(shop_id),
+                "organization_id": str(organization_id),
+            },
         )
         _subscription, state, needs_acknowledgement = await apply_play_purchase(
             session,
-            shop_id=shop_id,
+            organization_id=organization_id,
             purchase_token=data.purchase_token,
             product_id=data.product_id,
             purchase=purchase,
         )
-        entitlement = await get_entitlement_response(session, shop_id)
+        entitlement = await get_entitlement_response(
+            session,
+            organization_id,
+            shop_id,
+        )
     if needs_acknowledgement:
         acknowledgement_error: Exception | None = None
         try:
             await play_client.acknowledge(data.purchase_token)
         except GooglePlayError as exc:
             acknowledgement_error = exc
-            LOGGER.exception("Play acknowledgement deferred for shop %s", shop_id)
+            LOGGER.exception(
+                "Play acknowledgement deferred for organization %s",
+                organization_id,
+            )
         async with AsyncSessionLocal.begin() as session:
             await record_play_acknowledgement(
                 session,
@@ -140,25 +160,25 @@ async def receive_rtdn(
             if event is not None:
                 event.processed_at = datetime.now(UTC)
             return None
-        shop_id = play.shop_id
+        organization_id = play.organization_id
         subscription_id = play.subscription_id
 
     purchase, play_client = await fetch_play_purchase(
-        shop_id=shop_id,
+        organization_id=organization_id,
         purchase_token=purchase_token,
         product_id=settings.google_play_product_id,
         client=GooglePlayClient(),
     )
     async with AsyncSessionLocal.begin() as session:
         await session.execute(
-            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-            {"shop_id": str(shop_id)},
+            text("SELECT set_config('app.current_organization_id', :organization_id, true)"),
+            {"organization_id": str(organization_id)},
         )
         if await session.get(Subscription, subscription_id) is None:
             return None
         _subscription, _state, needs_acknowledgement = await apply_play_purchase(
             session,
-            shop_id=shop_id,
+            organization_id=organization_id,
             purchase_token=purchase_token,
             product_id=settings.google_play_product_id,
             purchase=purchase,
@@ -169,7 +189,10 @@ async def receive_rtdn(
             await play_client.acknowledge(purchase_token)
         except GooglePlayError as exc:
             acknowledgement_error = exc
-            LOGGER.exception("RTDN Play acknowledgement deferred for shop %s", shop_id)
+            LOGGER.exception(
+                "RTDN Play acknowledgement deferred for organization %s",
+                organization_id,
+            )
         async with AsyncSessionLocal.begin() as session:
             await record_play_acknowledgement(
                 session,

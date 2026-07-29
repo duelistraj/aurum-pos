@@ -85,6 +85,10 @@ describe('Analytics', () => {
       memberships: [],
       activeMembership: {
         shop_id: 'shop-1',
+        organization_id: 'organization-1',
+        organization_name: 'Demo Organization',
+        is_primary: true,
+        access_mode: 'read_write',
         shop_name: 'Demo Shop',
         shop_slug: 'demo',
         role: 'OWNER',
@@ -122,7 +126,7 @@ describe('Analytics', () => {
 
     await screen.findByText('Top selling categories');
     await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
-    await user.click(screen.getByRole('option', { name: 'gold' }));
+    await user.click(screen.getByRole('option', { name: 'Gold' }));
     await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenLastCalledWith(
       expect.any(String),
       expect.any(String),

@@ -8,18 +8,22 @@ self-hosting from the same public source tree.
 
 - Aurum POS is Android-first.
 - The hosted web surface supports the Android app and public account, legal, and recovery flows, but it is not the primary product distribution channel.
-- Self-hosted deployments are unlimited and do not use billing.
-- Aurum Cloud's free tier permits 50 active inventory records per shop.
-- Aurum Cloud Pro removes the hosted item limit.
+- Aurum Cloud Free supports 1 shop, 2 distinct organization seats, and 50 active inventory records in the primary shop.
+- Aurum Cloud Pro supports up to 3 shops and 10 distinct organization seats, with unlimited active inventory.
+- One person consumes one organization seat even when assigned to multiple shops.
+- Self-hosted installations have unlimited shops, seats, and active inventory.
 - The official Android app uses Google Play Billing with monthly and annual base plans.
 - Owners can use verified email/password or Google.
 - Staff join only through a shop invitation.
 - Roles and entitlements are loaded from PostgreSQL.
 
+An organization owns one or more shops and one shared hosted entitlement.
 Every tenant-facing business table has a `shop_id`, shop-scoped constraints, and forced PostgreSQL row-level security.
 Global durable-job control tables use composite tenant foreign keys and are accessed only by trusted backend code.
 Clients select a shop with `X-Shop-ID`.
-Owners can deactivate access immediately and transfer shop ownership atomically to another active member.
+Owners can deactivate shop access immediately.
+Organization ownership transfer first cancels Google Play renewal, preserves Pro through the paid expiry, and then moves every shop to the new owner through a durable worker.
+After Pro expires, the primary shop remains writable under the Free item limit and additional shops remain available read-only until Pro is restored.
 
 When an existing self-hosted database is upgraded in place, legacy item rows
 are retained under the `legacy-import` shop. Attach its first owner after the
@@ -49,6 +53,10 @@ uv run python -m app.cli bootstrap-shop \
   --owner-name "Demo Owner"
 uv run uvicorn app.main:app --reload --port 8080
 ```
+
+The backend reads the repository-root `.env`.
+For the local container above, `DATABASE_URL` must be `postgresql+asyncpg://aurum:change-me@localhost:5432/aurum_pos`, which is already the value in `.env.example`.
+If an existing `.env` points to Aiven or another remote database, the local backend and Alembic commands will use that remote address until the value is changed.
 
 The backend always runs at `http://localhost:8080`; API documentation is at
 `http://localhost:8080/docs`.
@@ -123,7 +131,8 @@ uv run python -m app.cli grant-subscription \
   --notes "BMR Chandiwala migration entitlement"
 ```
 
-There are no shop-specific entitlement branches.
+The selected shop resolves its organization's entitlement.
+There are no customer-specific entitlement branches.
 
 ## BMR item-only cutover
 

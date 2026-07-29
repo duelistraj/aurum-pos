@@ -358,6 +358,10 @@ export const apiClient = {
   async listShops() {
     const { data } = await client.get<Array<{
       id: string;
+      organization_id: string;
+      organization_name: string;
+      is_primary: boolean;
+      access_mode: 'read_write' | 'read_only';
       name: string;
       slug: string;
       role: string;
@@ -370,6 +374,20 @@ export const apiClient = {
       invoice_prefix: string | null;
       tax_rate_percent: number;
     }>>('/shops');
+    return data;
+  },
+
+  async createShop(organizationId: string, name: string) {
+    const { data } = await client.post<{
+      id: string;
+      organization_id: string;
+      organization_name: string;
+      is_primary: boolean;
+      access_mode: 'read_write' | 'read_only';
+      name: string;
+      slug: string;
+      role: string;
+    }>(`/organizations/${organizationId}/shops`, { name });
     return data;
   },
 
@@ -427,6 +445,24 @@ export const apiClient = {
     return data;
   },
 
+  async transferOrganizationOwnership(
+    organizationId: string,
+    targetMembershipId: string,
+  ) {
+    const { data } = await client.post<{
+      id: string;
+      organization_id: string;
+      target_user_id: string;
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      created_at: string;
+      completed_at: string | null;
+    }>(
+      `/organizations/${organizationId}/ownership-transfers`,
+      { target_membership_id: targetMembershipId },
+    );
+    return data;
+  },
+
   async inviteStaff(
     shopId: string,
     payload: { email: string; role: 'ADMIN' | 'MANAGER' | 'CASHIER' },
@@ -439,6 +475,22 @@ export const apiClient = {
       token?: string;
     }>(`/shops/${shopId}/invitations`, payload);
     return data;
+  },
+
+  async listPendingInvitations(shopId: string) {
+    const { data } = await client.get<Array<{
+      id: string;
+      shop_id: string;
+      email: string;
+      role: 'ADMIN' | 'MANAGER' | 'CASHIER';
+      expires_at: string;
+      created_at: string;
+    }>>(`/shops/${shopId}/invitations`);
+    return data;
+  },
+
+  async revokeInvitation(shopId: string, invitationId: string) {
+    await client.delete(`/shops/${shopId}/invitations/${invitationId}`);
   },
   
   async logout() {
@@ -473,11 +525,19 @@ export const apiClient = {
 
   async getEntitlement() {
     const { data } = await client.get<{
+      organization_id: string;
       plan: 'free' | 'pro';
       source: string;
       active_item_limit: number | null;
       active_item_count: number;
       can_add_item: boolean;
+      shop_limit: number | null;
+      shop_count: number;
+      team_seat_limit: number | null;
+      team_seat_usage: number;
+      can_create_shop: boolean;
+      can_invite_member: boolean;
+      access_mode: 'read_write' | 'read_only';
       expires_at: string | null;
     }>('/subscriptions/entitlement');
     return data;

@@ -58,6 +58,10 @@ describe('Dashboard', () => {
       memberships: [],
       activeMembership: {
         shop_id: 'shop-1',
+        organization_id: 'organization-1',
+        organization_name: 'Demo Organization',
+        is_primary: true,
+        access_mode: 'read_write',
         shop_name: 'Demo Shop',
         shop_slug: 'demo',
         role: 'OWNER',

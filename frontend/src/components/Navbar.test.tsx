@@ -19,13 +19,31 @@ vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 
 const memberships = [
-  { shop_id: 'shop-1', shop_name: 'Demo Shop', shop_slug: 'demo', role: 'OWNER' as const },
-  { shop_id: 'shop-2', shop_name: 'Second Shop', shop_slug: 'second', role: 'ADMIN' as const },
+  {
+    shop_id: 'shop-1',
+    organization_id: 'organization-1',
+    organization_name: 'Demo Organization',
+    is_primary: true,
+    access_mode: 'read_write' as const,
+    shop_name: 'Demo Shop',
+    shop_slug: 'demo',
+    role: 'OWNER' as const,
+  },
+  {
+    shop_id: 'shop-2',
+    organization_id: 'organization-1',
+    organization_name: 'Demo Organization',
+    is_primary: false,
+    access_mode: 'read_write' as const,
+    shop_name: 'Second Shop',
+    shop_slug: 'second',
+    role: 'ADMIN' as const,
+  },
 ];
 const selectShop = vi.fn<(shopId: string) => Promise<void>>();
 const reloadShop = vi.fn<() => Promise<void>>();
 
-const renderNavbar = (initialEntries = ['/'], collapsed = false) => {
+const renderNavbar = (initialEntries = ['/'], collapsed = false, mobileOpen = false) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -34,8 +52,7 @@ const renderNavbar = (initialEntries = ['/'], collapsed = false) => {
       <MemoryRouter initialEntries={initialEntries}>
         <Navbar
           collapsed={collapsed}
-          mobileOpen={false}
-          onToggleCollapsed={vi.fn()}
+          mobileOpen={mobileOpen}
           onCloseMobile={vi.fn()}
         />
         <Routes>
@@ -55,15 +72,23 @@ describe('Navbar', () => {
     reloadShop.mockResolvedValue(undefined);
     vi.mocked(apiClient.logout).mockResolvedValue(undefined);
     vi.mocked(apiClient.getEntitlement).mockResolvedValue({
+      organization_id: 'organization-1',
       plan: 'free',
       source: 'hosted_free',
       active_item_limit: 50,
       active_item_count: 12,
       can_add_item: true,
+      shop_limit: 1,
+      shop_count: 1,
+      team_seat_limit: 2,
+      team_seat_usage: 1,
+      can_create_shop: false,
+      can_invite_member: true,
+      access_mode: 'read_write',
       expires_at: null,
     });
     vi.mocked(apiClient.version).mockResolvedValue({
-      version: '0.1.0',
+      version: '0.2.0',
       revision: 'abc123',
       license: 'AGPL-3.0-only',
       source: 'https://github.com/duelistraj/aurum-pos/tree/abc123',
@@ -150,6 +175,68 @@ describe('Navbar', () => {
     expect(screen.getByRole('listbox', { name: 'Shops' })).toHaveClass('sidebar__popover--collapsed');
   });
 
+  it('keeps complete branding available in the collapsed rail without a handle', () => {
+    renderNavbar(['/'], true);
+
+    expect(screen.getByRole('link', { name: 'Aurum POS dashboard' }))
+      .toContainElement(screen.getByRole('img', { name: 'Aurum' }));
+    expect(screen.getByText('Aurum POS')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(Expand|Collapse) navigation$/ }))
+      .not.toBeInTheDocument();
+  });
+
+  it('renders the complete Pro lockup in the open mobile drawer', async () => {
+    vi.mocked(apiClient.getEntitlement).mockResolvedValue({
+      organization_id: 'organization-1',
+      plan: 'pro',
+      source: 'play',
+      active_item_limit: null,
+      active_item_count: 12,
+      can_add_item: true,
+      shop_limit: 3,
+      shop_count: 1,
+      team_seat_limit: 10,
+      team_seat_usage: 1,
+      can_create_shop: true,
+      can_invite_member: true,
+      access_mode: 'read_write',
+      expires_at: '2026-08-29T00:00:00Z',
+    });
+
+    renderNavbar(['/'], true, true);
+
+    expect(screen.getByText('Aurum POS')).toBeInTheDocument();
+    expect(await screen.findByText('Pro')).toBeInTheDocument();
+  });
+
+  it('offers organization owners a second-shop form when their plan allows it', async () => {
+    vi.mocked(apiClient.getEntitlement).mockResolvedValue({
+      organization_id: 'organization-1',
+      plan: 'pro',
+      source: 'play',
+      active_item_limit: null,
+      active_item_count: 12,
+      can_add_item: true,
+      shop_limit: 3,
+      shop_count: 1,
+      team_seat_limit: 10,
+      team_seat_usage: 1,
+      can_create_shop: true,
+      can_invite_member: true,
+      access_mode: 'read_write',
+      expires_at: '2026-08-29T00:00:00Z',
+    });
+    const user = userEvent.setup();
+    renderNavbar();
+
+    await user.click(screen.getByRole('button', { name: 'Active shop' }));
+    await user.click(screen.getByRole('button', { name: 'Add another shop' }));
+
+    expect(screen.getByRole('dialog', { name: 'Add another shop' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Shop name' })).toBeInTheDocument();
+  });
+
   it('keeps account actions in the sidebar menu and logs out', async () => {
     const user = userEvent.setup();
     renderNavbar();
@@ -171,6 +258,7 @@ describe('Navbar', () => {
       'href',
       'https://github.com/duelistraj/aurum-pos/tree/abc123',
     );
+    expect(screen.getByText('Version').parentElement).toHaveTextContent('Version0.2.0');
     expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('menuitem', { name: 'Log out' }));

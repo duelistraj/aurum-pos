@@ -7,6 +7,10 @@ import {
 
 export interface MembershipInfo {
   shop_id: string;
+  organization_id: string;
+  organization_name: string;
+  is_primary: boolean;
+  access_mode?: 'read_write' | 'read_only';
   shop_name: string;
   shop_slug: string;
   role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'CASHIER';

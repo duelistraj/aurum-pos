@@ -37,6 +37,10 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...savedUser,
           memberships: shops.map((shop) => ({
             shop_id: shop.id,
+            organization_id: shop.organization_id,
+            organization_name: shop.organization_name,
+            is_primary: shop.is_primary,
+            access_mode: shop.access_mode,
             shop_name: shop.name,
             shop_slug: shop.slug,
             role: shop.role as MembershipInfo['role'],
@@ -77,7 +81,8 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const memberships = React.useMemo(() => user?.memberships ?? [], [user]);
   const activeMembership = memberships.find(({ shop_id }) => shop_id === activeShopId) ?? null;
   const canManage = activeMembership
-    ? ['OWNER', 'ADMIN', 'MANAGER'].includes(activeMembership.role)
+    ? activeMembership.access_mode !== 'read_only'
+      && ['OWNER', 'ADMIN', 'MANAGER'].includes(activeMembership.role)
     : false;
 
   const value = React.useMemo(() => ({

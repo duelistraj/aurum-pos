@@ -46,9 +46,11 @@ Evidence:
 ### Making charge and unique item
 
 A **making charge** is the labour/value component added to metal value. It is a
-fixed amount for `unique`, `ring`, `other`, and `pendant` categories and a
-per-weight amount otherwise. A **unique item** has zero net weight and its price
-is only its fixed making charge, without GST in the implemented sale rule.
+fixed amount for `unique` and `other`, while every other category uses the
+making charge per unit of net weight. A **unique item** has zero net weight and
+its price is only its fixed making charge, without GST in the implemented sale
+rule. An `other` item retains metal value and adds its making charge as a fixed
+amount.
 
 Evidence:
 - `app/modules/items/pricing.py::FIXED_MAKING_CATEGORIES`

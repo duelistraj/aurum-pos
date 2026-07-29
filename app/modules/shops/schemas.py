@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -9,6 +10,10 @@ ALLOWED_INVITE_ROLES = frozenset({"ADMIN", "MANAGER", "CASHIER"})
 
 class ShopResponse(BaseModel):
     id: uuid.UUID
+    organization_id: uuid.UUID
+    organization_name: str
+    is_primary: bool
+    access_mode: Literal["read_write", "read_only"]
     name: str
     slug: str
     role: str
@@ -95,6 +100,15 @@ class InvitationResponse(BaseModel):
     token: str | None = None
 
 
+class PendingInvitationResponse(BaseModel):
+    id: uuid.UUID
+    shop_id: uuid.UUID
+    email: str
+    role: str
+    expires_at: datetime
+    created_at: datetime
+
+
 class MembershipUpdate(BaseModel):
     role: str | None = None
     is_active: bool | None = None
@@ -112,6 +126,15 @@ class MembershipUpdate(BaseModel):
 
 class OwnershipTransfer(BaseModel):
     target_membership_id: uuid.UUID
+
+
+class OwnershipTransferResponse(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    target_user_id: uuid.UUID
+    status: Literal["pending", "processing", "completed", "failed"]
+    created_at: datetime
+    completed_at: datetime | None = None
 
 
 class MembershipResponse(BaseModel):

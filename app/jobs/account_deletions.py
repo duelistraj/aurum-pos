@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy import or_, select, text, update
 
 from app.core.database import AsyncSessionLocal
 from app.modules.auth.models import AccountDeletionRequest, User
@@ -11,7 +11,7 @@ from app.modules.billing.google_play import GooglePlayClient
 from app.modules.billing.service import decrypt_purchase_token
 from app.modules.sales.models import Sale
 from app.modules.sales.storage import get_invoice_storage
-from app.modules.shops.models import Shop, ShopMembership
+from app.modules.shops.models import Organization, Shop
 from app.modules.subscriptions.models import PlaySubscription
 
 LOGGER = logging.getLogger("aurum.worker.account_deletion")
@@ -68,33 +68,29 @@ async def _claim_account_deletions() -> list[DeletionClaim]:
         ]
 
 
-async def _claim_owned_shops_for_deletion(target: DeletionTarget) -> list[UUID]:
+async def _claim_owned_organizations_for_deletion(
+    target: DeletionTarget,
+) -> list[tuple[UUID, list[UUID]]]:
     async with AsyncSessionLocal.begin() as session:
-        memberships = await session.execute(
-            select(ShopMembership, Shop)
-            .join(Shop, Shop.id == ShopMembership.shop_id)
-            .where(
-                ShopMembership.user_id == target.user_id,
-                ShopMembership.role == "OWNER",
-                ShopMembership.is_active.is_(True),
+        organizations = list(
+            await session.scalars(
+                select(Organization)
+                .where(Organization.owner_user_id == target.user_id)
+                .with_for_update()
             )
-            .with_for_update()
         )
-        sole_owned: list[UUID] = []
-        for membership, shop in memberships:
-            other_owners = await session.scalar(
-                select(func.count(ShopMembership.id)).where(
-                    ShopMembership.shop_id == membership.shop_id,
-                    ShopMembership.user_id != target.user_id,
-                    ShopMembership.role == "OWNER",
-                    ShopMembership.is_active.is_(True),
+        targets: list[tuple[UUID, list[UUID]]] = []
+        for organization in organizations:
+            shops = list(
+                await session.scalars(
+                    select(Shop).where(Shop.organization_id == organization.id).with_for_update()
                 )
             )
-            if not other_owners:
-                sole_owned.append(membership.shop_id)
-                if target.delete_owned_shops:
+            if target.delete_owned_shops:
+                for shop in shops:
                     shop.is_active = False
-        return sole_owned
+            targets.append((organization.id, [shop.id for shop in shops]))
+        return targets
 
 
 async def _renew_deletion_lease(
@@ -118,20 +114,24 @@ async def _renew_deletion_lease(
 async def _cleanup_shop_external_data(
     shop_id: UUID,
     *,
+    organization_id: UUID | None = None,
+    cancel_billing: bool = True,
     request_id: UUID | None = None,
     lease_token: UUID | None = None,
 ) -> None:
-    async with AsyncSessionLocal.begin() as session:
-        play_rows = await session.execute(
-            select(PlaySubscription).where(
-                PlaySubscription.shop_id == shop_id,
-                PlaySubscription.deletion_cancelled_at.is_(None),
+    play_targets: list[tuple[UUID, str]] = []
+    if cancel_billing:
+        async with AsyncSessionLocal.begin() as session:
+            play_rows = await session.execute(
+                select(PlaySubscription).where(
+                    PlaySubscription.organization_id == (organization_id or shop_id),
+                    PlaySubscription.deletion_cancelled_at.is_(None),
+                )
             )
-        )
-        play_targets = [
-            (row.subscription_id, decrypt_purchase_token(row.purchase_token))
-            for row in play_rows.scalars()
-        ]
+            play_targets = [
+                (row.subscription_id, decrypt_purchase_token(row.purchase_token))
+                for row in play_rows.scalars()
+            ]
     if play_targets:
         play_client = GooglePlayClient()
         for subscription_id, purchase_token in play_targets:
@@ -237,17 +237,20 @@ async def _process_account_deletion(
             )
             if request.external_cleanup_started_at is None:
                 request.external_cleanup_started_at = datetime.now(UTC)
-        shop_ids = await _claim_owned_shops_for_deletion(target)
-        if shop_ids and not target.delete_owned_shops:
+        organization_targets = await _claim_owned_organizations_for_deletion(target)
+        if organization_targets and not target.delete_owned_shops:
             raise RuntimeError("Owned shops must be transferred before account deletion")
-        for shop_id in shop_ids:
-            if not await _renew_deletion_lease(request_id, lease_token=lease_token):
-                raise RuntimeError("Account deletion lease was lost")
-            await _cleanup_shop_external_data(
-                shop_id,
-                request_id=request_id,
-                lease_token=lease_token,
-            )
+        for organization_id, shop_ids in organization_targets:
+            for index, shop_id in enumerate(shop_ids):
+                if not await _renew_deletion_lease(request_id, lease_token=lease_token):
+                    raise RuntimeError("Account deletion lease was lost")
+                await _cleanup_shop_external_data(
+                    shop_id,
+                    organization_id=organization_id,
+                    cancel_billing=index == 0,
+                    request_id=request_id,
+                    lease_token=lease_token,
+                )
 
         async with AsyncSessionLocal.begin() as session:
             request = await session.scalar(
@@ -269,48 +272,38 @@ async def _process_account_deletion(
                 or request.cancelled_at is not None
             ):
                 return
-            for shop_id in shop_ids:
-                shop = await session.scalar(
-                    select(Shop).where(Shop.id == shop_id).with_for_update()
+            for organization_id, shop_ids in organization_targets:
+                organization = await session.scalar(
+                    select(Organization).where(Organization.id == organization_id).with_for_update()
                 )
-                owner = await session.scalar(
-                    select(ShopMembership)
-                    .where(
-                        ShopMembership.shop_id == shop_id,
-                        ShopMembership.user_id == target.user_id,
-                        ShopMembership.role == "OWNER",
-                        ShopMembership.is_active.is_(True),
-                    )
-                    .with_for_update()
-                )
-                other_owners = await session.scalar(
-                    select(func.count(ShopMembership.id)).where(
-                        ShopMembership.shop_id == shop_id,
-                        ShopMembership.user_id != target.user_id,
-                        ShopMembership.role == "OWNER",
-                        ShopMembership.is_active.is_(True),
-                    )
-                )
-                if shop is None:
+                if organization is None:
                     continue
-                if shop.is_active or owner is None or other_owners:
-                    raise RuntimeError("Shop ownership changed during account deletion")
-                await session.execute(
-                    text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-                    {"shop_id": str(shop_id)},
-                )
-                current_key = await session.scalar(
-                    select(Sale.s3_object_key)
-                    .where(
-                        Sale.shop_id == shop_id,
-                        Sale.s3_object_key.is_not(None),
+                if organization.owner_user_id != target.user_id:
+                    raise RuntimeError("Organization ownership changed during account deletion")
+                for shop_id in shop_ids:
+                    shop = await session.scalar(
+                        select(Shop).where(Shop.id == shop_id).with_for_update()
                     )
-                    .with_for_update()
-                    .limit(1)
-                )
-                if current_key is not None:
-                    raise RuntimeError("Invoice set changed during account deletion")
-                await session.execute(delete(Shop).where(Shop.id == shop_id))
+                    if shop is None:
+                        continue
+                    if shop.is_active or shop.organization_id != organization_id:
+                        raise RuntimeError("Organization shops changed during account deletion")
+                    await session.execute(
+                        text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+                        {"shop_id": str(shop_id)},
+                    )
+                    current_key = await session.scalar(
+                        select(Sale.s3_object_key)
+                        .where(
+                            Sale.shop_id == shop_id,
+                            Sale.s3_object_key.is_not(None),
+                        )
+                        .with_for_update()
+                        .limit(1)
+                    )
+                    if current_key is not None:
+                        raise RuntimeError("Invoice set changed during account deletion")
+                await session.delete(organization)
             user = await session.get(User, request.user_id)
             if user is not None:
                 await session.delete(user)

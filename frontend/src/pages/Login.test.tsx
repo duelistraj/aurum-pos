@@ -88,6 +88,10 @@ const tokenResponse = {
   email: 'owner@example.com',
   memberships: [{
     shop_id: 'shop-id',
+    organization_id: 'organization-id',
+    organization_name: 'Chosen Organization',
+    is_primary: true,
+    access_mode: 'read_write' as const,
     shop_name: 'Chosen Shop',
     shop_slug: 'chosen-shop',
     role: 'OWNER' as const,
@@ -117,6 +121,41 @@ describe('Login', () => {
       selectShop: vi.fn(),
       reload: vi.fn(async () => undefined),
     });
+  });
+
+  it('lets every password mode reveal the value and hides it again after switching modes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+
+    renderLogin();
+
+    const loginPassword = screen.getByLabelText('Password');
+    await user.type(loginPassword, 'visible-password');
+    expect(loginPassword).toHaveAttribute('type', 'password');
+
+    const showPassword = screen.getByRole('button', { name: 'Show password' });
+    expect(showPassword).toHaveAttribute('aria-pressed', 'false');
+    await user.click(showPassword);
+
+    expect(loginPassword).toHaveAttribute('type', 'text');
+    expect(loginPassword).toHaveValue('visible-password');
+    expect(screen.getByRole('button', { name: 'Hide password' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Create account' }));
+
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Password')).toHaveValue('visible-password');
+    expect(screen.getByRole('button', { name: 'Show password' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Have a staff invitation?' }));
+
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+    expect(screen.getByRole('button', { name: 'Show password' })).toBeInTheDocument();
   });
 
   it('uses one Google action across account and invitation modes', async () => {

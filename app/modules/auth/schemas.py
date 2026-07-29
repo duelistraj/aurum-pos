@@ -72,6 +72,9 @@ class AuthProvidersResponse(BaseModel):
 
 class MembershipResponse(BaseModel):
     shop_id: uuid.UUID
+    organization_id: uuid.UUID
+    organization_name: str
+    is_primary: bool
     shop_name: str
     shop_slug: str
     role: str

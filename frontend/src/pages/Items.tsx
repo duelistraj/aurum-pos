@@ -42,11 +42,41 @@ import {
 } from '../features/items/catalog';
 import { ExcelIcon, PDFIcon } from '../features/items/catalogIcons';
 
+const ITEM_STATUS_LABEL_BY_STATUS: Record<string, string> = {
+  archived: 'Archived',
+  in_stock: 'Stock',
+  reserved: 'Reserved',
+  sold: 'Sold',
+};
+
+const ItemStatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const colorClass = status === 'in_stock'
+    ? 'border-emerald-100/50 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-400'
+    : status === 'sold'
+      ? 'border-red-100/50 bg-red-50 text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-400'
+      : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
+  const dotClass = status === 'in_stock'
+    ? 'bg-emerald-500'
+    : status === 'sold'
+      ? 'bg-red-500'
+      : 'bg-slate-400';
+
+  return (
+    <span
+      className={`flex w-fit flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[0.65rem] font-bold sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs ${colorClass}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      {ITEM_STATUS_LABEL_BY_STATUS[status] ?? status}
+    </span>
+  );
+};
+
 export const Items: React.FC = () => {
   const queryClient = useQueryClient();
   const { canManage, activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
   const activeShopRef = React.useRef(shopId);
+  const itemsRequestRef = React.useRef(0);
   const entitlementQuery = useQuery({
     queryKey: queryKeys.entitlement(shopId),
     queryFn: () => apiClient.getEntitlement(),
@@ -54,6 +84,7 @@ export const Items: React.FC = () => {
   });
   const [items, setItems] = React.useState<Item[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [itemsLoading, setItemsLoading] = React.useState(false);
   const [error, setError] = React.useState<string>('');
   
   // Search and Filters State
@@ -82,6 +113,7 @@ export const Items: React.FC = () => {
   const [showModal, setShowModal] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [selectedItems, setSelectedItems] = React.useState<Set<string>>(new Set());
+  const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
   const [isManageMode, setIsManageMode] = React.useState(false);
   const [availableMetals, setAvailableMetals] = React.useState<Record<string, number[]>>({});
   const [latestItem, setLatestItem] = React.useState<Item | null>(null);
@@ -122,10 +154,12 @@ export const Items: React.FC = () => {
 
   React.useEffect(() => {
     activeShopRef.current = shopId;
+    itemsRequestRef.current += 1;
     setItems([]);
     setTotalItems(0);
     setTotalPages(0);
     setSelectedItems(new Set());
+    setExpandedItemId(null);
     setEditingItem(null);
     setShowModal(false);
     setCurrentPage(1);
@@ -239,7 +273,9 @@ export const Items: React.FC = () => {
 
   const loadItems = React.useCallback(async () => {
     const requestedShopId = shopId;
-    setLoading(true);
+    const requestId = itemsRequestRef.current + 1;
+    itemsRequestRef.current = requestId;
+    setItemsLoading(true);
     try {
       const response = await apiClient.getItems({
         page: currentPage,
@@ -249,7 +285,10 @@ export const Items: React.FC = () => {
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         status: selectedStatus !== 'all' ? selectedStatus : undefined,
       });
-      if (activeShopRef.current !== requestedShopId) return;
+      if (
+        activeShopRef.current !== requestedShopId
+        || itemsRequestRef.current !== requestId
+      ) return;
 
       let itemsList: Item[] = [];
       let total = 0;
@@ -280,11 +319,12 @@ export const Items: React.FC = () => {
       setTotalPages(pages);
       setError('');
     } catch (err) {
+      if (itemsRequestRef.current !== requestId) return;
       setError(
         err instanceof Error ? err.message : 'Failed to load items'
       );
     } finally {
-      setLoading(false);
+      if (itemsRequestRef.current === requestId) setItemsLoading(false);
     }
   }, [shopId, currentPage, rowsPerPage, debouncedSearch, selectedMetal, selectedCategory, selectedStatus]);
 
@@ -397,6 +437,7 @@ export const Items: React.FC = () => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm);
       setCurrentPage(1);
+      setExpandedItemId(null);
     }, 300);
     return () => clearTimeout(handler);
   }, [searchTerm]);
@@ -404,6 +445,7 @@ export const Items: React.FC = () => {
   const handleCategorySelect = (val: string) => {
     setSelectedCategory(val);
     setCurrentPage(1);
+    setExpandedItemId(null);
     setShowCategoryDropdown(false);
     setCategorySearch('');
   };
@@ -411,12 +453,14 @@ export const Items: React.FC = () => {
   const handleStatusSelect = (val: string) => {
     setSelectedStatus(val);
     setCurrentPage(1);
+    setExpandedItemId(null);
     setShowStatusDropdown(false);
   };
 
   const handleMetalSelect = (val: string) => {
     setSelectedMetal(val);
     setCurrentPage(1);
+    setExpandedItemId(null);
     setShowMetalDropdown(false);
   };
 
@@ -551,6 +595,19 @@ export const Items: React.FC = () => {
     }
   };
 
+  const toggleExpandedItem = (itemId: string) => {
+    setExpandedItemId((current) => current === itemId ? null : itemId);
+  };
+
+  const handleMobileRowClick = (
+    event: React.MouseEvent<HTMLTableRowElement>,
+    itemId: string,
+  ) => {
+    if (window.matchMedia?.('(min-width: 640px)').matches) return;
+    if ((event.target as HTMLElement).closest('button, input, a')) return;
+    toggleExpandedItem(itemId);
+  };
+
   // Generate pagination page numbers
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
@@ -601,7 +658,7 @@ export const Items: React.FC = () => {
                 <span>{isManageMode ? 'Exit Manage' : 'Manage'}</span>
               </button>
               {selectedItems.size > 0 && (
-                <div className="relative" ref={dropdownRef}>
+                <div className="inventory-download relative" ref={dropdownRef}>
                   <Button
                     onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
                     variant="primary"
@@ -614,7 +671,7 @@ export const Items: React.FC = () => {
                   </Button>
                   
                   {showDownloadDropdown && (
-                    <div className="absolute right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 p-4 flex flex-col gap-3 w-80 animate-fade-in">
+                    <div className="inventory-download__menu absolute right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 p-4 flex flex-col gap-3 w-80 animate-fade-in">
                       <button
                         onClick={() => {
                           handleDownloadBatchLabels('xlsx');
@@ -925,170 +982,286 @@ export const Items: React.FC = () => {
         </div>
 
         {/* Items Table */}
-        {loading && !items.length ? (
+        {itemsLoading && !items.length ? (
           <div className="flex justify-center py-12">
             <Loader />
           </div>
         ) : (
-          <Card className="overflow-hidden animate-slide-up bg-white border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface">
+          <Card
+            aria-busy={itemsLoading}
+            className="relative overflow-hidden animate-slide-up bg-white border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface"
+          >
+            {itemsLoading ? (
+              <div
+                className="inventory-table__progress"
+                role="status"
+                aria-label="Loading inventory page"
+              />
+            ) : null}
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="inventory-table w-full table-fixed sm:table-auto">
                 <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-slate-400 w-12">
+                    <th className={`w-9 px-1 py-3 text-left text-xs font-semibold text-slate-400 sm:w-12 sm:px-5 sm:py-4 ${
+                      isManageMode ? 'table-cell' : 'hidden sm:table-cell'
+                    }`}>
                       <input
                         type="checkbox"
                         checked={selectedItems.size === items.length && items.length > 0}
                         onChange={handleSelectAll}
                         disabled={!isManageMode}
+                        aria-label="Select all items on this page"
                         className="checkbox-round"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       SKU
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="w-[6.5rem] px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:w-auto sm:px-6 sm:py-4 sm:text-xs">
                       Barcode
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:px-6 sm:py-4 sm:text-xs">
                       Name
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Category
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Qty
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Metal
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Weight
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Making Charge
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="w-20 px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:w-auto sm:px-6 sm:py-4 sm:text-xs">
                       Status
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Actions
+                    </th>
+                    <th className="w-11 px-1 py-3 sm:hidden">
+                      <span className="sr-only">Details</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {items.length > 0 ? (
-                    items.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={`transition-colors ${
-                          selectedItems.has(item.id) 
-                            ? 'bg-amber-50/30 dark:bg-amber-950/30' 
-                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
-                        }`}
-                      >
-                        <td className="px-5 py-5">
-                          <input
-                            type="checkbox"
-                            checked={selectedItems.has(item.id)}
-                            onChange={() => handleSelectItem(item.id)}
-                            disabled={!isManageMode}
-                            className="checkbox-round"
-                          />
-                        </td>
-                        <td className="px-6 py-5">
-                          <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
-                            {item.sku}
-                          </span>
-                        </td>
-                        <td className="px-6 py-5">
-                          <span className="bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-amber-100/50 dark:border-amber-900/30">
-                            {item.barcode}
-                          </span>
-                        </td>
-                        <td className="px-6 py-5">
-                          <p className="font-bold text-slate-900 dark:text-white text-base">
-                            {item.name}
-                          </p>
-                        </td>
-                        <td className="px-6 py-5">
-                          <span className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-slate-200 dark:border-slate-700">
-                            {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-5 font-bold text-slate-800 dark:text-slate-100 text-base">
-                          {item.quantity}
-                        </td>
-                        <td className="px-6 py-5">
-                          <span className="bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-indigo-100/50 dark:border-indigo-900/30">
-                            {item.metal} {item.purity > 0 ? `${item.purity}%` : '(unspecified)'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-5 text-slate-500 dark:text-slate-400 text-sm font-medium">
-                          Net: {formatWeight(item.net_weight)}
-                        </td>
-                        <td className="px-6 py-5 text-slate-900 dark:text-white text-base font-semibold">
-                          {item.making_charge !== null && item.making_charge !== undefined
-                            ? formatCurrency(item.making_charge)
-                            : '—'}
-                        </td>
-                        <td className="px-6 py-5">
-                          {item.status === 'in_stock' && (
-                            <span className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 font-bold px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5 w-fit border border-emerald-100/50 dark:border-emerald-900/30">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              In Stock
-                            </span>
-                          )}
-                          {item.status === 'sold' && (
-                            <span className="bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 font-bold px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5 w-fit border border-red-100/50 dark:border-red-900/30">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                              Sold
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-5">
-                          <div className="flex items-center space-x-2">
-                            {item.status === 'in_stock' && (
-                              <>
-                                <button
-                                  onClick={() => openEditItem(item)}
-                                  disabled={!isManageMode}
-                                  className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                                  title="Edit item"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteItem(item.id)}
-                                  disabled={!isManageMode}
-                                  className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                                  title="Delete item"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={11} className="text-center py-16 text-slate-400 dark:text-slate-500">
-                        <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-400 dark:text-slate-500" />
-                        <p className="text-base font-semibold text-slate-500 dark:text-slate-400">No items found</p>
-                        <p className="text-sm text-slate-400 mt-1">Try updating your filters, search queries, or add a new item.</p>
-                      </td>
-                    </tr>
-                  )}
+                  {items.map((item) => {
+                      const isExpanded = expandedItemId === item.id;
+                      const detailsId = `inventory-item-details-${item.id}`;
+                      return (
+                        <React.Fragment key={item.id}>
+                          <tr
+                            onClick={(event) => handleMobileRowClick(event, item.id)}
+                            className={`transition-colors max-sm:cursor-pointer ${
+                              selectedItems.has(item.id)
+                                ? 'bg-amber-50/30 dark:bg-amber-950/30'
+                                : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+                            }`}
+                          >
+                            <td className={`px-1 py-3 sm:px-5 sm:py-5 ${
+                              isManageMode ? 'table-cell' : 'hidden sm:table-cell'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.has(item.id)}
+                                onChange={() => handleSelectItem(item.id)}
+                                disabled={!isManageMode}
+                                aria-label={`Select ${item.barcode}`}
+                                className="checkbox-round"
+                              />
+                            </td>
+                            <td className="hidden px-6 py-5 sm:table-cell">
+                              <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
+                                {item.sku}
+                              </span>
+                            </td>
+                            <td className="min-w-0 px-2 py-3 sm:px-6 sm:py-5">
+                              <span
+                                title={item.barcode}
+                                className="block truncate rounded-app-control border border-amber-100/50 bg-amber-50 px-2 py-1 font-mono text-xs font-bold tracking-wider text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400 sm:inline-block sm:px-3"
+                              >
+                                {item.barcode}
+                              </span>
+                            </td>
+                            <td className="min-w-0 px-2 py-3 sm:px-6 sm:py-5">
+                              <p
+                                title={item.name}
+                                className="truncate text-sm font-bold text-slate-900 dark:text-white sm:text-base"
+                              >
+                                {item.name}
+                              </p>
+                            </td>
+                            <td className="hidden px-6 py-5 sm:table-cell">
+                              <span className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-slate-200 dark:border-slate-700">
+                                {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+                              </span>
+                            </td>
+                            <td className="hidden px-6 py-5 text-base font-bold text-slate-800 dark:text-slate-100 sm:table-cell">
+                              {item.quantity}
+                            </td>
+                            <td className="inventory-metal-cell hidden px-6 py-5 sm:table-cell">
+                              <span className="inventory-metal-pill bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-indigo-100/50 dark:border-indigo-900/30">
+                                <span>{item.metal}</span>
+                                <span aria-hidden="true">·</span>
+                                <span>{item.purity > 0 ? `${item.purity}%` : 'Unspecified'}</span>
+                              </span>
+                            </td>
+                            <td className="hidden px-6 py-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:table-cell">
+                              Net: {formatWeight(item.net_weight)}
+                            </td>
+                            <td className="hidden px-6 py-5 text-base font-semibold text-slate-900 dark:text-white sm:table-cell">
+                              {item.making_charge !== null && item.making_charge !== undefined
+                                ? formatCurrency(item.making_charge)
+                                : '-'}
+                            </td>
+                            <td className="px-2 py-3 sm:px-6 sm:py-5">
+                              <ItemStatusBadge status={item.status} />
+                            </td>
+                            <td className="hidden px-6 py-5 sm:table-cell">
+                              <div className="flex items-center space-x-2">
+                                {item.status === 'in_stock' ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditItem(item)}
+                                      disabled={!isManageMode}
+                                      aria-label={`Edit ${item.barcode}`}
+                                      className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                                      title="Edit item"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteItem(item.id)}
+                                      disabled={!isManageMode}
+                                      aria-label={`Delete ${item.barcode}`}
+                                      className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                                      title="Delete item"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="px-1 py-2 sm:hidden">
+                              <button
+                                type="button"
+                                aria-expanded={isExpanded}
+                                aria-controls={detailsId}
+                                aria-label={`${isExpanded ? 'Hide' : 'Show'} details for ${item.barcode}`}
+                                onClick={() => toggleExpandedItem(item.id)}
+                                className="flex h-11 w-11 items-center justify-center rounded-app-control text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                              >
+                                <ChevronDown
+                                  aria-hidden="true"
+                                  className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+                            </td>
+                          </tr>
+                          {isExpanded ? (
+                            <tr id={detailsId} className="bg-slate-50/60 dark:bg-slate-950/40 sm:hidden">
+                              <td colSpan={isManageMode ? 5 : 4} className="px-3 pb-4 pt-2">
+                                <div className="grid grid-cols-2 gap-3 rounded-app-inset border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                                  <div className="col-span-2">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                      Full barcode
+                                    </p>
+                                    <p className="mt-1 break-all font-mono text-sm font-bold text-slate-900 dark:text-white">
+                                      {item.barcode}
+                                    </p>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                      Item
+                                    </p>
+                                    <p className="mt-1 break-words text-sm font-bold text-slate-900 dark:text-white">
+                                      {item.name}
+                                    </p>
+                                  </div>
+                                  {[
+                                    ['SKU', item.sku],
+                                    ['Category', item.category.charAt(0).toUpperCase() + item.category.slice(1)],
+                                    ['Quantity', String(item.quantity)],
+                                    ['Metal', `${item.metal} ${item.purity > 0 ? `${item.purity}%` : '(unspecified)'}`],
+                                    ['Net weight', formatWeight(item.net_weight)],
+                                    [
+                                      'Making charge',
+                                      item.making_charge !== null && item.making_charge !== undefined
+                                        ? formatCurrency(item.making_charge)
+                                        : '-',
+                                    ],
+                                  ].map(([label, value]) => (
+                                    <div key={label}>
+                                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                        {label}
+                                      </p>
+                                      <p className="mt-1 break-words text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                        {value}
+                                      </p>
+                                    </div>
+                                  ))}
+                                  <div className="col-span-2">
+                                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                                      Status
+                                    </p>
+                                    <ItemStatusBadge status={item.status} />
+                                  </div>
+                                  {isManageMode && item.status === 'in_stock' ? (
+                                    <div className="col-span-2 flex gap-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+                                      <Button
+                                        type="button"
+                                        variant="secondary"
+                                        className="flex-1"
+                                        onClick={() => openEditItem(item)}
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                        <span>Edit</span>
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="danger"
+                                        className="flex-1"
+                                        onClick={() => handleDeleteItem(item.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                        <span>Delete</span>
+                                      </Button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </React.Fragment>
+                      );
+                    })}
                 </tbody>
               </table>
+              {items.length === 0 ? (
+                <div className="inventory-empty-state text-slate-400 dark:text-slate-500">
+                  <AlertCircle className="h-12 w-12 opacity-30" />
+                  <p className="text-base font-semibold text-slate-500 dark:text-slate-400">
+                    No items found
+                  </p>
+                  <p className="text-center text-sm text-slate-400">
+                    Try updating your filters, search queries, or add a new item.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </Card>
         )}
 
         {/* Footer / Pagination controls */}
-        {!loading && (
+        {(!itemsLoading || items.length > 0) && (
           <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4 text-slate-500 dark:text-slate-400 text-sm">
             <div>
               Showing <span className="font-semibold text-slate-800 dark:text-slate-200">{totalItems > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0}</span> to{' '}
@@ -1101,8 +1274,11 @@ export const Items: React.FC = () => {
             {totalPages > 1 && (
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
+                  onClick={() => {
+                    setCurrentPage((prev) => Math.max(prev - 1, 1));
+                    setExpandedItemId(null);
+                  }}
+                  disabled={itemsLoading || currentPage === 1}
                   className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
                 >
                   <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
@@ -1120,7 +1296,11 @@ export const Items: React.FC = () => {
                   return (
                     <button
                       key={`page-${pageNum}`}
-                      onClick={() => setCurrentPage(pageNum as number)}
+                      disabled={itemsLoading}
+                      onClick={() => {
+                        setCurrentPage(pageNum as number);
+                        setExpandedItemId(null);
+                      }}
                       className={`w-10 h-10 font-bold rounded-app-control flex items-center justify-center transition-all ${
                         isActive
                           ? 'border-2 border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
@@ -1133,8 +1313,11 @@ export const Items: React.FC = () => {
                 })}
 
                 <button
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
+                  onClick={() => {
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+                    setExpandedItemId(null);
+                  }}
+                  disabled={itemsLoading || currentPage === totalPages}
                   className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
                 >
                   <ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
@@ -1166,6 +1349,7 @@ export const Items: React.FC = () => {
                         onClick={() => {
                           setRowsPerPage(option);
                           setCurrentPage(1);
+                          setExpandedItemId(null);
                           setShowRowsPerPageDropdown(false);
                         }}
                         className={`inventory-page__rows-option ${rowsPerPage === option ? 'is-selected' : ''}`}

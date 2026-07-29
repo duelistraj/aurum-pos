@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from app.modules.items.pricing import calculate_suggested_price, lock_price_at_sale
 from app.modules.items.schemas import ItemUpdate
 from app.modules.metal_rates.service import calculate_effective_rate_per_gram
@@ -22,20 +24,41 @@ def test_price_calculation_uses_decimal_and_half_up_rounding() -> None:
     assert pricing["final_price"] == Decimal("113.87")
 
 
-def test_locked_sale_price_uses_the_shop_tax_rate() -> None:
+def test_other_category_uses_fixed_making_charge_and_the_shop_tax_rate() -> None:
     pricing = lock_price_at_sale(
         metal="gold",
-        category="ring",
+        category="other",
         purity=100,
-        net_weight=1,
+        net_weight=2,
         rate_per_gram=100,
         making_charge=10,
         tax_rate_percent=5,
     )
 
+    assert pricing["metal_value"] == Decimal("200.00")
+    assert pricing["making_charge"] == Decimal("10.00")
     assert pricing["gst_rate_percent"] == Decimal("5")
-    assert pricing["gst_amount"] == Decimal("5.50")
-    assert pricing["final_price"] == Decimal("115.50")
+    assert pricing["gst_amount"] == Decimal("10.50")
+    assert pricing["final_price"] == Decimal("220.50")
+
+
+@pytest.mark.parametrize("category", ("ring", "pendant"))
+def test_ring_and_pendant_use_per_weight_making_charge(category: str) -> None:
+    pricing = lock_price_at_sale(
+        metal="gold",
+        category=category,
+        purity=100,
+        net_weight=2,
+        rate_per_gram=100,
+        making_charge=10,
+        tax_rate_percent=5,
+    )
+
+    assert pricing["metal_value"] == Decimal("200.00")
+    assert pricing["making_charge"] == Decimal("20.00")
+    assert pricing["subtotal"] == Decimal("220.00")
+    assert pricing["gst_amount"] == Decimal("11.00")
+    assert pricing["final_price"] == Decimal("231.00")
 
 
 def test_unique_item_price_is_only_the_fixed_making_charge() -> None:

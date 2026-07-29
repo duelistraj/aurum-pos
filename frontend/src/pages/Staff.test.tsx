@@ -9,10 +9,13 @@ import { ManageShop } from './Staff';
 
 vi.mock('../api/client', () => ({
   apiClient: {
+    getEntitlement: vi.fn(),
     inviteStaff: vi.fn(),
+    listPendingInvitations: vi.fn(),
     listShops: vi.fn(),
     listStaff: vi.fn(),
-    transferShopOwnership: vi.fn(),
+    revokeInvitation: vi.fn(),
+    transferOrganizationOwnership: vi.fn(),
     updateShop: vi.fn(),
     updateStaff: vi.fn(),
   },
@@ -46,6 +49,10 @@ describe('Manage Shop', () => {
       memberships: [],
       activeMembership: {
         shop_id: 'shop-1',
+        organization_id: 'organization-1',
+        organization_name: 'Demo Organization',
+        is_primary: true,
+        access_mode: 'read_write',
         shop_name: 'Demo Shop',
         shop_slug: 'demo',
         role: 'OWNER',
@@ -63,6 +70,10 @@ describe('Manage Shop', () => {
     });
     vi.mocked(apiClient.listShops).mockResolvedValue([{
       id: 'shop-1',
+      organization_id: 'organization-1',
+      organization_name: 'Demo Organization',
+      is_primary: true,
+      access_mode: 'read_write',
       name: 'Demo Shop',
       slug: 'demo',
       role: 'OWNER',
@@ -95,7 +106,31 @@ describe('Manage Shop', () => {
         created_at: '2026-07-21T00:00:00Z',
       },
     ]);
-    vi.mocked(apiClient.transferShopOwnership).mockResolvedValue({});
+    vi.mocked(apiClient.listPendingInvitations).mockResolvedValue([]);
+    vi.mocked(apiClient.getEntitlement).mockResolvedValue({
+      organization_id: 'organization-1',
+      plan: 'free',
+      source: 'hosted_free',
+      active_item_limit: 50,
+      active_item_count: 12,
+      can_add_item: true,
+      shop_limit: 1,
+      shop_count: 1,
+      team_seat_limit: 2,
+      team_seat_usage: 1,
+      can_create_shop: false,
+      can_invite_member: true,
+      access_mode: 'read_write',
+      expires_at: null,
+    });
+    vi.mocked(apiClient.transferOrganizationOwnership).mockResolvedValue({
+      id: 'transfer-1',
+      organization_id: 'organization-1',
+      target_user_id: 'manager-user',
+      status: 'pending',
+      created_at: '2026-07-29T00:00:00Z',
+      completed_at: null,
+    });
     vi.mocked(apiClient.updateShop).mockResolvedValue({});
     vi.mocked(apiClient.updateStaff).mockResolvedValue({});
   });
@@ -141,14 +176,14 @@ describe('Manage Shop', () => {
     await screen.findByText('Store Manager');
     await user.click(screen.getByRole('button', { name: 'Make owner' }));
 
-    expect(screen.getByRole('dialog', { name: 'Transfer shop ownership' }))
+    expect(screen.getByRole('dialog', { name: 'Transfer organization ownership' }))
       .toBeInTheDocument();
-    expect(apiClient.transferShopOwnership).not.toHaveBeenCalled();
+    expect(apiClient.transferOrganizationOwnership).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'Transfer ownership' }));
+    await user.click(screen.getByRole('button', { name: 'Begin transfer' }));
     await waitFor(() => {
-      expect(apiClient.transferShopOwnership).toHaveBeenCalledWith(
-        'shop-1',
+      expect(apiClient.transferOrganizationOwnership).toHaveBeenCalledWith(
+        'organization-1',
         'manager-membership',
       );
     });
@@ -184,6 +219,10 @@ describe('Manage Shop', () => {
       memberships: [],
       activeMembership: {
         shop_id: 'shop-1',
+        organization_id: 'organization-1',
+        organization_name: 'Demo Organization',
+        is_primary: true,
+        access_mode: 'read_write',
         shop_name: 'Demo Shop',
         shop_slug: 'demo',
         role: 'MANAGER',

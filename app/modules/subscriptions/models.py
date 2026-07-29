@@ -22,11 +22,20 @@ from app.core.database import Base
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
-    __table_args__ = (UniqueConstraint("shop_id", "id", name="uq_subscriptions_shop_id"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "id",
+            name="uq_subscriptions_organization_id",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    shop_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False, index=True
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     source: Mapped[str] = mapped_column(String(30), nullable=False)
     plan: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -48,10 +57,10 @@ class PlaySubscription(Base):
     __tablename__ = "play_subscriptions"
     __table_args__ = (
         ForeignKeyConstraint(
-            ("shop_id", "subscription_id"),
-            ("subscriptions.shop_id", "subscriptions.id"),
+            ("organization_id", "subscription_id"),
+            ("subscriptions.organization_id", "subscriptions.id"),
             ondelete="CASCADE",
-            name="fk_play_subscriptions_shop_subscription",
+            name="fk_play_subscriptions_organization_subscription",
         ),
         Index(
             "ix_play_subscriptions_ack_due",
@@ -62,8 +71,11 @@ class PlaySubscription(Base):
     )
 
     subscription_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    shop_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False, index=True
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     package_name: Mapped[str] = mapped_column(String(255), nullable=False)
     product_id: Mapped[str] = mapped_column(String(255), nullable=False)

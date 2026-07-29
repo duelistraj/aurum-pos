@@ -4,7 +4,6 @@ import { Header } from './components/Header';
 import { Navbar } from './components/Navbar';
 import { ConfigProvider } from './context/ConfigContext';
 import { getAccessToken } from './utils/auth';
-import { getLocalValue, setLocalValue } from './utils/storage';
 import './index.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(({ Dashboard }) => ({ default: Dashboard })));
@@ -23,30 +22,23 @@ const PageLoader = () => (
   </div>
 );
 
-const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed';
-
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => getLocalValue(SIDEBAR_COLLAPSED_KEY) === 'true',
-  );
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    setLocalValue(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
 
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [location.pathname]);
 
   return (
-    <div className={`app-shell${sidebarCollapsed ? ' app-shell--collapsed' : ''}`}>
-      <Header onOpenSidebar={() => setMobileSidebarOpen(true)} />
+    <div className="app-shell app-shell--collapsed">
+      <Header
+        navigationOpen={mobileSidebarOpen}
+        onOpenSidebar={() => setMobileSidebarOpen(true)}
+      />
       <Navbar
-        collapsed={sidebarCollapsed}
+        collapsed
         mobileOpen={mobileSidebarOpen}
-        onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
       <div className="app-shell__content">

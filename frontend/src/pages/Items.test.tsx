@@ -28,6 +28,10 @@ vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 
 const membership = {
   shop_id: 'shop-1',
+  organization_id: 'organization-1',
+  organization_name: 'Demo Organization',
+  is_primary: true,
+  access_mode: 'read_write' as const,
   shop_name: 'Demo Shop',
   shop_slug: 'demo-shop',
   role: 'OWNER' as const,
@@ -43,7 +47,6 @@ const renderInventoryWithNavbar = () => {
         <Navbar
           collapsed={false}
           mobileOpen={false}
-          onToggleCollapsed={vi.fn()}
           onCloseMobile={vi.fn()}
         />
         <Items />
@@ -77,19 +80,35 @@ describe('Inventory entitlement usage', () => {
     });
     vi.mocked(apiClient.getEntitlement)
       .mockResolvedValueOnce({
+        organization_id: 'organization-1',
         plan: 'free',
         source: 'hosted_free',
         active_item_limit: 50,
         active_item_count: 12,
         can_add_item: true,
+        shop_limit: 1,
+        shop_count: 1,
+        team_seat_limit: 2,
+        team_seat_usage: 1,
+        can_create_shop: false,
+        can_invite_member: true,
+        access_mode: 'read_write',
         expires_at: null,
       })
       .mockResolvedValue({
+        organization_id: 'organization-1',
         plan: 'free',
         source: 'hosted_free',
         active_item_limit: 50,
         active_item_count: 13,
         can_add_item: true,
+        shop_limit: 1,
+        shop_count: 1,
+        team_seat_limit: 2,
+        team_seat_usage: 1,
+        can_create_shop: false,
+        can_invite_member: true,
+        access_mode: 'read_write',
         expires_at: null,
       });
     vi.mocked(apiClient.getAvailableMetals).mockResolvedValue({ Silver: [92.5] });
@@ -123,7 +142,7 @@ describe('Inventory entitlement usage', () => {
       status: 'in_stock',
     });
     vi.mocked(apiClient.version).mockResolvedValue({
-      version: '0.1.0',
+      version: '0.2.0',
       revision: 'abc123',
       license: 'AGPL-3.0-only',
       source: 'https://github.com/duelistraj/aurum-pos',
@@ -151,5 +170,159 @@ describe('Inventory entitlement usage', () => {
     await waitFor(() => expect(apiClient.createItem).toHaveBeenCalledOnce());
     await user.click(screen.getByRole('button', { name: 'Account and settings' }));
     expect(await screen.findByText('13/50 active items')).toBeInTheDocument();
+  });
+
+  it('renders the empty state outside the table column grid', async () => {
+    renderInventoryWithNavbar();
+
+    const emptyHeading = await screen.findByText('No items found');
+
+    expect(screen.getByRole('table')).toHaveClass('inventory-table');
+    expect(emptyHeading.closest('tr')).toBeNull();
+    expect(emptyHeading.closest('.inventory-empty-state')).not.toBeNull();
+  });
+
+  it('uses a compact disclosure row without losing inventory details or management', async () => {
+    const user = userEvent.setup();
+    const inventoryItems = [{
+      id: 'item-1',
+      sku: 'RING-1',
+      barcode: '12345678',
+      category: 'jewellery',
+      name: 'Silver Ring',
+      metal: 'Silver',
+      purity: 92.5,
+      net_weight: 5,
+      making_charge: 100,
+      quantity: 1,
+      notes: null,
+      status: 'in_stock',
+    }, {
+      id: 'item-2',
+      sku: 'CHAIN-1',
+      barcode: '87654321',
+      category: 'jewellery',
+      name: 'Silver Chain',
+      metal: 'Silver',
+      purity: 92.5,
+      net_weight: 12,
+      making_charge: 200,
+      quantity: 1,
+      notes: null,
+      status: 'sold',
+    }];
+    vi.mocked(apiClient.getItems).mockResolvedValue({
+      items: inventoryItems,
+      total: inventoryItems.length,
+      page: 1,
+      limit: 10,
+      pages: 1,
+    });
+    vi.mocked(apiClient.getItemsSummary).mockResolvedValue({
+      total_items: 2,
+      in_stock: 1,
+      unique_items: 2,
+      sold_items: 1,
+      items_925_count: 2,
+    });
+
+    renderInventoryWithNavbar();
+
+    const firstDisclosure = await screen.findByRole('button', {
+      name: 'Show details for 12345678',
+    });
+    const firstRow = firstDisclosure.closest('tr')!;
+    const metalPill = firstRow.querySelector('.inventory-metal-pill');
+    expect(within(firstRow).getByText('Stock')).toBeInTheDocument();
+    expect(metalPill).toHaveTextContent('Silver·92.5%');
+    expect(firstDisclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Full barcode')).not.toBeInTheDocument();
+
+    await user.click(firstDisclosure);
+
+    expect(screen.getByRole('button', { name: 'Hide details for 12345678' }))
+      .toHaveAttribute('aria-expanded', 'true');
+    const firstDetails = document.getElementById('inventory-item-details-item-1');
+    expect(firstDetails).not.toBeNull();
+    expect(within(firstDetails!).getByText('RING-1')).toBeInTheDocument();
+    expect(within(firstDetails!).getByText('₹100.00')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show details for 87654321' }));
+
+    expect(document.getElementById('inventory-item-details-item-1')).toBeNull();
+    expect(document.getElementById('inventory-item-details-item-2')).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Manage' }));
+    expect(screen.getByRole('checkbox', { name: 'Select all items on this page' }))
+      .toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Show details for 12345678' }));
+    await waitFor(() => {
+      expect(document.getElementById('inventory-item-details-item-1')).not.toBeNull();
+    });
+    const managedDetails = document.getElementById('inventory-item-details-item-1');
+    expect(within(managedDetails!).getByRole('button', { name: 'Edit' })).toBeEnabled();
+    expect(within(managedDetails!).getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+
+  it('keeps pagination and current rows stable while the next page loads', async () => {
+    const user = userEvent.setup();
+    const firstItem = {
+      id: 'item-page-1',
+      sku: 'PAGE-1',
+      barcode: '11111111',
+      category: 'jewellery',
+      name: 'First page item',
+      metal: 'Silver',
+      purity: 92.5,
+      net_weight: 5,
+      making_charge: 100,
+      quantity: 1,
+      notes: null,
+      status: 'in_stock',
+    };
+    const secondItem = {
+      ...firstItem,
+      id: 'item-page-2',
+      sku: 'PAGE-2',
+      barcode: '22222222',
+      name: 'Second page item',
+    };
+    let resolveSecondPage: ((value: {
+      items: typeof firstItem[];
+      total: number;
+      page: number;
+      limit: number;
+      pages: number;
+    }) => void) | undefined;
+    vi.mocked(apiClient.getItems)
+      .mockResolvedValueOnce({
+        items: [firstItem],
+        total: 11,
+        page: 1,
+        limit: 10,
+        pages: 2,
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveSecondPage = resolve;
+      }));
+
+    renderInventoryWithNavbar();
+
+    expect(await screen.findByText('First page item')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '2' }));
+
+    expect(screen.getByRole('status', { name: 'Loading inventory page' }))
+      .toBeInTheDocument();
+    expect(screen.getByText('First page item')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2' })).toBeDisabled();
+
+    resolveSecondPage?.({
+      items: [secondItem],
+      total: 11,
+      page: 2,
+      limit: 10,
+      pages: 2,
+    });
+    expect(await screen.findByText('Second page item')).toBeInTheDocument();
   });
 });

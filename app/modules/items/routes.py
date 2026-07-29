@@ -10,7 +10,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.auth.dependencies import RequireManager, ShopContext, get_shop_context
+from app.modules.auth.dependencies import (
+    RequireManager,
+    RequireWritableShop,
+    ShopContext,
+    get_shop_context,
+)
 from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
 from app.modules.items.schemas import (
@@ -43,7 +48,11 @@ router = APIRouter(prefix="/items", tags=["Items"])
 LABEL_EXPORT_LIMITER = anyio.CapacityLimiter(2)
 
 
-@router.post("/", response_model=ItemOut, dependencies=[RequireManager])
+@router.post(
+    "/",
+    response_model=ItemOut,
+    dependencies=[RequireManager, RequireWritableShop],
+)
 async def create(
     data: ItemCreate,
     context: ShopContext = Depends(get_shop_context),
@@ -255,7 +264,11 @@ async def get_by_id(
     return item
 
 
-@router.patch("/{item_id}", response_model=ItemOut, dependencies=[RequireManager])
+@router.patch(
+    "/{item_id}",
+    response_model=ItemOut,
+    dependencies=[RequireManager, RequireWritableShop],
+)
 async def update(
     item_id: UUID,
     data: ItemUpdate,
@@ -277,7 +290,11 @@ async def update(
         raise HTTPException(status_code=status_code, detail=message) from exc
 
 
-@router.delete("/{item_id}", status_code=204, dependencies=[RequireManager])
+@router.delete(
+    "/{item_id}",
+    status_code=204,
+    dependencies=[RequireManager, RequireWritableShop],
+)
 async def delete(
     item_id: UUID,
     context: ShopContext = Depends(get_shop_context),

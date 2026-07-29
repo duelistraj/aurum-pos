@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { getPreference, setPreference } from './storage';
+import { APP_VERSION } from './version';
 
 export const DEVICE_UUID_KEY = 'device_uuid';
 
@@ -18,7 +19,7 @@ export const getDeviceUUID = async (): Promise<string> => {
 export const getDeviceInfo = () => {
   return {
     platform: Capacitor.getPlatform(),
-    app_version: '0.1.0', // We might want to use @capacitor/app plugin later
+    app_version: APP_VERSION,
     device_name: `${Capacitor.getPlatform()} Device`, // Ideally get from @capacitor/device
   };
 };

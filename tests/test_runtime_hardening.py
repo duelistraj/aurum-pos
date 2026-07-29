@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from app.cli import _manifest_digest, import_items
 from app.core.database import AsyncSessionLocal
@@ -19,7 +19,8 @@ from app.modules.auth.service import request_password_reset
 from app.modules.dashboard.routes import dashboard_analytics
 from app.modules.items.models import Item, ItemHistory
 from app.modules.notifications.models import EmailOutbox
-from app.modules.shops.models import Shop, ShopDeviceAccess, ShopMembership
+from app.modules.shops.models import Organization, ShopDeviceAccess
+from tests.support import create_test_shop
 
 
 @pytest.mark.asyncio
@@ -75,7 +76,6 @@ async def test_parallel_first_shop_access_is_conflict_safe() -> None:
             email=f"device-race-{user_id}@example.com",
             full_name="Device Race",
         )
-        shop = Shop(id=shop_id, name="Device Race Shop", slug=f"device-race-{shop_id}")
         device = Device(
             id=device_id,
             user_id=user_id,
@@ -84,15 +84,13 @@ async def test_parallel_first_shop_access_is_conflict_safe() -> None:
             platform="test",
             app_version="test",
         )
-        session.add_all([user, shop, device])
-        await session.flush()
-        session.add(
-            ShopMembership(
-                shop_id=shop_id,
-                user_id=user_id,
-                role="OWNER",
-                is_active=True,
-            )
+        session.add_all([user, device])
+        await create_test_shop(
+            session,
+            shop_id=shop_id,
+            name="Device Race Shop",
+            slug=f"device-race-{shop_id}",
+            owner_user_id=user_id,
         )
 
     context = AuthContext(
@@ -123,7 +121,7 @@ async def test_parallel_first_shop_access_is_conflict_safe() -> None:
             )
         )
         assert access_count == 1
-        await session.execute(delete(Shop).where(Shop.id == shop_id))
+        await session.execute(delete(Organization).where(Organization.id == shop_id))
         await session.execute(delete(User).where(User.id == user_id))
 
 
@@ -135,7 +133,12 @@ async def test_item_import_creates_analytics_baseline(tmp_path) -> None:
     item_id = uuid4()
     timestamp = datetime.now(UTC).isoformat()
     async with AsyncSessionLocal.begin() as session:
-        session.add(Shop(id=shop_id, name="Import Baseline", slug=f"import-{shop_id}"))
+        await create_test_shop(
+            session,
+            shop_id=shop_id,
+            name="Import Baseline",
+            slug=f"import-{shop_id}",
+        )
 
     rows = [
         {
@@ -182,23 +185,35 @@ async def test_item_import_creates_analytics_baseline(tmp_path) -> None:
         assert history is not None
         assert history.event_type == "baseline"
         assert history.quantity == item.quantity
-        await session.execute(delete(Shop).where(Shop.id == shop_id))
+        await session.execute(delete(Organization).where(Organization.id == shop_id))
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(os.getenv("RUN_INTEGRATION") != "1", reason="PostgreSQL not requested")
 @pytest.mark.asyncio
 async def test_runtime_role_rls_blocks_unscoped_cross_shop_reads() -> None:
+    async with AsyncSessionLocal() as session:
+        is_superuser = await session.scalar(
+            text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+        )
+    if is_superuser:
+        pytest.skip("The local PostgreSQL owner bypasses row-level security")
+
     first_shop_id = uuid4()
     second_shop_id = uuid4()
     async with AsyncSessionLocal.begin() as session:
-        session.add_all(
-            [
-                Shop(id=first_shop_id, name="First RLS", slug=f"first-rls-{first_shop_id}"),
-                Shop(id=second_shop_id, name="Second RLS", slug=f"second-rls-{second_shop_id}"),
-            ]
+        await create_test_shop(
+            session,
+            shop_id=first_shop_id,
+            name="First RLS",
+            slug=f"first-rls-{first_shop_id}",
         )
-        await session.flush()
+        await create_test_shop(
+            session,
+            shop_id=second_shop_id,
+            name="Second RLS",
+            slug=f"second-rls-{second_shop_id}",
+        )
         for shop_id, barcode in (
             (first_shop_id, "11112222"),
             (second_shop_id, "33334444"),
@@ -228,7 +243,9 @@ async def test_runtime_role_rls_blocks_unscoped_cross_shop_reads() -> None:
         )
         visible_items = list((await session.execute(select(Item))).scalars())
         assert {item.shop_id for item in visible_items} == {first_shop_id}
-        await session.execute(delete(Shop).where(Shop.id.in_((first_shop_id, second_shop_id))))
+        await session.execute(
+            delete(Organization).where(Organization.id.in_((first_shop_id, second_shop_id)))
+        )
 
 
 @pytest.mark.integration

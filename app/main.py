@@ -23,8 +23,14 @@ from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.items.routes import router as item_router
 from app.modules.metal_rates.routes import router as metal_rate_router
 from app.modules.sales.routes import router as sales_router
-from app.modules.shops.routes import router as shops_router
+from app.modules.shops.routes import (
+    organizations_router,
+)
+from app.modules.shops.routes import (
+    router as shops_router,
+)
 from app.modules.subscriptions.routes import router as subscriptions_router
+from app.version import APP_VERSION
 
 
 @asynccontextmanager
@@ -38,7 +44,7 @@ LOGGER = logging.getLogger("aurum.api")
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 SITE_DIRECTORY = Path(__file__).resolve().parent.parent / "site"
@@ -97,6 +103,7 @@ API_PREFIX = "/api/v1"
 
 app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(shops_router, prefix=API_PREFIX)
+app.include_router(organizations_router, prefix=API_PREFIX)
 app.include_router(subscriptions_router, prefix=API_PREFIX)
 app.include_router(billing_router, prefix=API_PREFIX)
 

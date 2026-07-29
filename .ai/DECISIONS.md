@@ -74,6 +74,21 @@ Evidence:
 - `.github/workflows/android-release.yml::release-aab`
 - `tests/test_android_workflows.py::test_signed_aab_releases_directly_to_play_without_github_artifact`
 
+### Use one canonical application release version
+
+Recorded: 2026-07-29
+Status: accepted
+Basis: user-confirmed
+Decision: Use the repository-root `VERSION` file as the canonical Aurum POS application release version and synchronize package and native metadata with it.
+Rationale: The user requested a meaningful in-app version and explicitly selected `0.1.0` as the canonical value.
+Consequences: Backend and frontend builds consume the canonical value, Android uses it as `versionName`, the settings menu displays it, and automated tests detect metadata drift.
+
+Evidence:
+- `VERSION`
+- `app/version.py::APP_VERSION`
+- `frontend/releaseVersion.ts::RELEASE_VERSION`
+- `tests/test_version_contract.py::test_release_metadata_uses_the_canonical_version`
+
 ### Use one runtime environment contract
 
 Recorded: 2026-07-24
@@ -128,25 +143,33 @@ Evidence:
 - `pyproject.toml::project.license`
 - `app/main.py::version`
 
-### Use shared-database shop tenancy and shop entitlements
+### Use shared-database shop tenancy and organization entitlements
 
 Recorded: 2026-07-21
 Status: accepted
 Basis: user-confirmed
 Decision: Shops share PostgreSQL with tenant keys, explicit shop predicates, forced RLS, and a restricted production runtime role.
-Hosted free shops are capped at 50 active item rows; Pro belongs to a shop and is sold through Google Play.
-Self-hosted mode is unlimited.
+An organization owns one or more shops and holds one shared entitlement.
+Hosted Free supports one shop, two distinct organization seats, and 50 active item rows in the primary shop.
+Hosted Pro supports up to three shops, ten distinct organization seats, and unlimited active item rows.
+Self-hosted mode is unlimited across shops, seats, and inventory.
+One email consumes one seat across the organization even when assigned to multiple shops, and a pending invitation reserves that seat.
+After Pro expires, the primary shop remains writable under the Free item limit while additional shops become read-only without data loss.
+Organization ownership transfer durably cancels Google Play renewal before moving all shops, while the existing entitlement remains active through its paid expiry.
 Rationale: The user explicitly rejected one database per shop and requested cloud-infrastructure billing with free self-hosting.
+The user explicitly selected organization-level Pro, the hosted plan limits, distinct organization seats, read-only downgrade behavior, and billing-safe organization ownership transfer.
 The user explicitly selected defense in depth using query scoping plus a `NOBYPASSRLS` runtime credential separated from the Alembic administrator credential.
-Consequences: Every tenant request selects and validates a shop, tenant-aware queries include its UUID, roles and subscriptions are database state, and Play tokens are verified server-side.
+Consequences: Every tenant request selects and validates a shop and its organization, tenant-aware queries include the shop UUID, roles and subscriptions are database state, and Play tokens are verified server-side against the organization.
 Production migrations use a transient administrator URL that is not written to the API or worker runtime environment.
 
 Evidence:
 - `alembic/versions/c3d4e5f6a7b8_add_saas_tenancy.py::upgrade`
+- `alembic/versions/t9u0v1w2x3y4_add_organizations.py::upgrade`
 - `app/modules/items/service.py::get_item_by_id`
 - `app/modules/dashboard/service.py::get_dashboard_summary`
 - `app/modules/subscriptions/service.py::resolve_entitlement`
 - `app/modules/billing/service.py::verify_play_purchase`
+- `app/jobs/ownership_transfers.py::process_organization_ownership_transfers`
 
 ### Brand the paid entitlement as Pro end to end
 

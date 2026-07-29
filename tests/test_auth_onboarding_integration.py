@@ -12,7 +12,8 @@ from app.main import app
 from app.modules.auth.models import AuthToken, GoogleNonce, User, UserIdentity
 from app.modules.auth.security import hash_token
 from app.modules.notifications.models import EmailOutbox
-from app.modules.shops.models import Shop, ShopInvitation, ShopMembership
+from app.modules.shops.models import Organization, ShopInvitation, ShopMembership
+from tests.support import create_test_shop
 
 pytestmark = [
     pytest.mark.integration,
@@ -134,7 +135,7 @@ async def test_google_shop_onboarding_is_atomic_and_idempotent(monkeypatch) -> N
                 )
             )
             if shop_id is not None:
-                await session.execute(delete(Shop).where(Shop.id == shop_id))
+                await session.execute(delete(Organization).where(Organization.id == shop_id))
             if user_id is not None:
                 await session.execute(delete(User).where(User.id == user_id))
 
@@ -239,7 +240,7 @@ async def test_verification_resend_is_generic_and_rate_limited() -> None:
         async with AsyncSessionLocal.begin() as session:
             await session.execute(delete(EmailOutbox).where(EmailOutbox.recipient == email))
             if shop_id is not None:
-                await session.execute(delete(Shop).where(Shop.id == shop_id))
+                await session.execute(delete(Organization).where(Organization.id == shop_id))
             if user_id is not None:
                 await session.execute(delete(User).where(User.id == user_id))
 
@@ -316,22 +317,22 @@ async def test_google_invitation_skips_shop_prompt_and_inactive_user_is_rejected
         owner_id = owner.id
         inactive_user_id = inactive_user.id
         collision_user_id = collision_user.id
-        shop = Shop(name="Invitation Shop", slug=f"invitation-shop-{suffix}")
-        session.add(shop)
-        await session.flush()
+        _organization, shop, _owner_user_id = await create_test_shop(
+            session,
+            name="Invitation Shop",
+            slug=f"invitation-shop-{suffix}",
+            owner_user_id=owner.id,
+        )
         shop_id = shop.id
-        session.add_all(
-            [
-                ShopMembership(shop_id=shop.id, user_id=owner.id, role="OWNER"),
-                ShopInvitation(
-                    shop_id=shop.id,
-                    email=invited_email,
-                    role="MANAGER",
-                    token_hash=hash_token(invitation_token),
-                    invited_by_user_id=owner.id,
-                    expires_at=datetime.now(UTC) + timedelta(days=1),
-                ),
-            ]
+        session.add(
+            ShopInvitation(
+                shop_id=shop.id,
+                email=invited_email,
+                role="MANAGER",
+                token_hash=hash_token(invitation_token),
+                invited_by_user_id=owner.id,
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
         )
 
     transport = ASGITransport(app=app)
@@ -351,6 +352,9 @@ async def test_google_invitation_skips_shop_prompt_and_inactive_user_is_rejected
             assert accepted.json()["memberships"] == [
                 {
                     "shop_id": str(shop_id),
+                    "organization_id": str(shop_id),
+                    "organization_name": "Invitation Shop",
+                    "is_primary": True,
                     "shop_name": "Invitation Shop",
                     "shop_slug": f"invitation-shop-{suffix}",
                     "role": "MANAGER",
@@ -419,9 +423,11 @@ async def test_google_invitation_skips_shop_prompt_and_inactive_user_is_rejected
                 )
             )
             if collision_shop_id is not None:
-                await session.execute(delete(Shop).where(Shop.id == collision_shop_id))
+                await session.execute(
+                    delete(Organization).where(Organization.id == collision_shop_id)
+                )
             if shop_id is not None:
-                await session.execute(delete(Shop).where(Shop.id == shop_id))
+                await session.execute(delete(Organization).where(Organization.id == shop_id))
             for user_id in (
                 invited_user_id,
                 collision_user_id,

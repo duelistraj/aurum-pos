@@ -17,19 +17,37 @@ interface StaffMember {
   is_active: boolean;
 }
 
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: StaffRole;
+  expires_at: string;
+}
+
+interface TeamEntitlement {
+  plan: 'free' | 'pro';
+  team_seat_limit: number | null;
+  team_seat_usage: number;
+  can_invite_member: boolean;
+}
+
 const OWNER_INVITE_ROLES: StaffRole[] = ['ADMIN', 'MANAGER', 'CASHIER'];
 const ADMIN_INVITE_ROLES: StaffRole[] = ['MANAGER', 'CASHIER'];
 
 type ManageShopTab = 'invoice-settings' | 'staff';
 
 const StaffManagement: React.FC = () => {
-  const { activeMembership, reload } = useShop();
+  const { activeMembership } = useShop();
   const [email, setEmail] = React.useState('');
   const [role, setRole] = React.useState<StaffRole>('CASHIER');
   const [message, setMessage] = React.useState('');
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [members, setMembers] = React.useState<StaffMember[]>([]);
+  const [pendingInvitations, setPendingInvitations] =
+    React.useState<PendingInvitation[]>([]);
+  const [teamEntitlement, setTeamEntitlement] =
+    React.useState<TeamEntitlement | null>(null);
   const [ownershipTarget, setOwnershipTarget] = React.useState<StaffMember | null>(null);
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
   const roleDropdownRef = React.useRef<HTMLDivElement>(null);
@@ -41,8 +59,14 @@ const StaffManagement: React.FC = () => {
 
   const loadManagementData = React.useCallback(async () => {
     if (!activeMembership) return;
-    const staffRows = await apiClient.listStaff(activeMembership.shop_id);
+    const [staffRows, invitationRows, entitlement] = await Promise.all([
+      apiClient.listStaff(activeMembership.shop_id),
+      apiClient.listPendingInvitations(activeMembership.shop_id),
+      apiClient.getEntitlement(),
+    ]);
     setMembers(staffRows);
+    setPendingInvitations(invitationRows);
+    setTeamEntitlement(entitlement);
   }, [activeMembership]);
 
   React.useEffect(() => {
@@ -117,6 +141,7 @@ const StaffManagement: React.FC = () => {
     try {
       const invitation = await apiClient.inviteStaff(activeMembership.shop_id, { email, role });
       setEmail('');
+      await loadManagementData();
       setMessage(
         invitation.token
           ? `Invitation created. Local code: ${invitation.token}`
@@ -124,6 +149,22 @@ const StaffManagement: React.FC = () => {
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to invite staff');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeInvitation = async (invitation: PendingInvitation) => {
+    if (!activeMembership) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await apiClient.revokeInvitation(activeMembership.shop_id, invitation.id);
+      await loadManagementData();
+      setMessage(`Invitation for ${invitation.email} revoked.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to revoke invitation');
     } finally {
       setBusy(false);
     }
@@ -152,14 +193,14 @@ const StaffManagement: React.FC = () => {
     setBusy(true);
     setError('');
     try {
-      await apiClient.transferShopOwnership(
-        activeMembership.shop_id,
+      await apiClient.transferOrganizationOwnership(
+        activeMembership.organization_id,
         ownershipTarget.id,
       );
       setOwnershipTarget(null);
-      await reload();
-      await loadManagementData();
-      setMessage(`Ownership transferred to ${ownershipTarget.full_name}.`);
+      setMessage(
+        `Ownership transfer to ${ownershipTarget.full_name} is pending billing handoff.`,
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to transfer ownership');
     } finally {
@@ -176,6 +217,22 @@ const StaffManagement: React.FC = () => {
     >
       {error ? <Alert type="error" message={error} /> : null}
       {message ? <Alert type="success" message={message} /> : null}
+      {teamEntitlement ? (
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+            Organization seats
+          </p>
+          <p className="mt-1 text-xl font-bold">
+            {teamEntitlement.team_seat_usage}
+            {teamEntitlement.team_seat_limit === null
+              ? ' active'
+              : ` of ${teamEntitlement.team_seat_limit} used`}
+          </p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            A person counts once across all shops. Pending invitations reserve a seat.
+          </p>
+        </Card>
+      ) : null}
       <Card className="p-6">
         <h2 className="mb-4 text-lg font-bold">Current staff</h2>
         <div className="space-y-3">
@@ -237,6 +294,38 @@ const StaffManagement: React.FC = () => {
           ))}
         </div>
       </Card>
+      {pendingInvitations.length > 0 ? (
+        <Card className="p-6">
+          <h2 className="mb-1 text-lg font-bold">Pending invitations</h2>
+          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+            Revoke an unused invitation to release its reserved seat.
+          </p>
+          <div className="space-y-3">
+            {pendingInvitations.map((invitation) => (
+              <div
+                key={invitation.id}
+                className="flex flex-col gap-3 rounded-app-control border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800"
+              >
+                <div>
+                  <p className="font-semibold">{invitation.email}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {invitation.role} - expires{' '}
+                    {new Date(invitation.expires_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void revokeInvitation(invitation)}
+                >
+                  Revoke
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
       <Card className="p-6">
         <h2 className="mb-1 text-lg font-bold">Invite staff</h2>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
@@ -249,6 +338,7 @@ const StaffManagement: React.FC = () => {
               type="email"
               required
               value={email}
+              disabled={busy || teamEntitlement?.can_invite_member === false}
               onChange={(event) => setEmail(event.target.value)}
               className="mt-1 w-full rounded-app-control border border-slate-300 bg-white p-3 text-slate-900 placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
             />
@@ -268,6 +358,7 @@ const StaffManagement: React.FC = () => {
               aria-expanded={roleMenuOpen}
               onClick={() => setRoleMenuOpen((current) => !current)}
               onKeyDown={handleRoleTriggerKeyDown}
+              disabled={busy || teamEntitlement?.can_invite_member === false}
               className={`mt-1 flex w-full items-center justify-between gap-3 rounded-app-control border bg-white p-3 text-left text-slate-900 transition-all dark:bg-slate-950 dark:text-slate-100 ${
                 roleMenuOpen
                   ? 'border-amber-500 ring-2 ring-amber-500/25'
@@ -311,12 +402,27 @@ const StaffManagement: React.FC = () => {
               </div>
             ) : null}
           </div>
-          <Button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send invitation'}</Button>
+          {teamEntitlement?.can_invite_member === false ? (
+            <Alert
+              type="warning"
+              message={
+                teamEntitlement.plan === 'free'
+                  ? 'The Free plan seat limit is reached. Upgrade to invite another person.'
+                  : 'The Pro seat limit is reached. Revoke an invitation or deactivate a member first.'
+              }
+            />
+          ) : null}
+          <Button
+            type="submit"
+            disabled={busy || teamEntitlement?.can_invite_member === false}
+          >
+            {busy ? 'Sending…' : 'Send invitation'}
+          </Button>
         </form>
       </Card>
       <Modal
         isOpen={ownershipTarget !== null}
-        title="Transfer shop ownership"
+        title="Transfer organization ownership"
         onClose={() => setOwnershipTarget(null)}
         footer={(
           <>
@@ -334,14 +440,14 @@ const StaffManagement: React.FC = () => {
               isLoading={busy}
               onClick={() => void transferOwnership()}
             >
-              Transfer ownership
+              Begin transfer
             </Button>
           </>
         )}
       >
         <p>
           {ownershipTarget
-            ? `${ownershipTarget.full_name} will become the owner. Your role will change to administrator.`
+            ? `${ownershipTarget.full_name} will become the owner of every shop. Google Play renewal will be cancelled first, and your Pro access will continue until the paid period expires.`
             : ''}
         </p>
       </Modal>
@@ -350,7 +456,7 @@ const StaffManagement: React.FC = () => {
 };
 
 export const ManageShop: React.FC = () => {
-  const { activeMembership } = useShop();
+  const { activeMembership, canManage } = useShop();
   const [searchParams, setSearchParams] = useSearchParams();
   const invoiceSettingsTabRef = React.useRef<HTMLButtonElement>(null);
   const staffTabRef = React.useRef<HTMLButtonElement>(null);
@@ -358,12 +464,20 @@ export const ManageShop: React.FC = () => {
     ? 'staff'
     : 'invoice-settings';
 
-  if (!activeMembership || !['OWNER', 'ADMIN'].includes(activeMembership.role)) {
+  if (
+    !activeMembership
+    || !canManage
+    || !['OWNER', 'ADMIN'].includes(activeMembership.role)
+  ) {
     return (
       <div className="app-page__container mx-auto max-w-3xl p-6">
         <Alert
           type="error"
-          message="Only shop owners and administrators can manage shop settings."
+          message={
+            activeMembership?.access_mode === 'read_only'
+              ? 'Restore Pro to manage this additional shop.'
+              : 'Only shop owners and administrators can manage shop settings.'
+          }
         />
       </div>
     );

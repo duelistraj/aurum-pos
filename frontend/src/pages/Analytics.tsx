@@ -38,7 +38,12 @@ const PRESETS: Array<{ id: PresetId; label: string }> = [
   { id: 'custom', label: 'Custom range' },
 ];
 
-const JEWELLERY_OPTIONS = ['all', 'gold', 'silver', 'platinum'] as const;
+const JEWELLERY_OPTIONS = [
+  { value: 'all', label: 'All jewellery' },
+  { value: 'gold', label: 'Gold' },
+  { value: 'silver', label: 'Silver' },
+  { value: 'platinum', label: 'Platinum' },
+] as const;
 const CATEGORY_COLORS = ['#E0A02B', '#6D8FC1', '#67A67B', '#A179A6', '#C28A4A', '#8C7772', '#75849A', '#A86762'];
 
 const CHART_THEME = {
@@ -319,6 +324,9 @@ export const Analytics: React.FC = () => {
   ] : [], [data, inventoryHasData]);
   const categoryTotal = categoryChartData.reduce((sum, category) => sum + category.value, 0);
   const inventoryTotal = inventoryChartData.reduce((sum, category) => sum + category.value, 0);
+  const selectedJewelleryLabel = JEWELLERY_OPTIONS.find(
+    ({ value }) => value === selectedJewellery,
+  )?.label ?? 'All jewellery';
 
   const totalSalesTrend = data?.total_sales_change_percentage ?? 0;
   const previousSales = data?.sales_trend.previous.sales_value ?? 0;
@@ -347,26 +355,26 @@ export const Analytics: React.FC = () => {
               aria-expanded={openFilter === 'jewellery'}
             >
               <Coins className="analytics-filter-button__icon" />
-              <span>{selectedJewellery === 'all' ? 'All jewellery' : selectedJewellery}</span>
+              <span>{selectedJewelleryLabel}</span>
               <ChevronDown className={`analytics-filter-button__chevron${openFilter === 'jewellery' ? ' is-open' : ''}`} />
             </button>
             {openFilter === 'jewellery' ? (
               <div className="analytics-filter-menu" role="listbox" aria-label="Jewellery type">
                 {JEWELLERY_OPTIONS.map((option) => {
-                  const selected = selectedJewellery === option;
+                  const selected = selectedJewellery === option.value;
                   return (
                     <button
-                      key={option}
+                      key={option.value}
                       type="button"
                       role="option"
                       aria-selected={selected}
                       className={`analytics-filter-option${selected ? ' is-selected' : ''}`}
                       onClick={() => {
-                        setSelectedJewellery(option);
+                        setSelectedJewellery(option.value);
                         setOpenFilter(null);
                       }}
                     >
-                      <span>{option === 'all' ? 'All jewellery' : option}</span>
+                      <span>{option.label}</span>
                       {selected ? <Check className="analytics-filter-option__check" /> : null}
                     </button>
                   );
@@ -485,7 +493,7 @@ export const Analytics: React.FC = () => {
               icon={<Package className="analytics-kpi__svg" />}
             />
             <AnalyticsKpi
-              label="Silver rate (per g)"
+              label="Silver rate (per 10g)"
               value={formatCurrency(data.silver_rate_10g)}
               change={data.silver_rate_change_percentage}
               tone="green"

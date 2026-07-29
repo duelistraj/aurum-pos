@@ -60,6 +60,8 @@ def test_android_version_code_comes_from_release_environment() -> None:
     source = ANDROID_BUILD.read_text(encoding="utf-8")
 
     assert 'System.getenv("ANDROID_VERSION_CODE") ?: "1"' in source
+    assert "file('../../../VERSION')" in source
+    assert "versionName appVersionName" in source
 
 
 def test_android_auth_storage_uses_keystore_plugin_and_is_not_backed_up() -> None:

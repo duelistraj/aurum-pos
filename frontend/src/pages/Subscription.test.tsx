@@ -34,6 +34,10 @@ vi.mock('../utils/apiConfig', () => ({ isCloudDistribution: true }));
 
 const ownerMembership = {
   shop_id: 'shop-id',
+  organization_id: 'organization-id',
+  organization_name: 'BMR Chandiwala',
+  is_primary: true,
+  access_mode: 'read_write' as const,
   shop_name: 'BMR Chandiwala',
   shop_slug: 'bmr-chandiwala',
   role: 'OWNER' as const,
@@ -59,11 +63,19 @@ describe('Subscription', () => {
     vi.clearAllMocks();
     vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
     vi.mocked(apiClient.getEntitlement).mockResolvedValue({
+      organization_id: 'organization-id',
       plan: 'free',
       source: 'hosted_free',
       active_item_limit: 50,
       active_item_count: 12,
       can_add_item: true,
+      shop_limit: 1,
+      shop_count: 1,
+      team_seat_limit: 2,
+      team_seat_usage: 1,
+      can_create_shop: false,
+      can_invite_member: true,
+      access_mode: 'read_write',
       expires_at: null,
     });
     vi.mocked(useShop).mockReturnValue({
@@ -123,7 +135,7 @@ describe('Subscription', () => {
     expect(screen.getAllByText(/Renews automatically/)).toHaveLength(2);
   });
 
-  it('submits a purchase for the selected shop', async () => {
+  it('submits a purchase for the selected organization', async () => {
     const user = userEvent.setup();
     vi.mocked(AurumBilling.getProducts).mockResolvedValue({
       products: [{
@@ -151,7 +163,7 @@ describe('Subscription', () => {
       productId: 'aurum_cloud_pro',
       basePlanId: 'monthly',
       obfuscatedAccountId: 'hash-user-id',
-      obfuscatedProfileId: 'hash-shop-id',
+      obfuscatedProfileId: 'hash-organization-id',
     });
     expect(apiClient.submitPlayPurchase).toHaveBeenCalledWith('purchase-token');
   });

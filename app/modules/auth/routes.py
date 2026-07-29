@@ -67,7 +67,13 @@ from app.modules.auth.service import (
     revoke_session,
     verify_auth_token,
 )
-from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, ShopMembership
+from app.modules.shops.models import (
+    Organization,
+    Shop,
+    ShopDeviceAccess,
+    ShopInvitation,
+    ShopMembership,
+)
 from app.modules.shops.service import create_shop
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -289,10 +295,8 @@ async def confirm_account_deletion(
     if request.confirmed_at is not None:
         return {"message": "Deletion is already scheduled"}
     owns_shop = await db.scalar(
-        select(ShopMembership.id).where(
-            ShopMembership.user_id == request.user_id,
-            ShopMembership.role == "OWNER",
-            ShopMembership.is_active.is_(True),
+        select(Organization.id).where(
+            Organization.owner_user_id == request.user_id,
         )
     )
     if owns_shop and not request.delete_owned_shops:

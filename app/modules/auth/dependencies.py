@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import AuthSession, Device, User
 from app.modules.auth.security import decode_token
-from app.modules.shops.models import Shop, ShopDeviceAccess, ShopMembership
+from app.modules.shops.models import Organization, Shop, ShopDeviceAccess, ShopMembership
+from app.modules.subscriptions.service import enforce_shop_write_access
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -28,6 +29,7 @@ class AuthContext:
 @dataclass(frozen=True)
 class ShopContext:
     user: User
+    organization: Organization
     shop: Shop
     membership: ShopMembership
     device: Device
@@ -120,8 +122,9 @@ async def get_shop_context(
         {"shop_id": str(x_shop_id), "user_id": str(context.user.id)},
     )
     result = await db.execute(
-        select(ShopMembership, Shop, ShopDeviceAccess)
+        select(ShopMembership, Shop, Organization, ShopDeviceAccess)
         .join(Shop, Shop.id == ShopMembership.shop_id)
+        .join(Organization, Organization.id == Shop.organization_id)
         .outerjoin(
             ShopDeviceAccess,
             (ShopDeviceAccess.shop_id == ShopMembership.shop_id)
@@ -137,7 +140,11 @@ async def get_shop_context(
     membership_row = result.one_or_none()
     if membership_row is None:
         raise HTTPException(status_code=404, detail="Shop membership not found")
-    membership, shop, device_access = membership_row
+    membership, shop, organization, device_access = membership_row
+    await db.execute(
+        text("SELECT set_config('app.current_organization_id', :organization_id, true)"),
+        {"organization_id": str(organization.id)},
+    )
     if device_access is None:
         await db.execute(
             pg_insert(ShopDeviceAccess)
@@ -152,7 +159,13 @@ async def get_shop_context(
         )
     if device_access is None or not device_access.is_active:
         raise HTTPException(status_code=403, detail="Device is disabled for this shop")
-    return ShopContext(user=context.user, shop=shop, membership=membership, device=device)
+    return ShopContext(
+        user=context.user,
+        organization=organization,
+        shop=shop,
+        membership=membership,
+        device=device,
+    )
 
 
 class RoleChecker:
@@ -165,7 +178,16 @@ class RoleChecker:
         return context
 
 
+async def require_writable_shop(
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> ShopContext:
+    await enforce_shop_write_access(db, context.shop.id)
+    return context
+
+
 RequireAuth = Depends(get_shop_context)
+RequireWritableShop = Depends(require_writable_shop)
 RequireOwner = Depends(RoleChecker(frozenset({"OWNER"})))
 RequireAdmin = Depends(RoleChecker(frozenset({"OWNER", "ADMIN"})))
 RequireManager = Depends(RoleChecker(frozenset({"OWNER", "ADMIN", "MANAGER"})))

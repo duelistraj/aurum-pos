@@ -46,7 +46,7 @@ def decrypt_purchase_token(token: str) -> str:
 
 async def fetch_play_purchase(
     *,
-    shop_id: UUID,
+    organization_id: UUID,
     purchase_token: str,
     product_id: str,
     client: GooglePlayClient | None = None,
@@ -62,28 +62,31 @@ async def fetch_play_purchase(
     if not any(item.get("productId") == product_id for item in line_items):
         raise HTTPException(status_code=400, detail="Purchase product does not match")
     identifiers = purchase.get("externalAccountIdentifiers") or {}
-    if identifiers.get("obfuscatedExternalProfileId") != hash_token(str(shop_id)):
-        raise HTTPException(status_code=400, detail="Purchase is not linked to this shop")
+    if identifiers.get("obfuscatedExternalProfileId") != hash_token(str(organization_id)):
+        raise HTTPException(
+            status_code=400,
+            detail="Purchase is not linked to this organization",
+        )
     return purchase, play_client
 
 
 async def verify_play_purchase(
     db: AsyncSession,
     *,
-    shop_id: UUID,
+    organization_id: UUID,
     purchase_token: str,
     product_id: str,
     client: GooglePlayClient | None = None,
 ) -> tuple[Subscription, str]:
     purchase, play_client = await fetch_play_purchase(
-        shop_id=shop_id,
+        organization_id=organization_id,
         purchase_token=purchase_token,
         product_id=product_id,
         client=client,
     )
     subscription, state, needs_acknowledgement = await apply_play_purchase(
         db,
-        shop_id=shop_id,
+        organization_id=organization_id,
         purchase_token=purchase_token,
         product_id=product_id,
         purchase=purchase,
@@ -99,7 +102,7 @@ async def verify_play_purchase(
 async def apply_play_purchase(
     db: AsyncSession,
     *,
-    shop_id: UUID,
+    organization_id: UUID,
     purchase_token: str,
     product_id: str,
     purchase: dict[str, Any],
@@ -118,9 +121,15 @@ async def apply_play_purchase(
         await db.get(Subscription, existing_play.subscription_id) if existing_play else None
     )
     if existing_play and subscription is None:
-        raise HTTPException(status_code=409, detail="Purchase token belongs to another shop")
-    if subscription and subscription.shop_id != shop_id:
-        raise HTTPException(status_code=409, detail="Purchase token belongs to another shop")
+        raise HTTPException(
+            status_code=409,
+            detail="Purchase token belongs to another organization",
+        )
+    if subscription and subscription.organization_id != organization_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Purchase token belongs to another organization",
+        )
 
     state = str(purchase.get("subscriptionState") or "SUBSCRIPTION_STATE_UNSPECIFIED")
     expiry = max(
@@ -131,7 +140,7 @@ async def apply_play_purchase(
     entitled = state in ENTITLED_PLAY_STATES and (expiry is None or expiry > datetime.now(UTC))
     if subscription is None:
         subscription = Subscription(
-            shop_id=shop_id,
+            organization_id=organization_id,
             source="play",
             plan="pro",
             status="active" if entitled else "expired",
@@ -143,7 +152,7 @@ async def apply_play_purchase(
         await db.flush()
         existing_play = PlaySubscription(
             subscription_id=subscription.id,
-            shop_id=shop_id,
+            organization_id=organization_id,
             package_name=settings.google_play_package_name,
             product_id=product_id,
             purchase_token=_encrypt_token(purchase_token),
