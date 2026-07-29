@@ -75,6 +75,7 @@ def upgrade() -> None:
     )
     op.add_column("shops", sa.Column("organization_id", sa.UUID(), nullable=True))
     op.execute("UPDATE shops SET organization_id = id")
+    # migration-safety: allow - every row is backfilled above in this transaction.
     op.alter_column("shops", "organization_id", nullable=False)
     op.create_foreign_key(
         "fk_shops_organization",
