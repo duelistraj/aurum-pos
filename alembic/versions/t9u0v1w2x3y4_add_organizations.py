@@ -16,8 +16,58 @@ down_revision: str | Sequence[str] | None = "s8t9u0v1w2x3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+LEGACY_SHOP_ID = "00000000-0000-0000-0000-000000000001"
+
 
 def upgrade() -> None:
+    op.execute(
+        f"""
+        DELETE FROM shops AS legacy_shop
+        WHERE legacy_shop.id = '{LEGACY_SHOP_ID}'::uuid
+          AND NOT EXISTS (
+            SELECT 1 FROM shop_memberships WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM shop_invitations WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM shop_device_access WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM items WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM item_history WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM metal_rates WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM metal_rate_history WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM sales WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM sale_items WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM sale_idempotency WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM invoice_jobs WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM change_log WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM subscriptions WHERE shop_id = legacy_shop.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM play_subscriptions WHERE shop_id = legacy_shop.id
+          )
+        """
+    )
     op.create_table(
         "organizations",
         sa.Column("id", sa.UUID(), nullable=False),
