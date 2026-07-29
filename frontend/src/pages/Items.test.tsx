@@ -246,6 +246,8 @@ describe('Inventory entitlement usage', () => {
     expect(firstDetails).not.toBeNull();
     expect(within(firstDetails!).getByText('RING-1')).toBeInTheDocument();
     expect(within(firstDetails!).getByText('₹100.00')).toBeInTheDocument();
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    expect(document.getElementById('inventory-item-details-item-1')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Show details for 87654321' }));
 

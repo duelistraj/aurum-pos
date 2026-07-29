@@ -434,13 +434,14 @@ export const Items: React.FC = () => {
 
   // Debounce search term changes
   React.useEffect(() => {
+    if (searchTerm === debouncedSearch) return;
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm);
       setCurrentPage(1);
       setExpandedItemId(null);
     }, 300);
     return () => clearTimeout(handler);
-  }, [searchTerm]);
+  }, [debouncedSearch, searchTerm]);
 
   const handleCategorySelect = (val: string) => {
     setSelectedCategory(val);
@@ -1156,7 +1157,10 @@ export const Items: React.FC = () => {
                                 aria-expanded={isExpanded}
                                 aria-controls={detailsId}
                                 aria-label={`${isExpanded ? 'Hide' : 'Show'} details for ${item.barcode}`}
-                                onClick={() => toggleExpandedItem(item.id)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleExpandedItem(item.id);
+                                }}
                                 className="flex h-11 w-11 items-center justify-center rounded-app-control text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                               >
                                 <ChevronDown

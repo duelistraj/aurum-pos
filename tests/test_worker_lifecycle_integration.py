@@ -43,6 +43,10 @@ async def test_play_acknowledgement_failure_remains_durable_until_success() -> N
                 text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
                 {"shop_id": str(shop_id)},
             )
+            await session.execute(
+                text("SELECT set_config('app.current_organization_id', :organization_id, true)"),
+                {"organization_id": str(shop_id)},
+            )
             subscription = Subscription(
                 id=subscription_id,
                 organization_id=shop_id,
@@ -129,6 +133,10 @@ async def test_shop_cleanup_cancels_billing_and_deletes_exact_invoice_keys(monke
             await session.execute(
                 text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
                 {"shop_id": str(shop_id)},
+            )
+            await session.execute(
+                text("SELECT set_config('app.current_organization_id', :organization_id, true)"),
+                {"organization_id": str(shop_id)},
             )
             session.add(
                 Sale(
