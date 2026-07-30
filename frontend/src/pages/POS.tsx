@@ -1,7 +1,8 @@
 import React from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { Plus, Minus, AlertCircle, X } from 'lucide-react';
+import { Plus, Minus, AlertCircle, Camera, X } from 'lucide-react';
 import {
   Card,
   Button,
@@ -21,6 +22,15 @@ import {
 } from '../utils/checkout';
 
 const FIXED_MAKING_CATEGORIES = new Set(['unique', 'other']);
+const CAMERA_BARCODE_FORMATS = Object.freeze([
+  'code_128',
+  'ean_13',
+  'ean_8',
+  'qr_code',
+  'upc_a',
+  'upc_e',
+]);
+const AURUM_LABEL_BARCODE_FORMAT = 'code_128';
 
 const isFixedMakingCategory = (category: string) =>
   FIXED_MAKING_CATEGORIES.has(category.toLowerCase());
@@ -46,6 +56,7 @@ export const POS: React.FC = () => {
   const { activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
   const isReadOnly = activeMembership?.access_mode === 'read_only';
+  const isAndroid = Capacitor.getPlatform() === 'android';
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [barcode, setBarcode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -172,7 +183,30 @@ export const POS: React.FC = () => {
       const BarcodeDetector = window.BarcodeDetector;
       if (!BarcodeDetector) {
         setCameraError(
-          'Barcode Detection API is not supported in this browser. Please use a Chromium-based browser or mobile WebView.'
+          'Camera barcode scanning is unavailable on this device. Update your browser or enter the barcode manually.'
+        );
+        return;
+      }
+
+      let supportedFormats = [...CAMERA_BARCODE_FORMATS];
+      if (BarcodeDetector.getSupportedFormats) {
+        try {
+          const deviceFormats = await BarcodeDetector.getSupportedFormats();
+          supportedFormats = CAMERA_BARCODE_FORMATS.filter((format) =>
+            deviceFormats.includes(format)
+          );
+        } catch (err) {
+          console.error('Barcode format detection error:', err);
+          setCameraError(
+            'Unable to initialize barcode detection on this device.'
+          );
+          return;
+        }
+      }
+
+      if (!supportedFormats.includes(AURUM_LABEL_BARCODE_FORMAT)) {
+        setCameraError(
+          'This device cannot scan Aurum Code 128 barcode labels. Enter the barcode manually instead.'
         );
         return;
       }
@@ -198,7 +232,7 @@ export const POS: React.FC = () => {
           await video.play();
 
           const barcodeDetector = new BarcodeDetector({
-            formats: ['code_128', 'ean_13', 'ean_8', 'qr_code', 'upc_a', 'upc_e'],
+            formats: supportedFormats,
           });
 
           const scanFrame = async () => {
@@ -400,24 +434,43 @@ export const POS: React.FC = () => {
             {/* Barcode Scanner */}
             <Card className="p-5 flex-shrink-0 bg-white border border-slate-100 shadow-sm rounded-app-surface animate-slide-up">
               <form onSubmit={handleScanBarcode} className="space-y-3">
-                <div className="flex space-x-3 items-center">
-                  <Input
-                    id="barcodeInput"
-                    placeholder="Scan or type barcode here..."
-                    value={barcode}
-                    onChange={(e) => setBarcode(e.target.value)}
-                    disabled={isReadOnly}
-                    autoFocus
-                    className="flex-1 text-lg py-3 rounded-app-control focus:ring-amber-500"
-                  />
+                <div className="flex gap-3 items-center">
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      id="barcodeInput"
+                      placeholder="Scan or type barcode here..."
+                      value={barcode}
+                      onChange={(e) => setBarcode(e.target.value)}
+                      disabled={isReadOnly}
+                      autoFocus
+                      className="text-lg py-3 rounded-app-control focus:ring-amber-500"
+                    />
+                  </div>
                   <Button
                     type="submit"
                     isLoading={loading}
                     disabled={isReadOnly || !barcode.trim()}
+                    aria-label="Add barcode to cart"
                     className="px-6 py-3 rounded-app-control h-[46px] flex items-center justify-center"
                   >
                     <Plus className="w-5 h-5" />
                   </Button>
+                  {isAndroid ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isReadOnly || loading}
+                      aria-label="Scan barcode with camera"
+                      title="Scan barcode with camera"
+                      onClick={() => {
+                        setCameraError('');
+                        setShowCameraScanner(true);
+                      }}
+                      className="px-6 py-3 rounded-app-control h-[46px] flex items-center justify-center"
+                    >
+                      <Camera className="w-5 h-5" />
+                    </Button>
+                  ) : null}
                 </div>
               </form>
             </Card>

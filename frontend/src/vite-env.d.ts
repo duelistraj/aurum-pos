@@ -18,6 +18,7 @@ interface BarcodeDetectorInstance {
 
 interface BarcodeDetectorConstructor {
   new (options: { formats: string[] }): BarcodeDetectorInstance;
+  getSupportedFormats?: () => Promise<string[]>;
 }
 
 interface Window {
