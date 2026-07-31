@@ -1596,6 +1596,81 @@ body {
   }
 }
 
+.inventory-download__option--compact {
+  display: flex;
+  width: 100%;
+  min-height: 2.65rem;
+  align-items: center;
+  gap: .65rem;
+  border: 0;
+  border-radius: .55rem;
+  background: transparent;
+  color: var(--app-ink);
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 800;
+  padding: .5rem .6rem;
+  text-align: left;
+  transition: background .16s ease, color .16s ease;
+}
+
+.inventory-download__option--compact:hover,
+.inventory-download__option--compact:focus-visible {
+  outline: none;
+  background: var(--app-accent-soft);
+  color: var(--app-accent-dark);
+}
+
+.inventory-download__format-icon {
+  display: flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 639px) {
+  .inventory-page__actions--phone {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .inventory-page__actions--phone > .inventory-page__phone-icon,
+  .inventory-page__actions--phone > .inventory-download--phone {
+    width: 2.9rem;
+    flex: 0 0 2.9rem;
+  }
+
+  .inventory-page__actions--phone > .inventory-page__manage-action--phone {
+    min-width: 0;
+    flex: 1 1 0;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .inventory-page__phone-icon {
+    width: 2.9rem;
+    min-width: 2.9rem;
+    min-height: 2.9rem;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .inventory-download--phone > .inventory-download__trigger {
+    width: 100%;
+  }
+
+  .inventory-download__menu--compact {
+    right: auto;
+    left: 0;
+    width: 8.75rem;
+    max-width: calc(100vw - 2rem);
+    gap: .15rem;
+    padding: .3rem;
+  }
+}
+
 /* Authenticated workspace surfaces. These classes intentionally stay scoped to
    the pages outside Dashboard and Analytics so those reference layouts remain
    stable while the rest of the app shares the same visual system. */

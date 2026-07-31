@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import { apiClient } from '../api/client';
 import { Navbar } from '../components/Navbar';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
+import { downloadBlob } from '../utils';
 import { Items } from './Items';
 
 vi.mock('../api/client', () => ({
@@ -14,6 +15,7 @@ vi.mock('../api/client', () => ({
     createItem: vi.fn(),
     deleteItem: vi.fn(),
     getAvailableMetals: vi.fn(),
+    getBatchLabels: vi.fn(),
     getEntitlement: vi.fn(),
     getItems: vi.fn(),
     getItemsSummary: vi.fn(),
@@ -25,6 +27,48 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
+vi.mock('../utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils')>();
+  return {
+    ...actual,
+    downloadBlob: vi.fn(),
+  };
+});
+
+const PHONE_VIEWPORT_QUERY = '(max-width: 639px)';
+let isPhoneViewport = false;
+const viewportListeners = new Set<EventListenerOrEventListenerObject>();
+
+const installMatchMedia = () => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches: query === PHONE_VIEWPORT_QUERY
+        ? isPhoneViewport
+        : query === '(min-width: 640px)' && !isPhoneViewport,
+      media: query,
+      onchange: null,
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
+        if (type === 'change') viewportListeners.add(listener);
+      },
+      removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
+        if (type === 'change') viewportListeners.delete(listener);
+      },
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+};
+
+const setPhoneViewport = (nextValue: boolean) => {
+  isPhoneViewport = nextValue;
+  const event = new Event('change');
+  viewportListeners.forEach((listener) => {
+    if (typeof listener === 'function') listener(event);
+    else listener.handleEvent(event);
+  });
+};
 
 const membership = {
   shop_id: 'shop-1',
@@ -60,6 +104,9 @@ describe('Inventory entitlement usage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    isPhoneViewport = false;
+    viewportListeners.clear();
+    installMatchMedia();
     vi.mocked(useConfig).mockReturnValue({
       appName: 'Aurum POS',
       isDarkMode: false,
@@ -127,6 +174,8 @@ describe('Inventory entitlement usage', () => {
       sold_items: 0,
       items_925_count: 0,
     });
+    vi.mocked(apiClient.getBatchLabels).mockResolvedValue(new Blob(['labels']));
+    vi.mocked(downloadBlob).mockResolvedValue(undefined);
     vi.mocked(apiClient.createItem).mockResolvedValue({
       id: 'item-1',
       sku: 'RING-1',
@@ -326,5 +375,147 @@ describe('Inventory entitlement usage', () => {
       pages: 2,
     });
     expect(await screen.findByText('Second page item')).toBeInTheDocument();
+  });
+
+  it('uses an ordered compact action bar and download menu on phones', async () => {
+    setPhoneViewport(true);
+    const user = userEvent.setup();
+    const inventoryItem = {
+      id: 'item-phone',
+      sku: 'PHONE-1',
+      barcode: '12345678',
+      category: 'jewellery',
+      name: 'Phone Silver Ring',
+      metal: 'Silver',
+      purity: 92.5,
+      net_weight: 5,
+      making_charge: 100,
+      quantity: 1,
+      notes: null,
+      status: 'in_stock',
+    };
+    vi.mocked(apiClient.getItems).mockResolvedValue({
+      items: [inventoryItem],
+      total: 1,
+      page: 1,
+      limit: 10,
+      pages: 1,
+    });
+
+    renderInventoryWithNavbar();
+
+    expect(await screen.findByText('Phone Silver Ring')).toBeInTheDocument();
+    const actions = screen.getByRole('group', {
+      name: 'Inventory management actions',
+    });
+    const initialActionButtons = within(actions).getAllByRole('button');
+    expect(initialActionButtons).toHaveLength(2);
+    expect(initialActionButtons[0]).toHaveAccessibleName('Add Item');
+    expect(initialActionButtons[1]).toHaveAccessibleName('Manage');
+    expect(initialActionButtons[1]).toHaveClass('inventory-page__manage-action--phone');
+
+    await user.click(screen.getByRole('button', { name: 'Manage' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select 12345678' }));
+
+    const actionButtons = within(actions).getAllByRole('button');
+
+    expect(actionButtons).toHaveLength(3);
+    expect(actionButtons[0]).toHaveAccessibleName('Add Item');
+    expect(actionButtons[0]).not.toHaveTextContent('Add Item');
+    expect(actionButtons[1]).toHaveAccessibleName('Download selected item labels');
+    expect(actionButtons[1]).not.toHaveTextContent('Download');
+    expect(actionButtons[2]).toHaveAccessibleName('Exit Manage');
+    expect(actionButtons[2]).toHaveClass('inventory-page__manage-action--phone');
+
+    await user.click(actionButtons[1]);
+
+    const menu = screen.getByRole('menu', {
+      name: 'Download selected item labels',
+    });
+    expect(menu).toHaveClass('inventory-download__menu--compact');
+    expect(within(menu).getByRole('menuitem', { name: 'XLSX' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'PDF' })).toBeInTheDocument();
+    expect(within(menu).queryByText('Download as Excel file')).not.toBeInTheDocument();
+    expect(within(menu).queryByText('Download as PDF file')).not.toBeInTheDocument();
+    expect(menu.querySelector('.document-format-icon--xlsx')).not.toBeNull();
+    expect(menu.querySelector('.document-format-icon--pdf')).not.toBeNull();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(actionButtons[1]).toHaveFocus();
+
+    await user.click(actionButtons[1]);
+    await user.click(screen.getByRole('menuitem', { name: 'XLSX' }));
+
+    await waitFor(() => {
+      expect(apiClient.getBatchLabels).toHaveBeenCalledWith(['item-phone'], 'xlsx');
+      expect(downloadBlob).toHaveBeenCalledWith(
+        expect.any(Blob),
+        'selected-labels.xlsx',
+      );
+    });
+  });
+
+  it('keeps full labels and detailed downloads from the tablet breakpoint upward', async () => {
+    const user = userEvent.setup();
+    const inventoryItem = {
+      id: 'item-tablet',
+      sku: 'TABLET-1',
+      barcode: '87654321',
+      category: 'jewellery',
+      name: 'Tablet Silver Ring',
+      metal: 'Silver',
+      purity: 92.5,
+      net_weight: 5,
+      making_charge: 100,
+      quantity: 1,
+      notes: null,
+      status: 'in_stock',
+    };
+    vi.mocked(apiClient.getItems).mockResolvedValue({
+      items: [inventoryItem],
+      total: 1,
+      page: 1,
+      limit: 10,
+      pages: 1,
+    });
+
+    renderInventoryWithNavbar();
+
+    expect(await screen.findByText('Tablet Silver Ring')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Manage' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select 87654321' }));
+
+    const actions = screen.getByRole('group', {
+      name: 'Inventory management actions',
+    });
+    const actionButtons = within(actions).getAllByRole('button');
+
+    expect(actionButtons).toHaveLength(3);
+    expect(actionButtons[0]).toHaveAccessibleName('Exit Manage');
+    expect(actionButtons[1]).toHaveAccessibleName('Download');
+    expect(actionButtons[2]).toHaveAccessibleName('Add Item');
+    expect(actionButtons[2]).toHaveTextContent('Add Item');
+
+    await user.click(actionButtons[1]);
+
+    const menu = screen.getByRole('menu', {
+      name: 'Download selected item labels',
+    });
+    expect(menu).not.toHaveClass('inventory-download__menu--compact');
+    expect(within(menu).getByText('Excel (.xlsx)')).toBeInTheDocument();
+    expect(within(menu).getByText('Download as Excel file')).toBeInTheDocument();
+    expect(within(menu).getByText('PDF (.pdf)')).toBeInTheDocument();
+    expect(within(menu).getByText('Download as PDF file')).toBeInTheDocument();
+    expect(menu.querySelector('.document-format-icon--xlsx')).not.toBeNull();
+    expect(menu.querySelector('.document-format-icon--pdf')).not.toBeNull();
+
+    act(() => setPhoneViewport(true));
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    const phoneActions = within(actions).getAllByRole('button');
+    expect(phoneActions[0]).toHaveAccessibleName('Add Item');
+    expect(phoneActions[1]).toHaveAccessibleName('Download selected item labels');
+    expect(phoneActions[2]).toHaveAccessibleName('Exit Manage');
   });
 });
