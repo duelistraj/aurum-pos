@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -76,10 +76,12 @@ describe('shared UI primitives', () => {
     await user.click(trigger);
     const listbox = screen.getByRole('listbox', { name: 'PDF status' });
     expect(trigger).toHaveClass('ui-listbox__trigger', 'is-open');
-    expect(within(listbox).getByRole('option', { name: 'All statuses' })).toHaveAttribute(
+    const placeholderOption = within(listbox).getByRole('option', { name: 'All statuses' });
+    expect(placeholderOption).toHaveAttribute(
       'aria-selected',
       'true',
     );
+    await waitFor(() => expect(placeholderOption).toHaveFocus());
 
     await user.keyboard('{ArrowDown}{Enter}');
     expect(onValueChange).toHaveBeenCalledWith('ready');
