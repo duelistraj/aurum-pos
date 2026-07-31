@@ -2,9 +2,10 @@
 
 ### System shape
 
-Aurum POS has a FastAPI API, async PostgreSQL persistence, a database-backed worker, and a React client packaged for Capacitor Android.
+Aurum POS has a FastAPI API, async PostgreSQL persistence, a database-backed worker, and a React client distributed through Capacitor Android and a production browser SPA.
 Local Compose supplies PostgreSQL.
 The lean hosted topology uses host Nginx in front of loopback-only API and worker containers on one EC2 instance with Aiven PostgreSQL; the API remains stateless.
+GitHub Pages serves marketing and recovery pages at `aurumpos.net`, while a manually promoted Amplify app serves the authenticated browser client at `app.aurumpos.net`.
 
 Evidence:
 - `app/main.py::app`
@@ -118,8 +119,9 @@ The production API exposes a database-free liveness endpoint, a database-backed 
 The private operations repository retrieves each required runtime key from its own KMS-encrypted SSM SecureString, atomically assembles the host `.env`, migrates before API replacement, verifies the new API before starting the worker, and serializes host changes with a deployment lock.
 The migration administrator URL is fetched separately and is never installed in the API or worker runtime file.
 The public operator template validates the restricted runtime role, pauses the worker before migration, verifies the API release identity, and requires a heartbeat from the uniquely identified replacement worker.
-The official client is Android-first.
+The official client supports Android and the authenticated production browser SPA.
 Its signed AAB is released directly to Google Play Internal Testing from an explicitly selected revision that already passed CI.
+The private web manifest requires the same Android-approved source revision, pins the toolchain and deterministic artifact checksum, and deploys only through Amplify's manual deployment API.
 Backend production promotion is an independent immutable-digest pull request in the private operations repository.
 
 Evidence:
@@ -137,6 +139,8 @@ builds ignore saved URLs and use `https://api.aurumpos.net`; self-hosted builds
 require a build-time API URL and do not support runtime backend switching.
 Debug APKs omit Google Sign-In, while signed Play builds discover the public Google client ID from the backend.
 Native Android access and refresh tokens are encrypted with an AES-GCM key held by Android Keystore and are excluded from device backup.
+Browser access tokens remain in memory, while the rotating browser refresh token stays in an HttpOnly, Secure, path-scoped SameSite cookie.
+Browsers persist only a random untrusted installation UUID and coordinate refresh and logout across tabs without storing or broadcasting credentials.
 Completed Android downloads are written to app-owned storage, and a native bridge accepts only those app-owned paths before posting a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
 Inventory and invoice data remain full tables at viewport widths of 640 pixels and above.
 Below 640 pixels, each becomes a compact disclosure table whose essential columns remain scannable and whose expanded row exposes the remaining details and actions.

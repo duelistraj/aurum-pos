@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
 from app.core.config import settings
@@ -48,6 +49,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 SITE_DIRECTORY = Path(__file__).resolve().parent.parent / "site"
+app.mount(
+    "/public-assets",
+    StaticFiles(directory=SITE_DIRECTORY / "public-assets"),
+    name="public-assets",
+)
 
 
 @app.middleware("http")

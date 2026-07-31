@@ -22,6 +22,7 @@ jobs:
       VITE_GOOGLE_AUTH_ENABLED: "false"
       ANDROID_APPLICATION_ID: com.duelistraj.aurumpos
       CAPACITOR_APP_ID: com.duelistraj.aurumpos
+      WEB_COMMIT_SHA: ${{ github.sha }}
 
     steps:
     - name: Checkout repository
@@ -30,13 +31,18 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
       with:
-        node-version: '24'
+        node-version: '24.18.0'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
 
     - name: Install dependencies
       working-directory: ./frontend
       run: npm ci
+
+    - name: Verify pinned JavaScript toolchain
+      run: |
+        test "$(node --version)" = "v24.18.0"
+        test "$(npm --version)" = "11.16.0"
 
     - name: Build Web App
       working-directory: ./frontend

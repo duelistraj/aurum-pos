@@ -11,6 +11,7 @@ import { POS } from './POS';
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     getPlatform: vi.fn(),
+    isNativePlatform: vi.fn(),
   },
 }));
 vi.mock('../api/client', () => ({
@@ -85,6 +86,7 @@ describe('POS camera scanning', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     vi.mocked(useShop).mockReturnValue({
       user: null,
       memberships: [membership],
@@ -104,6 +106,7 @@ describe('POS camera scanning', () => {
 
     unmount();
     vi.mocked(Capacitor.getPlatform).mockReturnValue('web');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
     renderPOS();
 
     expect(

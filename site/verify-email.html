@@ -4,34 +4,38 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Verify your Aurum POS email</title>
-  <style>body{font:16px system-ui;max-width:600px;margin:4rem auto;padding:0 1.25rem;color:#1e293b}a{color:#b45309}.card{padding:2rem;border:1px solid #e2e8f0;border-radius:1rem}</style>
+  <meta name="theme-color" content="#070808">
+  <link rel="canonical" href="https://aurumpos.net/verify-email.html">
+  <link rel="icon" href="/public-assets/aurum-logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/public-assets/site.css">
+  <title>Verify your email - Aurum POS</title>
+  <script src="/public-assets/site.js" defer></script>
+  <script src="/public-assets/actions.js" defer></script>
 </head>
-<body>
-  <main class="card"><h1>Verify your email</h1><p id="status" role="status">Verifying…</p><p><a href="/">Aurum POS home</a></p></main>
-  <script>
-    const status = document.querySelector('#status');
-    const actionUrl = new URL(location.href);
-    const token = new URLSearchParams(actionUrl.hash.slice(1)).get('token') || actionUrl.searchParams.get('token');
-    if (token) {
-      actionUrl.hash = '';
-      actionUrl.searchParams.delete('token');
-      history.replaceState(null, '', actionUrl.pathname + actionUrl.search);
-    }
-    if (!token) {
-      status.textContent = 'This verification link is incomplete.';
-    } else {
-      const apiOrigin = location.hostname === 'aurumpos.net'
-        ? 'https://api.aurumpos.net'
-        : location.origin;
-      fetch(apiOrigin + '/api/v1/auth/verify-email', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token})
-      }).then(async response => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Verification failed');
-        status.textContent = 'Email verified. You can now sign in from the Aurum POS app.';
-      }).catch(error => { status.textContent = error.message; });
-    }
-  </script>
+<body data-action-page="verify-email">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="/" aria-label="Aurum POS home"><img class="brand__mark" src="/public-assets/aurum-logo.svg" alt=""><span>Aurum POS</span></a>
+      <nav class="site-navigation" aria-label="Primary navigation" data-site-navigation data-open="false"><a href="/#features">Features</a><a href="/#retailers">For Retailers</a><a href="/#pricing">Pricing</a><a href="/#resources">Resources</a><a href="/#changelog">Changelog</a></nav>
+      <div class="site-actions"><a class="button button--secondary" href="https://app.aurumpos.net/login">Sign in</a><a class="button button--primary" href="https://app.aurumpos.net/login?mode=register">Get Started Free</a></div>
+      <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" data-menu-button><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </header>
+  <main class="action-shell" id="main-content">
+    <section class="action-card" aria-labelledby="page-title">
+      <div class="action-card__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 7l8 6 8-6M9 17l2 2 4-4"/></svg>
+      </div>
+      <p class="section-kicker">Almost there</p>
+      <h1 id="page-title">Verify your email</h1>
+      <p class="action-card__lede">We are securely verifying the email address connected to your Aurum POS account.</p>
+      <p class="action-status" data-action-status role="status" aria-live="polite">Verifying your email…</p>
+      <p class="action-card__footer"><a href="https://app.aurumpos.net/login">Continue to sign in</a></p>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer__inner"><p class="site-footer__copy">© <span data-current-year>2026</span> Aurum POS</p><nav class="site-footer__links" aria-label="Legal"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/account-deletion.html">Account deletion</a></nav></div>
+  </footer>
 </body>
 </html>

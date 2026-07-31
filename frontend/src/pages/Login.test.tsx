@@ -6,12 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
 import { AurumGoogleAuth } from '../native/googleAuth';
-import { getAccessToken, setAuthData } from '../utils/auth';
+import { setAuthData } from '../utils/auth';
 import { Login } from './Login';
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     getPlatform: vi.fn(),
+    isNativePlatform: vi.fn(),
   },
 }));
 vi.mock('../api/client', () => {
@@ -54,6 +55,7 @@ vi.mock('../api/client', () => {
       login: vi.fn(),
       register: vi.fn(),
       resendVerification: vi.fn(),
+      restoreSession: vi.fn(),
       verifyEmail: vi.fn(),
     },
   };
@@ -67,10 +69,7 @@ vi.mock('../utils/apiConfig', () => ({
   getRecoveryPageUrl: vi.fn(async () => 'https://aurumpos.net/reset-password.html'),
   isCloudDistribution: true,
 }));
-vi.mock('../utils/auth', () => ({
-  getAccessToken: vi.fn(),
-  setAuthData: vi.fn(),
-}));
+vi.mock('../utils/auth', () => ({ setAuthData: vi.fn() }));
 vi.mock('../utils/device', () => ({
   getDeviceInfo: vi.fn(() => ({
     device_name: 'Android Device',
@@ -98,8 +97,8 @@ const tokenResponse = {
   }],
 };
 
-const renderLogin = () => render(
-  <MemoryRouter>
+const renderLogin = (initialEntry = '/login') => render(
+  <MemoryRouter initialEntries={[initialEntry]}>
     <Login />
   </MemoryRouter>,
 );
@@ -112,7 +111,8 @@ describe('Login', () => {
     vi.unstubAllEnvs();
     vi.stubEnv('VITE_GOOGLE_AUTH_ENABLED', 'true');
     vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
-    vi.mocked(getAccessToken).mockResolvedValue(null);
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    vi.mocked(apiClient.restoreSession).mockResolvedValue(false);
     vi.mocked(useShop).mockReturnValue({
       user: null,
       memberships: [],
@@ -156,6 +156,31 @@ describe('Login', () => {
 
     expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
     expect(screen.getByRole('button', { name: 'Show password' })).toBeInTheDocument();
+  });
+
+  it('opens account creation from the public website registration link', async () => {
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+
+    renderLogin('/login?mode=register');
+
+    expect(await screen.findByRole('tab', { name: 'Create account' }))
+      .toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Create your shop' }))
+      .toBeInTheDocument();
+  });
+
+  it('gives an invitation token precedence over registration mode', async () => {
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+
+    renderLogin('/login?mode=register&token=staff-invitation');
+
+    expect(await screen.findByRole('heading', { name: 'Join your team' }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText('Invitation code')).toHaveValue('staff-invitation');
   });
 
   it('uses one Google action across account and invitation modes', async () => {

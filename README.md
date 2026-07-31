@@ -8,7 +8,7 @@ self-hosting from the same public source tree.
 
 - Aurum POS is Android-first.
 - The hosted web surface supports the Android app and public account, legal, and recovery flows, but it is not the primary product distribution channel.
-- Aurum Cloud Free supports 1 shop, 2 distinct organization seats, and 50 active inventory records in the primary shop.
+- Aurum Cloud Free supports 1 shop, 2 distinct organization seats, and 500 active inventory records in the primary shop.
 - Aurum Cloud Pro supports up to 3 shops and 10 distinct organization seats, with unlimited active inventory.
 - One person consumes one organization seat even when assigned to multiple shops.
 - Self-hosted installations have unlimited shops, seats, and active inventory.
@@ -30,11 +30,13 @@ are retained under the `legacy-import` shop. Attach its first owner after the
 migration with:
 
 ```bash
+read -rsp 'Owner password: ' AURUM_BOOTSTRAP_OWNER_PASSWORD
+export AURUM_BOOTSTRAP_OWNER_PASSWORD
 uv run python -m app.cli bootstrap-owner \
   --shop legacy-import \
   --owner-email owner@example.com \
-  --owner-password 'replace-with-12-plus-characters' \
   --owner-name "Shop Owner"
+unset AURUM_BOOTSTRAP_OWNER_PASSWORD
 ```
 
 ## Local development
@@ -46,11 +48,13 @@ uv sync --locked
 cp .env.example .env
 docker compose -f compose.dev.yml up -d --wait postgres
 uv run alembic upgrade head
+read -rsp 'Owner password: ' AURUM_BOOTSTRAP_OWNER_PASSWORD
+export AURUM_BOOTSTRAP_OWNER_PASSWORD
 uv run python -m app.cli bootstrap-shop \
   --name "Demo Shop" \
   --owner-email owner@example.com \
-  --owner-password 'replace-with-12-plus-characters' \
   --owner-name "Demo Owner"
+unset AURUM_BOOTSTRAP_OWNER_PASSWORD
 uv run uvicorn app.main:app --reload --port 8080
 ```
 

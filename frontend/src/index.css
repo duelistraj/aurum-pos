@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+.network-status {
+  position: fixed;
+  z-index: 70;
+  right: 1rem;
+  bottom: 1rem;
+  max-width: min(24rem, calc(100vw - 2rem));
+  border: 1px solid rgb(245 158 11 / 0.45);
+  border-radius: 0.75rem;
+  background: rgb(24 24 27 / 0.96);
+  padding: 0.75rem 1rem;
+  color: rgb(254 243 199);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
+  font-size: 0.875rem;
+}
+
 @layer utilities {
   .rounded-app-surface {
     border-radius: 2rem;

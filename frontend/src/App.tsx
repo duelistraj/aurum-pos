@@ -3,7 +3,11 @@ import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'r
 import { Header } from './components/Header';
 import { Navbar } from './components/Navbar';
 import { ConfigProvider } from './context/ConfigContext';
-import { getAccessToken } from './utils/auth';
+import {
+  subscribeAuthEvents,
+} from './utils/auth';
+import { apiClient } from './api/client';
+import { useNetworkState } from './utils/network';
 import './index.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(({ Dashboard }) => ({ default: Dashboard })));
@@ -25,6 +29,7 @@ const PageLoader = () => (
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isOnline = useNetworkState();
 
   useEffect(() => {
     setMobileSidebarOpen(false);
@@ -32,6 +37,11 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="app-shell app-shell--collapsed">
+      {!isOnline && (
+        <div className="network-status" role="status">
+          You are offline. Changes will resume when the network returns.
+        </div>
+      )}
       <Header
         navigationOpen={mobileSidebarOpen}
         onOpenSidebar={() => setMobileSidebarOpen(true)}
@@ -53,7 +63,19 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const location = useLocation();
 
   useEffect(() => {
-    void getAccessToken().then((token) => setIsAuthenticated(Boolean(token)));
+    let active = true;
+    setIsAuthenticated(null);
+    void apiClient.restoreSession()
+      .then((authenticated) => {
+        if (active) setIsAuthenticated(authenticated);
+      });
+    const unsubscribe = subscribeAuthEvents(() => {
+      if (active) setIsAuthenticated(false);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [location.pathname]);
 
   if (isAuthenticated === null) return <PageLoader />;

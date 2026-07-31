@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { Capacitor } from '@capacitor/core';
 import { PLAY_PRODUCT_ID } from '../constants/billing';
 import {
   AnalyticsDashboardResponse,
@@ -170,6 +171,7 @@ interface InvitationAcceptPayload extends LoginPayload {
 
 let isRefreshing = false;
 let failedQueue: RefreshQueueEntry[] = [];
+let refreshPromise: Promise<TokenResponse> | null = null;
 
 const processQueue = (error: unknown, token?: string) => {
   failedQueue.forEach((pendingRequest) => {
@@ -180,6 +182,50 @@ const processQueue = (error: unknown, token?: string) => {
     }
   });
   failedQueue = [];
+};
+
+const requestFreshSession = async (): Promise<TokenResponse> => {
+  const refreshToken = await getRefreshToken();
+  const [apiBaseUrl, deviceUuid] = await Promise.all([
+    getApiBaseUrl(),
+    getDeviceUUID(),
+  ]);
+  const { data } = await axios.post<TokenResponse>(
+    `${apiBaseUrl}/api/v1/auth/refresh`,
+    {
+      refresh_token: refreshToken || undefined,
+      device_uuid: deviceUuid,
+    },
+    { withCredentials: true },
+  );
+  await setAuthData(data.access_token, data.refresh_token, {
+    full_name: data.full_name,
+    user_id: data.user_id,
+    email: data.email,
+    memberships: data.memberships,
+  });
+  client.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
+  return data;
+};
+
+const refreshAuthentication = (): Promise<TokenResponse> => {
+  if (refreshPromise) return refreshPromise;
+
+  const refresh = async () => {
+    if (
+      !Capacitor.isNativePlatform()
+      && typeof navigator !== 'undefined'
+      && navigator.locks
+    ) {
+      return navigator.locks.request('aurum-pos-refresh', requestFreshSession);
+    }
+    return requestFreshSession();
+  };
+
+  refreshPromise = refresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
 };
 
 // Error response interceptor
@@ -218,34 +264,15 @@ client.interceptors.response.use(
 
       return (async () => {
         try {
-          const refreshToken = await getRefreshToken();
-          const [apiBaseUrl, deviceUuid] = await Promise.all([
-            getApiBaseUrl(),
-            getDeviceUUID(),
-          ]);
-          const { data } = await axios.post<TokenResponse>(
-            `${apiBaseUrl}/api/v1/auth/refresh`,
-            {
-              refresh_token: refreshToken || undefined,
-              device_uuid: deviceUuid,
-            },
-            { withCredentials: true },
-          );
-          await setAuthData(data.access_token, data.refresh_token, {
-            full_name: data.full_name,
-            user_id: data.user_id,
-            email: data.email,
-            memberships: data.memberships,
-          });
-          client.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
+          const data = await refreshAuthentication();
           originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
           processQueue(undefined, data.access_token);
           return client(originalRequest);
         } catch (err) {
           processQueue(err);
-          await clearAuthData();
+          await clearAuthData({ notify: 'session-expired' });
           setRequestShopId(null);
-          window.location.href = '/';
+          window.location.replace('/login');
           return Promise.reject(err);
         } finally {
           isRefreshing = false;
@@ -303,6 +330,19 @@ type SaleCreatePayload = {
 
 export const apiClient = {
   // Auth
+  async restoreSession() {
+    if (await getAccessToken()) return true;
+    if (Capacitor.isNativePlatform()) return false;
+    try {
+      await refreshAuthentication();
+      return true;
+    } catch {
+      await clearAuthData();
+      setRequestShopId(null);
+      return false;
+    }
+  },
+
   async authProviders() {
     const apiBaseUrl = await getApiBaseUrl();
     const { data } = await axios.get<AuthProvidersResponse>(
@@ -497,7 +537,7 @@ export const apiClient = {
     try {
       await client.post('/auth/logout');
     } finally {
-      await clearAuthData();
+      await clearAuthData({ notify: 'logout' });
       setRequestShopId(null);
     }
   },

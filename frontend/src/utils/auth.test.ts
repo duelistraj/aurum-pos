@@ -9,7 +9,7 @@ import {
   removePreference,
   setPreference,
 } from './storage';
-import { AUTH_KEYS, setAuthData } from './auth';
+import { AUTH_KEYS, setAuthData, subscribeAuthEvents } from './auth';
 
 vi.mock('../native/secureStorage', () => ({
   clearSecureValues: vi.fn(),
@@ -81,5 +81,28 @@ describe('authentication storage', () => {
     expect(removePreference).toHaveBeenCalledWith(AUTH_KEYS.USER_INFO);
     expect(removePreference).toHaveBeenCalledWith(AUTH_KEYS.ACTIVE_SHOP_ID);
     expect(setPreference).not.toHaveBeenCalled();
+  });
+
+  it('clears this tab before applying a logout broadcast from another tab', async () => {
+    const received = new Promise<void>((resolve) => {
+      const unsubscribe = subscribeAuthEvents((event) => {
+        expect(event).toBe('logout');
+        unsubscribe();
+        resolve();
+      });
+    });
+
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'aurum-pos-auth-v1',
+      newValue: 'logout:other-tab',
+    }));
+    await received;
+
+    expect(clearSecureValues).toHaveBeenCalledWith([
+      AUTH_KEYS.ACCESS_TOKEN,
+      AUTH_KEYS.REFRESH_TOKEN,
+    ]);
+    expect(removePreference).toHaveBeenCalledWith(AUTH_KEYS.USER_INFO);
+    expect(removePreference).toHaveBeenCalledWith(AUTH_KEYS.ACTIVE_SHOP_ID);
   });
 });

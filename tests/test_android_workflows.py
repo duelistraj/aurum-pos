@@ -45,10 +45,12 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
     assert "rm -f release.keystore" in source
 
 
-def test_signed_aab_releases_directly_to_play_without_github_artifact() -> None:
+def test_signed_aab_releases_directly_to_play_with_provenance_only() -> None:
     source = RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
-    assert "actions/upload-artifact@" not in source
+    assert "name: android-release-provenance" in source
+    assert "path: ${{ runner.temp }}/android-release-metadata.json" in source
+    assert "app-release.aab\n          if-no-files-found" not in source
     assert "r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5" in source
     assert "packageName: com.duelistraj.aurumpos" in source
     assert "tracks: internal" in source

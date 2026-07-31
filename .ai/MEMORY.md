@@ -21,7 +21,7 @@ Clients call `/api/v1` with an access token, `X-Device-UUID`, and selected
 forced PostgreSQL RLS. Official cloud Android builds use package
 `com.duelistraj.aurumpos` and fixed API `https://api.aurumpos.net`; self-hosted
 builds configure their own endpoint and are unlimited. Hosted free shops may
-have at most 50 active inventory rows.
+have at most 500 active inventory rows.
 The device header must match the device bound to the authenticated session.
 Hosted mode requires `ENV=production`.
 Invoice numbers are assigned by the server, and invoice PDFs are produced by a durable PostgreSQL-backed worker job after sale commit.
