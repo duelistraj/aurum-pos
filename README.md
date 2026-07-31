@@ -8,7 +8,7 @@ self-hosting from the same public source tree.
 
 - Aurum POS is Android-first.
 - The hosted web surface supports the Android app and public account, legal, and recovery flows, but it is not the primary product distribution channel.
-- Aurum Cloud Free supports 1 shop, 2 distinct organization seats, and 50 active inventory records in the primary shop.
+- Aurum Cloud Free supports 1 shop, 2 distinct organization seats, and 500 active inventory records in the primary shop.
 - Aurum Cloud Pro supports up to 3 shops and 10 distinct organization seats, with unlimited active inventory.
 - One person consumes one organization seat even when assigned to multiple shops.
 - Self-hosted installations have unlimited shops, seats, and active inventory.

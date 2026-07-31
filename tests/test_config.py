@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import DEFAULT_CORS_ORIGINS, Settings
 
 
 @pytest.mark.parametrize("environment", ["test", " TEST "])
@@ -13,6 +13,15 @@ def test_auth_tokens_are_exposed_only_in_test(environment: str) -> None:
     )
 
     assert settings.exposes_auth_tokens is True
+
+
+def test_product_defaults_match_the_public_cloud_offer() -> None:
+    assert Settings.model_fields["free_active_item_limit"].default == 500
+    assert Settings.model_fields["free_shop_limit"].default == 1
+    assert Settings.model_fields["free_team_seat_limit"].default == 2
+    assert Settings.model_fields["pro_shop_limit"].default == 3
+    assert Settings.model_fields["pro_team_seat_limit"].default == 10
+    assert "https://app.aurumpos.net" in DEFAULT_CORS_ORIGINS
 
 
 @pytest.mark.parametrize("environment", ["local", "staging", "production"])

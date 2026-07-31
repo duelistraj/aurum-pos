@@ -1,5 +1,20 @@
 # Decisions
 
+### Raise the hosted Free inventory limit to 500
+
+Recorded: 2026-07-30
+Status: accepted
+Basis: user-confirmed
+Decision: Aurum Cloud Free supports up to 500 active inventory rows in its primary shop.
+Rationale: The user explicitly selected a more useful free tier that gives small jewellery retailers enough room to adopt the product while preserving unlimited inventory as a Pro benefit.
+Consequences: The backend entitlement default, hosted production configuration, public pricing, service terms, and operator documentation use the same 500-item threshold.
+
+Evidence:
+- `app/core/config.py::Settings.free_active_item_limit`
+- `.env.example::FREE_ACTIVE_ITEM_LIMIT`
+- `site/index.html::pricing`
+- `site/terms.html::Aurum Cloud plans`
+
 ### Keep PostgreSQL authoritative for private S3 invoices
 
 Recorded: 2026-07-25
@@ -150,7 +165,7 @@ Status: accepted
 Basis: user-confirmed
 Decision: Shops share PostgreSQL with tenant keys, explicit shop predicates, forced RLS, and a restricted production runtime role.
 An organization owns one or more shops and holds one shared entitlement.
-Hosted Free supports one shop, two distinct organization seats, and 50 active item rows in the primary shop.
+Hosted Free supports one shop, two distinct organization seats, and 500 active item rows in the primary shop.
 Hosted Pro supports up to three shops, ten distinct organization seats, and unlimited active item rows.
 Self-hosted mode is unlimited across shops, seats, and inventory.
 One email consumes one seat across the organization even when assigned to multiple shops, and a pending invitation reserves that seat.

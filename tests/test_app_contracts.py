@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
@@ -30,6 +32,22 @@ async def test_health_cors_and_removed_shared_manager_secret() -> None:
             json={"password": "manager-test-password"},
         )
     assert removed.status_code == 404
+
+
+def test_public_recovery_pages_share_the_mounted_site_assets() -> None:
+    public_assets = next(route for route in app.routes if route.path == "/public-assets")
+    asset_directory = Path(public_assets.app.directory)
+
+    assert asset_directory.parts[-2:] == ("site", "public-assets")
+    assert {route.path for route in app.routes if isinstance(route, APIRoute)}.issuperset(
+        {
+            "/reset-password.html",
+            "/verify-email.html",
+            "/account-deletion.html",
+        }
+    )
+    for filename in ("site.css", "site.js", "actions.js", "aurum-logo.svg"):
+        assert (asset_directory / filename).is_file()
 
 
 def test_static_item_routes_precede_uuid_route() -> None:

@@ -98,8 +98,8 @@ const tokenResponse = {
   }],
 };
 
-const renderLogin = () => render(
-  <MemoryRouter>
+const renderLogin = (initialEntry = '/login') => render(
+  <MemoryRouter initialEntries={[initialEntry]}>
     <Login />
   </MemoryRouter>,
 );
@@ -156,6 +156,31 @@ describe('Login', () => {
 
     expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
     expect(screen.getByRole('button', { name: 'Show password' })).toBeInTheDocument();
+  });
+
+  it('opens account creation from the public website registration link', async () => {
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+
+    renderLogin('/login?mode=register');
+
+    expect(await screen.findByRole('tab', { name: 'Create account' }))
+      .toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Create your shop' }))
+      .toBeInTheDocument();
+  });
+
+  it('gives an invitation token precedence over registration mode', async () => {
+    vi.mocked(apiClient.authProviders).mockResolvedValue({
+      google: { enabled: false, client_id: null },
+    });
+
+    renderLogin('/login?mode=register&token=staff-invitation');
+
+    expect(await screen.findByRole('heading', { name: 'Join your team' }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText('Invitation code')).toHaveValue('staff-invitation');
   });
 
   it('uses one Google action across account and invitation modes', async () => {

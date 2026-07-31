@@ -94,10 +94,13 @@ export const Login: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    const token = new URLSearchParams(location.search).get('token');
+    const parameters = new URLSearchParams(location.search);
+    const token = parameters.get('token');
     if (token) {
       setInvitationToken(token);
       setMode('staff');
+    } else if (parameters.get('mode') === 'register') {
+      setMode('register');
     }
     void getAccessToken().then((token) => {
       if (token) navigate(returnPath, { replace: true });

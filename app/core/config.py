@@ -11,6 +11,7 @@ DEFAULT_CORS_ORIGINS = (
     "https://localhost",
     "capacitor://localhost",
     "https://aurumpos.net",
+    "https://app.aurumpos.net",
 )
 AUTH_TOKEN_EXPOSURE_ENVIRONMENTS = frozenset({"test"})
 INSECURE_JWT_SECRETS = frozenset(
@@ -48,7 +49,7 @@ class Settings(BaseSettings):
     auth_rate_limit_per_account: int = Field(default=10, ge=1, le=1000)
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     deployment_mode: DeploymentMode = DeploymentMode.SELF_HOSTED
-    free_active_item_limit: int = 50
+    free_active_item_limit: int = 500
     free_shop_limit: int = Field(default=1, ge=1)
     pro_shop_limit: int = Field(default=3, ge=1)
     free_team_seat_limit: int = Field(default=2, ge=1)
