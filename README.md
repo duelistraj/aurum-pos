@@ -30,11 +30,13 @@ are retained under the `legacy-import` shop. Attach its first owner after the
 migration with:
 
 ```bash
+read -rsp 'Owner password: ' AURUM_BOOTSTRAP_OWNER_PASSWORD
+export AURUM_BOOTSTRAP_OWNER_PASSWORD
 uv run python -m app.cli bootstrap-owner \
   --shop legacy-import \
   --owner-email owner@example.com \
-  --owner-password 'replace-with-12-plus-characters' \
   --owner-name "Shop Owner"
+unset AURUM_BOOTSTRAP_OWNER_PASSWORD
 ```
 
 ## Local development
@@ -46,11 +48,13 @@ uv sync --locked
 cp .env.example .env
 docker compose -f compose.dev.yml up -d --wait postgres
 uv run alembic upgrade head
+read -rsp 'Owner password: ' AURUM_BOOTSTRAP_OWNER_PASSWORD
+export AURUM_BOOTSTRAP_OWNER_PASSWORD
 uv run python -m app.cli bootstrap-shop \
   --name "Demo Shop" \
   --owner-email owner@example.com \
-  --owner-password 'replace-with-12-plus-characters' \
   --owner-name "Demo Owner"
+unset AURUM_BOOTSTRAP_OWNER_PASSWORD
 uv run uvicorn app.main:app --reload --port 8080
 ```
 

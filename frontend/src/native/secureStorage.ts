@@ -10,13 +10,21 @@ interface SecureStoragePlugin {
 }
 
 const AurumSecureStorage = registerPlugin<SecureStoragePlugin>('AurumSecureStorage');
-const getSessionValue = (key: string): string | null => window.sessionStorage.getItem(key);
-const setSessionValue = (key: string, value: string): void => {
-  window.sessionStorage.setItem(key, value);
+const browserSession = new Map<string, string>();
+
+const clearLegacyBrowserValue = (key: string): void => {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // The browser session is intentionally memory-only even if storage is unavailable.
+  }
 };
 
 export const getSecureValue = async (key: string): Promise<string | null> => {
-  if (!Capacitor.isNativePlatform()) return getSessionValue(key);
+  if (!Capacitor.isNativePlatform()) {
+    clearLegacyBrowserValue(key);
+    return browserSession.get(key) ?? null;
+  }
   const { value } = await AurumSecureStorage.get({ key });
   if (value !== null) return value;
 
@@ -30,7 +38,8 @@ export const getSecureValue = async (key: string): Promise<string | null> => {
 
 export const setSecureValue = async (key: string, value: string): Promise<void> => {
   if (!Capacitor.isNativePlatform()) {
-    setSessionValue(key, value);
+    browserSession.set(key, value);
+    clearLegacyBrowserValue(key);
     await removePreference(key);
     return;
   }
@@ -41,7 +50,10 @@ export const setSecureValue = async (key: string, value: string): Promise<void> 
 export const setSecureValues = async (values: Record<string, string>): Promise<void> => {
   const entries = Object.entries(values);
   if (!Capacitor.isNativePlatform()) {
-    entries.forEach(([key, value]) => setSessionValue(key, value));
+    entries.forEach(([key, value]) => {
+      browserSession.set(key, value);
+      clearLegacyBrowserValue(key);
+    });
     await Promise.all(entries.map(([key]) => removePreference(key)));
     return;
   }
@@ -53,7 +65,8 @@ export const removeSecureValue = async (key: string): Promise<void> => {
   if (Capacitor.isNativePlatform()) {
     await AurumSecureStorage.remove({ key });
   } else {
-    window.sessionStorage.removeItem(key);
+    browserSession.delete(key);
+    clearLegacyBrowserValue(key);
   }
   await removePreference(key);
 };
@@ -62,7 +75,10 @@ export const clearSecureValues = async (keys: readonly string[]): Promise<void> 
   if (Capacitor.isNativePlatform()) {
     await AurumSecureStorage.clear();
   } else {
-    keys.forEach((key) => window.sessionStorage.removeItem(key));
+    keys.forEach((key) => {
+      browserSession.delete(key);
+      clearLegacyBrowserValue(key);
+    });
   }
   await Promise.all(keys.map((key) => removePreference(key)));
 };

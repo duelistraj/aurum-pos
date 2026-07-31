@@ -1,10 +1,25 @@
 import { Capacitor } from '@capacitor/core';
-import { getPreference, setPreference } from './storage';
+import {
+  getLocalValue,
+  getPreference,
+  setLocalValue,
+  setPreference,
+} from './storage';
 import { APP_VERSION } from './version';
 
 export const DEVICE_UUID_KEY = 'device_uuid';
+export const BROWSER_INSTALLATION_ID_KEY = 'browser_installation_id';
 
 export const getDeviceUUID = async (): Promise<string> => {
+  if (!Capacitor.isNativePlatform()) {
+    const installationId = getLocalValue(BROWSER_INSTALLATION_ID_KEY);
+    if (installationId) return installationId;
+
+    const newInstallationId = crypto.randomUUID();
+    setLocalValue(BROWSER_INSTALLATION_ID_KEY, newInstallationId);
+    return newInstallationId;
+  }
+
   const value = await getPreference(DEVICE_UUID_KEY);
   if (value) {
     return value;
@@ -17,9 +32,11 @@ export const getDeviceUUID = async (): Promise<string> => {
 };
 
 export const getDeviceInfo = () => {
+  const nativePlatform = Capacitor.isNativePlatform();
+  const platform = nativePlatform ? Capacitor.getPlatform() : 'web';
   return {
-    platform: Capacitor.getPlatform(),
+    platform,
     app_version: APP_VERSION,
-    device_name: `${Capacitor.getPlatform()} Device`, // Ideally get from @capacitor/device
+    device_name: nativePlatform ? `${platform} Device` : 'Web browser',
   };
 };

@@ -56,7 +56,8 @@ export const POS: React.FC = () => {
   const { activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
   const isReadOnly = activeMembership?.access_mode === 'read_only';
-  const isAndroid = Capacitor.getPlatform() === 'android';
+  const isAndroid =
+    Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [barcode, setBarcode] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -94,10 +95,10 @@ export const POS: React.FC = () => {
   // Open scanner if scan query param is present
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (params.get('scan') === 'true' && !isReadOnly) {
+    if (params.get('scan') === 'true' && !isReadOnly && isAndroid) {
       setShowCameraScanner(true);
     }
-  }, [isReadOnly, location.search]);
+  }, [isAndroid, isReadOnly, location.search]);
 
   const stopCamera = React.useCallback(() => {
     if (streamRef.current) {

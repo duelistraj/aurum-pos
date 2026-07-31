@@ -84,9 +84,7 @@ def test_public_ctas_and_plan_limits_match_the_application_contract() -> None:
 
 def test_dashboard_preview_has_accessible_load_motion() -> None:
     homepage = (SITE_DIRECTORY / "index.html").read_text(encoding="utf-8")
-    stylesheet = (SITE_DIRECTORY / "public-assets" / "site.css").read_text(
-        encoding="utf-8"
-    )
+    stylesheet = (SITE_DIRECTORY / "public-assets" / "site.css").read_text(encoding="utf-8")
     sidebar_labels = (
         "Dashboard",
         "Sales",
@@ -95,9 +93,7 @@ def test_dashboard_preview_has_accessible_load_motion() -> None:
         "Transactions",
         "Analytics",
     )
-    sidebar_positions = [
-        homepage.index(f"</svg>{label}</span>") for label in sidebar_labels
-    ]
+    sidebar_positions = [homepage.index(f"</svg>{label}</span>") for label in sidebar_labels]
 
     assert 'aria-label="Illustrative Aurum POS dashboard preview"' in homepage
     assert sidebar_positions == sorted(sidebar_positions)
@@ -107,6 +103,8 @@ def test_dashboard_preview_has_accessible_load_motion() -> None:
     assert "Aurum Jewellers" in homepage
     assert "Meera Kapoor" in homepage
     assert "preview-animal-avatar" in homepage
+    assert 'src="/public-assets/giraffe.png"' in homepage
+    assert "preview-sidebar__storefront-svg" in homepage
     assert "Silver jewellery 24%" in homepage
     assert "Platinum jewellery 28%" in homepage
     assert "Other inventory" not in homepage
@@ -115,13 +113,12 @@ def test_dashboard_preview_has_accessible_load_motion() -> None:
     assert "preview-donut__segment--gold" in homepage
     assert "preview-donut__segment--silver" in homepage
     assert "preview-donut__segment--platinum" in homepage
-    assert "pathLength=\"1\"" in homepage
+    assert 'pathLength="1"' in homepage
     assert "animation: preview-shell-enter" in stylesheet
     assert "animation: preview-rise" in stylesheet
     assert "animation: preview-chart-draw" in stylesheet
     assert "animation: preview-donut-sweep 620ms linear 880ms both" in stylesheet
     assert "@keyframes preview-avatar-bob" in stylesheet
-    assert "@keyframes preview-avatar-blink" in stylesheet
     assert "@keyframes preview-donut-sweep" in stylesheet
     assert "@media (prefers-reduced-motion: reduce)" in stylesheet
     assert "animation: none !important" in stylesheet

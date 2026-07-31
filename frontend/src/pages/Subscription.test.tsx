@@ -11,6 +11,7 @@ import { Subscription } from './Subscription';
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     getPlatform: vi.fn(),
+    isNativePlatform: vi.fn(),
   },
   registerPlugin: vi.fn(),
 }));
@@ -62,6 +63,7 @@ describe('Subscription', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
     vi.mocked(apiClient.getEntitlement).mockResolvedValue({
       organization_id: 'organization-id',
       plan: 'free',

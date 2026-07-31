@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -35,6 +36,7 @@ TENANT_TABLES = (
     "subscriptions",
 )
 CLI_MAPPER_TYPES = (Item, SaleItem)
+OWNER_PASSWORD_ENV = "AURUM_BOOTSTRAP_OWNER_PASSWORD"
 ITEM_FIELDS = (
     "id",
     "sku",
@@ -55,6 +57,15 @@ ITEM_FIELDS = (
 configure_mappers()
 
 
+def _owner_password() -> str:
+    password = os.environ.get(OWNER_PASSWORD_ENV, "")
+    if not password:
+        raise ValueError(f"{OWNER_PASSWORD_ENV} must be set")
+    if len(password) < 15:
+        raise ValueError(f"{OWNER_PASSWORD_ENV} must contain at least 15 characters")
+    return password
+
+
 async def _get_shop(session, identifier: str) -> Shop:
     try:
         shop_id = UUID(identifier)
@@ -71,11 +82,30 @@ async def _get_shop(session, identifier: str) -> Shop:
 async def bootstrap_shop(args: argparse.Namespace) -> None:
     async with AsyncSessionLocal.begin() as session:
         email = args.owner_email.strip().casefold()
-        if await session.scalar(select(User.id).where(User.email == email)):
-            raise ValueError("Owner email already exists")
+        existing_user = await session.scalar(select(User).where(User.email == email))
+        if existing_user is not None:
+            if not args.ensure:
+                raise ValueError("Owner email already exists")
+            existing_shop = await session.scalar(
+                select(Shop)
+                .join(ShopMembership, ShopMembership.shop_id == Shop.id)
+                .where(
+                    ShopMembership.user_id == existing_user.id,
+                    ShopMembership.role == "OWNER",
+                    ShopMembership.is_active.is_(True),
+                    Shop.name == args.name,
+                )
+            )
+            if existing_shop is None or existing_user.email_verified_at is None:
+                raise ValueError("Existing owner does not match the requested verified shop")
+            print(
+                f"Verified existing shop {existing_shop.slug} ({existing_shop.id}) "
+                f"with owner {email}"
+            )
+            return
         user = User(
             email=email,
-            password_hash=get_password_hash(args.owner_password),
+            password_hash=get_password_hash(_owner_password()),
             full_name=args.owner_name,
             email_verified_at=datetime.now(UTC),
         )
@@ -96,7 +126,7 @@ async def bootstrap_owner(args: argparse.Namespace) -> None:
             raise ValueError("Owner email already exists")
         user = User(
             email=email,
-            password_hash=get_password_hash(args.owner_password),
+            password_hash=get_password_hash(_owner_password()),
             full_name=args.owner_name,
             email_verified_at=datetime.now(UTC),
         )
@@ -272,14 +302,13 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--name", required=True)
     bootstrap.add_argument("--slug")
     bootstrap.add_argument("--owner-email", required=True)
-    bootstrap.add_argument("--owner-password", required=True)
     bootstrap.add_argument("--owner-name", required=True)
+    bootstrap.add_argument("--ensure", action="store_true")
     bootstrap.set_defaults(handler=bootstrap_shop)
 
     owner = commands.add_parser("bootstrap-owner")
     owner.add_argument("--shop", required=True)
     owner.add_argument("--owner-email", required=True)
-    owner.add_argument("--owner-password", required=True)
     owner.add_argument("--owner-name", required=True)
     owner.set_defaults(handler=bootstrap_owner)
 

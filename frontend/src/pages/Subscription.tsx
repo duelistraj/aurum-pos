@@ -35,6 +35,8 @@ export const Subscription: React.FC = () => {
   const [billingError, setBillingError] = React.useState('');
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const isAndroid =
+    Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
   const shopId = activeMembership?.shop_id ?? '';
   const entitlement = useQuery({
     queryKey: queryKeys.entitlement(shopId),
@@ -45,7 +47,7 @@ export const Subscription: React.FC = () => {
   React.useEffect(() => {
     if (
       !isCloudDistribution
-      || Capacitor.getPlatform() !== 'android'
+      || !isAndroid
       || activeMembership?.role !== 'OWNER'
       || entitlement.data?.plan === 'pro'
     ) return;
@@ -68,7 +70,7 @@ export const Subscription: React.FC = () => {
             : 'Google Play Billing is temporarily unavailable.',
         );
       });
-  }, [activeMembership?.role, entitlement.data?.plan]);
+  }, [activeMembership?.role, entitlement.data?.plan, isAndroid]);
 
   const refreshEntitlement = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) });
@@ -174,14 +176,14 @@ export const Subscription: React.FC = () => {
         && isCloudDistribution
         && entitlement.data?.plan !== 'pro' && (
         <>
-          {Capacitor.getPlatform() !== 'android' && (
+          {!isAndroid && (
             <Alert
               type="info"
               title="Google Play required"
               message="Open Aurum POS from Google Play on Android to purchase or restore Pro."
             />
           )}
-          {Capacitor.getPlatform() === 'android' && billingAvailability === 'loading' && (
+          {isAndroid && billingAvailability === 'loading' && (
             <Card className="p-6">
               <p className="font-semibold">Loading Google Play plans...</p>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
@@ -189,21 +191,21 @@ export const Subscription: React.FC = () => {
               </p>
             </Card>
           )}
-          {Capacitor.getPlatform() === 'android' && billingAvailability === 'unavailable' && (
+          {isAndroid && billingAvailability === 'unavailable' && (
             <Alert
               type="warning"
               title="Pro is not available yet"
               message="Google Play did not return an active Aurum Cloud Pro plan. Try again after the subscription has been published."
             />
           )}
-          {Capacitor.getPlatform() === 'android' && billingAvailability === 'error' && (
+          {isAndroid && billingAvailability === 'error' && (
             <Alert
               type="error"
               title="Google Play Billing unavailable"
               message={billingError}
             />
           )}
-          {Capacitor.getPlatform() === 'android' && billingAvailability === 'ready' && (
+          {isAndroid && billingAvailability === 'ready' && (
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 {offers.map((offer) => {

@@ -118,6 +118,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     env:
+      WEB_COMMIT_SHA: ${{ github.sha }}
       VITE_API_URL: http://localhost:8080
       VITE_DISTRIBUTION: self_hosted
       VITE_GOOGLE_AUTH_ENABLED: "false"
@@ -129,9 +130,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "24"
+          node-version: "24.18.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Verify pinned JavaScript toolchain
+        run: |
+          test "$(node --version)" = "v24.18.0"
+          test "$(npm --version)" = "11.16.0"
 
       - name: Install dependencies
         working-directory: frontend
@@ -153,9 +159,25 @@ jobs:
         working-directory: frontend
         run: npm test
 
-      - name: Build frontend
+      - name: Build self-hosted frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Build cloud frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: ""
+          VITE_DISTRIBUTION: cloud
+          VITE_GOOGLE_AUTH_ENABLED: "false"
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Test browser application
+        working-directory: frontend
+        run: npm run test:e2e
 
   publish-image:
     if: >-

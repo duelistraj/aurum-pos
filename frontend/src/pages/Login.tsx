@@ -14,7 +14,7 @@ import { BrandLockup } from '../components/Brand';
 import { Alert, Button, Card, Input } from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import { AurumGoogleAuth, createNonce } from '../native/googleAuth';
-import { getAccessToken, setAuthData } from '../utils/auth';
+import { setAuthData } from '../utils/auth';
 import { getRecoveryPageUrl, isCloudDistribution } from '../utils/apiConfig';
 import { getDeviceInfo, getDeviceUUID } from '../utils/device';
 import { safeReturnPath } from '../utils/navigation';
@@ -81,7 +81,8 @@ export const Login: React.FC = () => {
   const location = useLocation();
   const returnPath = safeReturnPath(location.state);
   const { reload } = useShop();
-  const isAndroid = Capacitor.getPlatform() === 'android';
+  const isAndroid =
+    Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
   const supportsGoogleAuth =
     isAndroid && import.meta.env.VITE_GOOGLE_AUTH_ENABLED === 'true';
   const [googleProvider, setGoogleProvider] = React.useState<GoogleProviderState>({
@@ -99,13 +100,20 @@ export const Login: React.FC = () => {
     if (token) {
       setInvitationToken(token);
       setMode('staff');
+      parameters.delete('token');
+      const sanitizedSearch = parameters.toString();
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${location.pathname}${sanitizedSearch ? `?${sanitizedSearch}` : ''}`,
+      );
     } else if (parameters.get('mode') === 'register') {
       setMode('register');
     }
-    void getAccessToken().then((token) => {
-      if (token) navigate(returnPath, { replace: true });
+    void apiClient.restoreSession().then((authenticated) => {
+      if (authenticated) navigate(returnPath, { replace: true });
     });
-  }, [navigate, location.search, returnPath]);
+  }, [navigate, location.pathname, location.search, returnPath]);
 
   React.useEffect(() => {
     if (!supportsGoogleAuth) return;

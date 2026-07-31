@@ -28,7 +28,8 @@ Evidence:
 
 ReportLab and OpenPyXL generate invoices and labels. React 18, React Router,
 Axios, TanStack Query, Chart.js, and Tailwind implement the client.
-Capacitor Preferences stores non-secret client state, Filesystem provides exports, and a native Android Keystore plugin encrypts access and refresh tokens.
+Capacitor Preferences stores non-secret native client state, Filesystem provides native exports, and a native Android Keystore plugin encrypts access and refresh tokens.
+Browser access tokens are memory-only, and local storage contains only non-secret preferences and an untrusted installation UUID.
 
 Evidence:
 - `app/modules/sales/invoice.py::generate_invoice_pdf`
@@ -52,7 +53,8 @@ Evidence:
 ### Verification toolchain
 
 Ruff, Mypy, Pytest, pytest-asyncio, and pytest-cov verify Python.
-ESLint, TypeScript, Vitest, Testing Library, and Vite verify the client.
+Node.js 24.18.0 and npm 11.16.0 provide the pinned frontend toolchain.
+ESLint, TypeScript, Vitest, Testing Library, Vite, and Playwright verify the client.
 CI migrates a fresh PostgreSQL service, verifies `alembic check`, and scans changed migration upgrades for unsafe schema operations before integration tests.
 Android workflows use JDK 21, and signed releases run Gradle unit tests and lint before bundling.
 

@@ -28,6 +28,7 @@ jobs:
       VITE_GOOGLE_AUTH_ENABLED: "true"
       ANDROID_APPLICATION_ID: com.duelistraj.aurumpos
       CAPACITOR_APP_ID: com.duelistraj.aurumpos
+      WEB_COMMIT_SHA: ${{ inputs.ref }}
 
     steps:
       - name: Require Android release secrets
@@ -97,9 +98,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "24"
+          node-version: "24.18.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Verify pinned JavaScript toolchain
+        run: |
+          test "$(node --version)" = "v24.18.0"
+          test "$(npm --version)" = "11.16.0"
 
       - name: Install dependencies
         working-directory: frontend
@@ -156,9 +162,32 @@ jobs:
         working-directory: frontend/android
         run: rm -f release.keystore
 
-      - name: Record signed bundle checksum
+      - name: Record signed bundle provenance
         working-directory: frontend/android
-        run: sha256sum app/build/outputs/bundle/release/app-release.aab
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
+        run: |
+          AAB_SHA256="$(sha256sum app/build/outputs/bundle/release/app-release.aab | cut -d' ' -f1)"
+          jq -n \
+            --arg source_sha "$RELEASE_REF" \
+            --arg aab_sha256 "$AAB_SHA256" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            '{
+              schema: "aurum-pos-android-release-v1",
+              source_sha: $source_sha,
+              aab_sha256: $aab_sha256,
+              workflow_run_id: $run_id
+            }' >"$RUNNER_TEMP/android-release-metadata.json"
+          printf 'Android source SHA: %s\nAAB SHA-256: %s\n' \
+            "$RELEASE_REF" "$AAB_SHA256" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Android release provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-release-provenance
+          path: ${{ runner.temp }}/android-release-metadata.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Release signed AAB to Play Internal Testing
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5

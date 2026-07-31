@@ -79,15 +79,31 @@ Evidence:
 Recorded: 2026-07-28
 Status: accepted
 Basis: user-confirmed
-Decision: Build official signed Android bundles on standard public-repository runners and upload them directly to the Google Play Internal Testing track without creating GitHub Actions artifacts.
+Decision: Build official signed Android bundles on standard public-repository runners and upload them directly to the Google Play Internal Testing track without publishing the signed AAB as a GitHub Actions artifact.
 Promote the same Play release from Internal Testing to Closed Testing and then Production without rebuilding it.
 Rationale: The user wants to retain free public-repository build capacity while preventing official signed AABs from being distributed through GitHub.
-Consequences: The release workflow uses a dedicated testing-track Play service account, removes the temporary keystore after signing, has no artifact-upload step, and never accepts a production track as an input.
+Consequences: The release workflow uses a dedicated testing-track Play service account, removes the temporary keystore after signing, uploads only non-secret source and checksum provenance, and never accepts a production track as an input.
 A code change always creates a new version code and restarts testing from the Internal Testing track.
 
 Evidence:
 - `.github/workflows/android-release.yml::release-aab`
 - `tests/test_android_workflows.py::test_signed_aab_releases_directly_to_play_without_github_artifact`
+
+### Host the authenticated browser client on manual Amplify deployments
+
+Recorded: 2026-07-31
+Status: accepted
+Basis: user-confirmed
+Decision: Keep `aurumpos.net` on GitHub Pages and host the authenticated SPA at `app.aurumpos.net` on an unconnected Amplify app whose artifacts are promoted manually from the private operations repository.
+Android Internal Testing and the web manifest must use the same approved public source commit.
+Rationale: The user explicitly selected the domain split, Amplify managed static hosting, private release authority, and shared Android and web source provenance.
+Consequences: Cloud browser builds call only `https://api.aurumpos.net`, keep Google authentication disabled, emit deterministic release metadata, and deploy only after a manifest-only operations pull request.
+The browser stores access tokens only in memory, keeps refresh tokens in the existing HttpOnly cookie, persists an untrusted installation UUID, and guards every native plugin boundary.
+
+Evidence:
+- `frontend/src/utils/apiConfig.ts::getApiBaseUrl`
+- `frontend/scripts/write-release-metadata.mjs`
+- `docs/PRODUCTION_WEB.md`
 
 ### Use one canonical application release version
 
