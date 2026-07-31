@@ -710,7 +710,9 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert archived_lookup.status_code == 404
 
             previous_mode = settings.deployment_mode
+            previous_item_limit = settings.free_active_item_limit
             settings.deployment_mode = "hosted"
+            settings.free_active_item_limit = 50
             try:
                 async with AsyncSessionLocal.begin() as session:
                     await session.execute(
@@ -753,6 +755,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 assert limited.json()["detail"]["code"] == "ITEM_LIMIT_REACHED"
             finally:
                 settings.deployment_mode = previous_mode
+                settings.free_active_item_limit = previous_item_limit
 
             transferred = await client.post(
                 f"/api/v1/shops/{shop_id}/ownership",
