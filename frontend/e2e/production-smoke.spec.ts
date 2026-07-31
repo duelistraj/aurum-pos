@@ -32,7 +32,7 @@ test.describe('production smoke tenant', () => {
 
     await page.goto('/login');
     await page.getByLabel('Email address').fill(smokeEmail!);
-    await page.getByLabel('Password').fill(smokePassword!);
+    await page.getByRole('textbox', { name: 'Password' }).fill(smokePassword!);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     await expect(page).toHaveURL(/\/$/);
