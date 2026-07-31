@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   Plus, 
   AlertCircle, 
-  DownloadCloud, 
+  Download,
+  DownloadCloud,
   Pencil, 
   Trash2, 
   ChevronDown, 
@@ -49,6 +50,195 @@ const ITEM_STATUS_LABEL_BY_STATUS: Record<string, string> = {
   sold: 'Sold',
 };
 
+const PHONE_VIEWPORT_QUERY = '(max-width: 639px)';
+
+const subscribeToPhoneViewport = (onChange: () => void) => {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => undefined;
+  const mediaQuery = window.matchMedia(PHONE_VIEWPORT_QUERY);
+  mediaQuery.addEventListener('change', onChange);
+  return () => mediaQuery.removeEventListener('change', onChange);
+};
+
+const getPhoneViewportSnapshot = () =>
+  typeof window !== 'undefined'
+  && Boolean(window.matchMedia?.(PHONE_VIEWPORT_QUERY).matches);
+
+const usePhoneViewport = () => React.useSyncExternalStore(
+  subscribeToPhoneViewport,
+  getPhoneViewportSnapshot,
+  () => false,
+);
+
+type LabelDownloadFormat = 'xlsx' | 'pdf';
+
+interface ManageModeButtonProps {
+  compact: boolean;
+  isManageMode: boolean;
+  onClick: () => void;
+}
+
+const ManageModeButton: React.FC<ManageModeButtonProps> = ({
+  compact,
+  isManageMode,
+  onClick,
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`inventory-page__manage-action flex items-center space-x-2 border px-5 py-2.5 rounded-app-control shadow-xs transition-all duration-200 font-bold focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+      compact ? 'inventory-page__manage-action--phone' : ''
+    } ${
+      isManageMode
+        ? 'bg-emerald-50 dark:bg-emerald-950/20 text-slate-950 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/30 focus:ring-emerald-500'
+        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 focus:ring-slate-500'
+    }`}
+  >
+    <Settings className={`w-5 h-5 ${isManageMode ? 'text-emerald-500' : 'text-slate-500'}`} />
+    <span>{isManageMode ? 'Exit Manage' : 'Manage'}</span>
+  </button>
+);
+
+interface AddItemButtonProps {
+  compact: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+const AddItemButton: React.FC<AddItemButtonProps> = ({
+  compact,
+  disabled,
+  onClick,
+}) => (
+  <Button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    aria-label={compact ? 'Add Item' : undefined}
+    title={compact ? 'Add Item' : undefined}
+    className={`inventory-page__add-action flex items-center bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white rounded-app-control shadow-md font-semibold transition-all ${
+      compact
+        ? 'inventory-page__phone-icon'
+        : 'space-x-2 px-5 py-2.5'
+    }`}
+  >
+    <Plus className="w-5 h-5 font-bold" />
+    {compact ? null : <span>Add Item</span>}
+  </Button>
+);
+
+interface DownloadLabelsMenuProps {
+  compact: boolean;
+  containerRef: React.RefObject<HTMLDivElement>;
+  disabled: boolean;
+  isOpen: boolean;
+  onDownload: (format: LabelDownloadFormat) => void;
+  onToggle: () => void;
+}
+
+const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
+  compact,
+  containerRef,
+  disabled,
+  isOpen,
+  onDownload,
+  onToggle,
+}) => (
+  <div
+    className={`inventory-download relative ${compact ? 'inventory-download--phone' : ''}`}
+    ref={containerRef}
+  >
+    <Button
+      type="button"
+      onClick={onToggle}
+      variant="primary"
+      disabled={disabled}
+      aria-label={compact ? 'Download selected item labels' : undefined}
+      aria-controls="inventory-label-download-menu"
+      aria-expanded={isOpen}
+      aria-haspopup="menu"
+      title={compact ? 'Download selected item labels' : undefined}
+      className={`inventory-download__trigger flex items-center rounded-app-control font-bold shadow-xs transition-all ${
+        compact
+          ? 'inventory-page__phone-icon'
+          : 'space-x-2 px-5 py-2.5'
+      }`}
+    >
+      {compact ? (
+        <Download className="w-5 h-5" />
+      ) : (
+        <DownloadCloud className="w-5 h-5" />
+      )}
+      {compact ? null : (
+        <>
+          <span>Download</span>
+          <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </>
+      )}
+    </Button>
+
+    {isOpen ? (
+      <div
+        id="inventory-label-download-menu"
+        role="menu"
+        aria-label="Download selected item labels"
+        className={`inventory-download__menu absolute mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 flex flex-col animate-fade-in ${
+          compact
+            ? 'inventory-download__menu--compact'
+            : 'right-0 p-4 gap-3 w-80'
+        }`}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => onDownload('xlsx')}
+          className={compact
+            ? 'inventory-download__option--compact'
+            : 'flex items-center text-left p-3.5 rounded-app-control border border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all duration-200'}
+        >
+          <div className={compact
+            ? 'inventory-download__format-icon'
+            : 'mr-3.5 text-emerald-600 dark:text-emerald-500 flex-shrink-0'}
+          >
+            <ExcelIcon className={compact ? 'h-6 w-6' : 'h-10 w-10'} />
+          </div>
+          {compact ? (
+            <span>XLSX</span>
+          ) : (
+            <div>
+              <p className="font-bold text-slate-900 dark:text-white text-sm">Excel (.xlsx)</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Download as Excel file</p>
+            </div>
+          )}
+        </button>
+
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => onDownload('pdf')}
+          className={compact
+            ? 'inventory-download__option--compact'
+            : 'flex items-center text-left p-3.5 rounded-app-control border border-red-200 dark:border-red-900 bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200'}
+        >
+          <div className={compact
+            ? 'inventory-download__format-icon'
+            : 'mr-3.5 text-red-500 dark:text-red-500 flex-shrink-0'}
+          >
+            <PDFIcon className={compact ? 'h-6 w-6' : 'h-10 w-10'} />
+          </div>
+          {compact ? (
+            <span>PDF</span>
+          ) : (
+            <div>
+              <p className="font-bold text-slate-900 dark:text-white text-sm">PDF (.pdf)</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Download as PDF file</p>
+            </div>
+          )}
+        </button>
+      </div>
+    ) : null}
+  </div>
+);
+
 const ItemStatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const colorClass = status === 'in_stock'
     ? 'border-emerald-100/50 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-400'
@@ -74,6 +264,7 @@ const ItemStatusBadge: React.FC<{ status: string }> = ({ status }) => {
 export const Items: React.FC = () => {
   const queryClient = useQueryClient();
   const { canManage, activeMembership } = useShop();
+  const isPhoneViewport = usePhoneViewport();
   const shopId = activeMembership?.shop_id ?? '';
   const activeShopRef = React.useRef(shopId);
   const itemsRequestRef = React.useRef(0);
@@ -239,6 +430,23 @@ export const Items: React.FC = () => {
     };
   }, []);
 
+  React.useEffect(() => {
+    setShowDownloadDropdown(false);
+  }, [isPhoneViewport]);
+
+  React.useEffect(() => {
+    if (!showDownloadDropdown) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setShowDownloadDropdown(false);
+      dropdownRef.current
+        ?.querySelector<HTMLButtonElement>('.inventory-download__trigger')
+        ?.focus();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showDownloadDropdown]);
+
   const loadSummary = React.useCallback(async () => {
     const requestedShopId = shopId;
     try {
@@ -388,6 +596,7 @@ export const Items: React.FC = () => {
     if (isManageMode) {
       setIsManageMode(false);
       setSelectedItems(new Set());
+      setShowDownloadDropdown(false);
     } else if (canManage) {
       setIsManageMode(true);
     } else {
@@ -552,7 +761,7 @@ export const Items: React.FC = () => {
     }
   };
 
-  const handleDownloadBatchLabels = async (format: 'xlsx' | 'pdf') => {
+  const handleDownloadBatchLabels = async (format: LabelDownloadFormat) => {
     if (!isManageMode) {
       setError('Enter manage mode to download labels.');
       return;
@@ -584,12 +793,14 @@ export const Items: React.FC = () => {
       newSelected.add(itemId);
     }
     setSelectedItems(newSelected);
+    if (newSelected.size === 0) setShowDownloadDropdown(false);
   };
 
   const handleSelectAll = () => {
     if (!isManageMode) return;
     if (selectedItems.size === items.length && items.length > 0) {
       setSelectedItems(new Set());
+      setShowDownloadDropdown(false);
     } else {
       const allIds = new Set(items.map(item => item.id));
       setSelectedItems(allIds);
@@ -646,76 +857,54 @@ export const Items: React.FC = () => {
                   : 'Inventory is view-only. Click Manage to unlock add, edit, delete, and label download actions.'}
               </p>
           </div>
-          <div className="inventory-page__actions">
-              <button
-                onClick={handleManageToggle}
-                className={`flex items-center space-x-2 border px-5 py-2.5 rounded-app-control shadow-xs transition-all duration-200 font-bold focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                  isManageMode 
-                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-slate-950 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/30 focus:ring-emerald-500' 
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 focus:ring-slate-500'
-                }`}
-              >
-                <Settings className={`w-5 h-5 ${isManageMode ? 'text-emerald-500' : 'text-slate-500'}`} />
-                <span>{isManageMode ? 'Exit Manage' : 'Manage'}</span>
-              </button>
-              {selectedItems.size > 0 && (
-                <div className="inventory-download relative" ref={dropdownRef}>
-                  <Button
-                    onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
-                    variant="primary"
-                    disabled={!isManageMode}
-                    className="flex items-center space-x-2 px-5 py-2.5 rounded-app-control font-bold shadow-xs transition-all"
-                  >
-                    <DownloadCloud className="w-5 h-5" />
-                    <span>Download</span>
-                    <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${showDownloadDropdown ? 'rotate-180' : ''}`} />
-                  </Button>
-                  
-                  {showDownloadDropdown && (
-                    <div className="inventory-download__menu absolute right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 p-4 flex flex-col gap-3 w-80 animate-fade-in">
-                      <button
-                        onClick={() => {
-                          handleDownloadBatchLabels('xlsx');
-                          setShowDownloadDropdown(false);
-                        }}
-                        className="flex items-center text-left p-3.5 rounded-app-control border border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all duration-200"
-                      >
-                        <div className="mr-3.5 text-emerald-600 dark:text-emerald-500 flex-shrink-0">
-                          <ExcelIcon />
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-white text-sm">Excel (.xlsx)</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Download as Excel file</p>
-                        </div>
-                      </button>
-                      
-                      <button
-                        onClick={() => {
-                          handleDownloadBatchLabels('pdf');
-                          setShowDownloadDropdown(false);
-                        }}
-                        className="flex items-center text-left p-3.5 rounded-app-control border border-red-200 dark:border-red-900 bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200"
-                      >
-                        <div className="mr-3.5 text-red-500 dark:text-red-500 flex-shrink-0">
-                          <PDFIcon />
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-white text-sm">PDF (.pdf)</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Download as PDF file</p>
-                        </div>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <Button
-                onClick={openAddItemModal}
+          <div
+            role="group"
+            aria-label="Inventory management actions"
+            className={`inventory-page__actions ${
+              isPhoneViewport ? 'inventory-page__actions--phone' : ''
+            }`}
+          >
+            {isPhoneViewport ? (
+              <AddItemButton
+                compact
                 disabled={!isManageMode}
-                className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-app-control shadow-md font-semibold transition-all"
-              >
-                <Plus className="w-5 h-5 font-bold" />
-                <span>Add Item</span>
-              </Button>
+                onClick={openAddItemModal}
+              />
+            ) : (
+              <ManageModeButton
+                compact={false}
+                isManageMode={isManageMode}
+                onClick={handleManageToggle}
+              />
+            )}
+
+            {selectedItems.size > 0 ? (
+              <DownloadLabelsMenu
+                compact={isPhoneViewport}
+                containerRef={dropdownRef}
+                disabled={!isManageMode}
+                isOpen={showDownloadDropdown}
+                onToggle={() => setShowDownloadDropdown((current) => !current)}
+                onDownload={(format) => {
+                  setShowDownloadDropdown(false);
+                  void handleDownloadBatchLabels(format);
+                }}
+              />
+            ) : null}
+
+            {isPhoneViewport ? (
+              <ManageModeButton
+                compact
+                isManageMode={isManageMode}
+                onClick={handleManageToggle}
+              />
+            ) : (
+              <AddItemButton
+                compact={false}
+                disabled={!isManageMode}
+                onClick={openAddItemModal}
+              />
+            )}
           </div>
         </div>
 
