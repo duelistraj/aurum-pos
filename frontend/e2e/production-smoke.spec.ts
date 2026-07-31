@@ -32,10 +32,14 @@ test.describe('production smoke tenant', () => {
 
     await page.goto('/login');
     await page.getByLabel('Email address').fill(smokeEmail!);
-    await page.getByRole('textbox', { name: 'Password' }).fill(smokePassword!);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-
-    await expect(page).toHaveURL(/\/$/);
+    const passwordInput = page.getByRole('textbox', { name: 'Password' });
+    await passwordInput.fill(smokePassword!);
+    try {
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await expect(page).toHaveURL(/\/$/);
+    } finally {
+      if (await passwordInput.count()) await passwordInput.fill('');
+    }
     await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible();
     await expect(page.getByLabel('Active shop')).toContainText('Aurum Production Smoke');
 
