@@ -15,8 +15,13 @@ import {
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useShop } from '../context/ShopContext';
-import { ChangeLogEntry, DashboardSummary } from '../types';
+import { formatMetalName } from '../features/metalRates/display';
+import { useIndiaDate } from '../hooks/useIndiaDate';
+import { useRotatingMetalRate } from '../hooks/useRotatingMetalRate';
+import { ChangeLogEntry, DashboardMetalRate, DashboardSummary } from '../types';
 import { formatCurrency } from '../utils';
+
+const EMPTY_METAL_RATES: DashboardMetalRate[] = [];
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -188,10 +193,19 @@ export const Dashboard: React.FC = () => {
   const summary = dashboardQuery.data ?? null;
   const loading = dashboardQuery.isPending && !summary;
   const queryError = dashboardQuery.error;
+  const currentIndiaDate = useIndiaDate();
   const welcomeName = user?.full_name?.trim().split(/\s+/)[0] || 'there';
   const visibleActivity = summary?.recent_activity.filter(
     (activity) => !(activity.entity === 'item' && activity.action === 'sold'),
   ) ?? [];
+  const dashboardMetalRates = React.useMemo(() => {
+    if (summary?.metal_rates?.length) return summary.metal_rates;
+    if (summary && Number.isFinite(summary.Silver_rate_per_10g) && summary.Silver_rate_per_10g > 0) {
+      return [{ metal: 'silver', rate_per_10g: summary.Silver_rate_per_10g }];
+    }
+    return EMPTY_METAL_RATES;
+  }, [summary]);
+  const activeMetalRate = useRotatingMetalRate(dashboardMetalRates);
 
   const stats: StatCardProps[] = [
     {
@@ -217,9 +231,9 @@ export const Dashboard: React.FC = () => {
     },
     {
       icon: <IngotIcon />,
-      label: 'Silver rate',
-      value: summary ? safeFormatCurrency(summary.Silver_rate_per_10g) : formatCurrency(0),
-      context: 'Current rate per 10g',
+      label: activeMetalRate ? `${formatMetalName(activeMetalRate.metal)} rate` : 'Metal rate',
+      value: activeMetalRate ? safeFormatCurrency(activeMetalRate.rate_per_10g) : 'N/A',
+      context: activeMetalRate ? 'Current rate per 10g' : 'No rates configured',
       tone: 'green',
     },
     {
@@ -238,6 +252,7 @@ export const Dashboard: React.FC = () => {
           <p className="dashboard-eyebrow">Business overview</p>
           <h1 className="dashboard-page__title">Welcome back, {welcomeName}</h1>
           <p className="dashboard-page__subtitle">Here is an overview of your shop today.</p>
+          <p className="dashboard-page__date"><time>{currentIndiaDate}</time></p>
         </div>
         <Link to="/transactions" className="dashboard-header-link">
           <Activity className="dashboard-header-link__icon" />

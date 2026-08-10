@@ -847,6 +847,13 @@ body {
   line-height: 1.5;
 }
 
+.dashboard-page__date {
+  margin: .45rem 0 0;
+  color: var(--app-muted);
+  font-size: .74rem;
+  font-weight: 700;
+}
+
 .dashboard-header-link,
 .dashboard-section-link {
   display: inline-flex;
@@ -2759,6 +2766,12 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   white-space: nowrap;
 }
 
+.analytics-kpi__context {
+  color: var(--app-muted);
+  font-size: .66rem;
+  font-weight: 700;
+}
+
 .analytics-change {
   display: inline-flex;
   align-items: center;
@@ -2906,12 +2919,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   flex: 0 0 auto;
 }
 
-.analytics-chart--inventory {
-  width: 11.6rem;
-  height: 11.6rem;
-  flex: 0 0 auto;
-}
-
 .analytics-chart__center-label {
   position: absolute;
   inset: 0;
@@ -2931,10 +2938,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.analytics-chart--inventory .analytics-chart__center-label strong {
-  font-size: 1.35rem;
 }
 
 .analytics-chart__center-label span {
@@ -3072,8 +3075,19 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   border-radius: 50%;
 }
 
-.analytics-inventory-legend__dot--stock { background: #6D8F74; }
-.analytics-inventory-legend__dot--sold { background: #6386AA; }
+.metal-rate-reminder__message,
+.metal-rate-reminder__context {
+  margin: 0;
+  color: var(--app-ink);
+  font-size: .9rem;
+  line-height: 1.55;
+}
+
+.metal-rate-reminder__context {
+  margin-top: .7rem;
+  color: var(--app-muted);
+  font-size: .78rem;
+}
 
 .analytics-trend__headline {
   display: flex;
@@ -3146,9 +3160,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   border-radius: inherit;
   transition: width .4s ease;
 }
-
-.analytics-trend__bar--previous { background: #9EA7AA; }
-.analytics-trend__bar--current { background: var(--app-accent); }
 
 .analytics-no-data {
   display: flex;

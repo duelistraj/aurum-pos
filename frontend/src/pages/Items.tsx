@@ -283,7 +283,7 @@ export const Items: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
   const [selectedMetal, setSelectedMetal] = React.useState('all');
   const [selectedCategory, setSelectedCategory] = React.useState('all');
-  const [selectedStatus, setSelectedStatus] = React.useState('all');
+  const [selectedStatus, setSelectedStatus] = React.useState('in_stock');
   
   // Pagination State
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -1127,7 +1127,7 @@ export const Items: React.FC = () => {
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5 pointer-events-none">Status</label>
               <div className="flex items-center justify-between">
                 <span className="text-slate-800 dark:text-slate-100 font-bold text-sm truncate">
-                  {statusOptions.find(o => o.value === selectedStatus)?.label || 'All Status'}
+                  {statusOptions.find(o => o.value === selectedStatus)?.label || 'In Stock'}
                 </span>
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showStatusDropdown ? 'rotate-180' : ''}`} />
               </div>

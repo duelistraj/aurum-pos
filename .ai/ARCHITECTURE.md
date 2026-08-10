@@ -141,6 +141,8 @@ Debug APKs omit Google Sign-In, while signed Play builds discover the public Goo
 Native Android access and refresh tokens are encrypted with an AES-GCM key held by Android Keystore and are excluded from device backup.
 Browser access tokens remain in memory, while the rotating browser refresh token stays in an HttpOnly, Secure, path-scoped SameSite cookie.
 Browsers persist only a random untrusted installation UUID and coordinate refresh and logout across tabs without storing or broadcasting credentials.
+Dashboard summary and analytics responses expose ordered configured metal rates while retaining the legacy silver-rate fields for client compatibility.
+The authenticated client rotates configured dashboard rates and gives writable manager-level users one device-local reminder after 08:00 Asia/Kolkata when configured rates have not been refreshed during that IST day.
 Completed Android downloads are written to app-owned storage, and a native bridge accepts only those app-owned paths before posting a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
 Inventory and invoice data remain full tables at viewport widths of 640 pixels and above.
 Below 640 pixels, each becomes a compact disclosure table whose essential columns remain scannable and whose expanded row exposes the remaining details and actions.
@@ -154,7 +156,9 @@ Evidence:
 - `frontend/src/main.tsx::ShopProvider`
 - `frontend/src/api/client.ts::client.interceptors`
 - `frontend/src/api/queryKeys.ts::queryKeys`
+- `frontend/src/components/MetalRateReminder.tsx::MetalRateReminder`
 - `frontend/src/utils/apiConfig.ts::getApiBaseUrl`
+- `app/modules/dashboard/service.py::get_dashboard_summary`
 - `frontend/src/pages/Items.tsx::Items`
 - `frontend/src/pages/Invoices.tsx::InvoiceHistory`
 - `app/modules/subscriptions/service.py::get_entitlement_response`

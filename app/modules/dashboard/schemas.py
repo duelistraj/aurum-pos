@@ -30,6 +30,12 @@ class SalesTrendCompare(BaseModel):
     previous: TrendPeriodValue
 
 
+class AnalyticsMetalRate(BaseModel):
+    metal: str
+    rate_per_10g: float
+    change_percentage: float
+
+
 class AnalyticsDashboardResponse(BaseModel):
     # KPI 1: Total Sales
     total_sales: float
@@ -46,6 +52,7 @@ class AnalyticsDashboardResponse(BaseModel):
     # KPI 4: Silver Rate per 10g
     silver_rate_10g: float
     silver_rate_change_percentage: float
+    metal_rates: list[AnalyticsMetalRate]
 
     # KPI 5: Total Stock Value
     total_stock_value: float

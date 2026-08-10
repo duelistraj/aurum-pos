@@ -17,6 +17,11 @@ const summary = {
   inventory_items: 7,
   total_stock_value: 8400,
   Silver_rate_per_10g: 120.2,
+  metal_rates: [
+    { metal: 'gold', rate_per_10g: 72_000 },
+    { metal: 'silver', rate_per_10g: 120.2 },
+    { metal: 'platinum', rate_per_10g: 38_000 },
+  ],
   total_sales_amount: 3200,
   total_sale_value: 11200,
   recent_activity: [
@@ -78,6 +83,9 @@ describe('Dashboard', () => {
 
     expect(await screen.findByRole('heading', { name: 'Welcome back, Admin' })).toBeInTheDocument();
     expect(await screen.findByText('₹3,200.00')).toBeInTheDocument();
+    expect(screen.getByText('Gold rate')).toBeInTheDocument();
+    expect(screen.getByText('₹72,000.00')).toBeInTheDocument();
+    expect(screen.getByText(/\w+, \d{1,2} \w+ \d{4}/)).toBeInTheDocument();
     expect(await screen.findByText('Sale created: INV-1001')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute(
       'href',

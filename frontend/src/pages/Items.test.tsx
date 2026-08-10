@@ -199,6 +199,15 @@ describe('Inventory entitlement usage', () => {
     });
   });
 
+  it('requests in-stock inventory by default', async () => {
+    renderInventoryWithNavbar();
+
+    await waitFor(() => expect(apiClient.getItems).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'in_stock' }),
+    ));
+    expect(screen.getAllByText('In Stock').length).toBeGreaterThan(0);
+  });
+
   it('refreshes the shared active-item count after adding inventory', async () => {
     const user = userEvent.setup();
     renderInventoryWithNavbar();

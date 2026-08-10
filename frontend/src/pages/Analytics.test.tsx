@@ -9,6 +9,12 @@ import { useShop } from '../context/ShopContext';
 import { Analytics } from './Analytics';
 import { AnalyticsDashboardResponse } from '../types';
 
+const nivoProps = vi.hoisted(() => ({
+  bar: null as unknown,
+  line: null as unknown,
+  pies: [] as unknown[],
+}));
+
 vi.mock('../api/client', () => ({
   apiClient: {
     getDashboardAnalytics: vi.fn(),
@@ -17,13 +23,22 @@ vi.mock('../api/client', () => ({
 vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 vi.mock('@nivo/bar', () => ({
-  ResponsiveBar: () => <div data-testid="nivo-bar-chart" />,
+  ResponsiveBar: (props: unknown) => {
+    nivoProps.bar = props;
+    return <div data-testid="nivo-bar-chart" />;
+  },
 }));
 vi.mock('@nivo/line', () => ({
-  ResponsiveLine: () => <div data-testid="nivo-line-chart" />,
+  ResponsiveLine: (props: unknown) => {
+    nivoProps.line = props;
+    return <div data-testid="nivo-line-chart" />;
+  },
 }));
 vi.mock('@nivo/pie', () => ({
-  ResponsivePie: () => <div data-testid="nivo-pie-chart" />,
+  ResponsivePie: (props: unknown) => {
+    nivoProps.pies.push(props);
+    return <div data-testid="nivo-pie-chart" />;
+  },
 }));
 
 const analyticsData: AnalyticsDashboardResponse = {
@@ -35,6 +50,11 @@ const analyticsData: AnalyticsDashboardResponse = {
   inventory_items_change_percentage: -2.1,
   silver_rate_10g: 120.2,
   silver_rate_change_percentage: 1.4,
+  metal_rates: [
+    { metal: 'gold', rate_per_10g: 72000, change_percentage: 2.1 },
+    { metal: 'silver', rate_per_10g: 120.2, change_percentage: 1.4 },
+    { metal: 'platinum', rate_per_10g: 38000, change_percentage: -0.5 },
+  ],
   total_stock_value: 8400,
   total_stock_value_change_percentage: 4.8,
   sales_overview: [
@@ -75,6 +95,9 @@ describe('Analytics', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    nivoProps.bar = null;
+    nivoProps.line = null;
+    nivoProps.pies = [];
     vi.mocked(useConfig).mockReturnValue({
       appName: 'Aurum POS',
       isDarkMode: false,
@@ -176,5 +199,113 @@ describe('Analytics', () => {
     expect(screen.getByText('No category sales yet')).toBeInTheDocument();
     expect(screen.getByText('No inventory yet')).toBeInTheDocument();
     expect(screen.getByText('No category data available')).toBeInTheDocument();
+  });
+
+  it('constrains chart ticks, reserves value-label space, and preserves tiny inventory slices', async () => {
+    vi.mocked(apiClient.getDashboardAnalytics).mockResolvedValue({
+      ...analyticsData,
+      sales_overview: Array.from({ length: 30 }, (_, index) => ({
+        date: `Jul ${String(index + 1).padStart(2, '0')}`,
+        total_amount: index * 1_000,
+      })),
+      inventory_summary: {
+        in_stock_count: 1407,
+        in_stock_percentage: 99.8,
+        sold_count: 3,
+        sold_percentage: 0.2,
+        total_count: 1410,
+      },
+    });
+    renderAnalytics();
+
+    await screen.findByTestId('nivo-line-chart');
+    const lineProps = nivoProps.line as {
+      axisBottom: { tickValues: string[] };
+      axisLeft: { tickValues: number };
+    };
+    const barProps = nivoProps.bar as {
+      axisBottom: { tickValues: number };
+      margin: { right: number };
+    };
+    const inventoryPieProps = nivoProps.pies[nivoProps.pies.length - 1] as {
+      innerRadius: number;
+      padAngle: number;
+      cornerRadius: number;
+      borderWidth: number;
+      borderColor: string;
+      layers: unknown[];
+    };
+    const categoryPieProps = nivoProps.pies[0] as {
+      innerRadius: number;
+      padAngle: number;
+      cornerRadius: number;
+      borderWidth: number;
+      borderColor: string;
+    };
+
+    expect(lineProps.axisBottom.tickValues).toHaveLength(6);
+    expect(lineProps.axisBottom.tickValues[0]).toBe('Jul 01');
+    expect(lineProps.axisBottom.tickValues[lineProps.axisBottom.tickValues.length - 1]).toBe('Jul 30');
+    expect(lineProps.axisLeft.tickValues).toBe(5);
+    expect(barProps.axisBottom.tickValues).toBe(5);
+    expect(barProps.margin.right).toBeGreaterThanOrEqual(72);
+    expect(inventoryPieProps).toMatchObject({
+      innerRadius: categoryPieProps.innerRadius,
+      padAngle: categoryPieProps.padAngle,
+      cornerRadius: categoryPieProps.cornerRadius,
+      borderWidth: categoryPieProps.borderWidth,
+      borderColor: categoryPieProps.borderColor,
+    });
+    expect(inventoryPieProps.layers).toHaveLength(2);
+  });
+
+  it('shares distinct category colors between the breakdown donut and top-category bars', async () => {
+    vi.mocked(apiClient.getDashboardAnalytics).mockResolvedValue({
+      ...analyticsData,
+      sales_by_category: [
+        { category: 'Anklet', sales_value: 2_100, share: 65.6 },
+        { category: 'Jewellery', sales_value: 1_100, share: 34.4 },
+      ],
+    });
+    const user = userEvent.setup();
+    renderAnalytics();
+
+    await screen.findByText('Top selling categories');
+    await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
+    await user.click(screen.getByRole('option', { name: 'Silver' }));
+    await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.any(String),
+      'silver',
+    ));
+
+    const categoryPieProps = nivoProps.pies[nivoProps.pies.length - 2] as {
+      colors: (datum: { id: string }) => string;
+    };
+    const barProps = nivoProps.bar as {
+      colors: (bar: { data: { category: string } }) => string;
+    };
+    const ankletColor = categoryPieProps.colors({ id: 'Anklet' });
+    const jewelleryColor = categoryPieProps.colors({ id: 'Jewellery' });
+
+    expect(ankletColor).not.toBe(jewelleryColor);
+    expect(barProps.colors({ data: { category: 'Anklet' } })).toBe(ankletColor);
+    expect(barProps.colors({ data: { category: 'Jewellery' } })).toBe(jewelleryColor);
+  });
+
+  it('shows N/A when the specifically selected metal has no configured rate', async () => {
+    vi.mocked(apiClient.getDashboardAnalytics).mockResolvedValue({
+      ...analyticsData,
+      metal_rates: [{ metal: 'gold', rate_per_10g: 72_000, change_percentage: 2.1 }],
+    });
+    const user = userEvent.setup();
+    renderAnalytics();
+
+    await screen.findByText('Top selling categories');
+    await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
+    await user.click(screen.getByRole('option', { name: 'Platinum' }));
+
+    expect(await screen.findByText('N/A')).toBeInTheDocument();
+    expect(screen.getByText('Rate not set')).toBeInTheDocument();
   });
 });

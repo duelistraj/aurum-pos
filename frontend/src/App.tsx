@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Header } from './components/Header';
+import { MetalRateReminder } from './components/MetalRateReminder';
 import { Navbar } from './components/Navbar';
 import { ConfigProvider } from './context/ConfigContext';
 import {
@@ -51,6 +52,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
+      <MetalRateReminder />
       <div className="app-shell__content">
         <main className="min-w-0">{children}</main>
       </div>

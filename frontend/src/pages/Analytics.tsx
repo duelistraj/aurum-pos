@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ResponsiveBar } from '@nivo/bar';
 import { ResponsiveLine } from '@nivo/line';
-import { ResponsivePie } from '@nivo/pie';
+import { PieCustomLayerProps, ResponsivePie } from '@nivo/pie';
 import {
   Activity,
   AlertCircle,
@@ -25,7 +25,16 @@ import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
-import { AnalyticsDashboardResponse } from '../types';
+import {
+  createBreakdownColorMap,
+  formatCompactCurrency,
+  getChartColor,
+  getHorizontalBarMargins,
+  selectEvenlySpacedTicks,
+} from '../features/analytics/chartConfig';
+import { formatMetalName } from '../features/metalRates/display';
+import { useRotatingMetalRate } from '../hooks/useRotatingMetalRate';
+import { AnalyticsDashboardResponse, AnalyticsMetalRate } from '../types';
 import { formatCurrency, formatWholeCurrency } from '../utils';
 
 type PresetId = '7d' | '30d' | 'this_month' | 'last_month' | 'custom';
@@ -44,7 +53,7 @@ const JEWELLERY_OPTIONS = [
   { value: 'silver', label: 'Silver' },
   { value: 'platinum', label: 'Platinum' },
 ] as const;
-const CATEGORY_COLORS = ['#E0A02B', '#6D8FC1', '#67A67B', '#A179A6', '#C28A4A', '#8C7772', '#75849A', '#A86762'];
+const EMPTY_METAL_RATES: AnalyticsMetalRate[] = [];
 
 const CHART_THEME = {
   light: {
@@ -57,8 +66,6 @@ const CHART_THEME = {
     point: '#3E9161',
     pointBorder: '#FFFEFA',
     chartBorder: '#FFFEFA',
-    stock: '#6D8F74',
-    sold: '#6386AA',
   },
   dark: {
     grid: '#34383B',
@@ -70,8 +77,6 @@ const CHART_THEME = {
     point: '#83C59A',
     pointBorder: '#1A1D20',
     chartBorder: '#1A1D20',
-    stock: '#86B794',
-    sold: '#82A8D1',
   },
 } as const;
 
@@ -170,12 +175,6 @@ const getRangeLabel = (startDate: string, endDate: string): string => {
   return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
 };
 
-const formatCompactValue = (value: number): string => {
-  if (Math.abs(value) >= 100_000) return `₹${(value / 100_000).toFixed(0)}L`;
-  if (Math.abs(value) >= 1_000) return `₹${(value / 1_000).toFixed(0)}K`;
-  return `₹${value}`;
-};
-
 const formatPercentage = (value: number): string => `${Math.abs(value).toFixed(1)}%`;
 
 interface EmptyStateProps {
@@ -208,20 +207,48 @@ const ChangeIndicator: React.FC<ChangeIndicatorProps> = ({ value }) => {
 interface AnalyticsKpiProps {
   label: string;
   value: string;
-  change: number;
+  change?: number;
+  context?: string;
   icon: React.ReactNode;
   tone: 'gold' | 'blue' | 'violet' | 'green' | 'slate';
 }
 
-const AnalyticsKpi: React.FC<AnalyticsKpiProps> = ({ label, value, change, icon, tone }) => (
+const AnalyticsKpi: React.FC<AnalyticsKpiProps> = ({ label, value, change, context, icon, tone }) => (
   <article className={`analytics-kpi analytics-kpi--${tone}`}>
     <div className="analytics-kpi__topline">
       <p className="analytics-kpi__label">{label}</p>
       <span className="analytics-kpi__icon" aria-hidden="true">{icon}</span>
     </div>
     <p className="analytics-kpi__value">{value}</p>
-    <ChangeIndicator value={change} />
+    {change === undefined ? (
+      <span className="analytics-kpi__context">{context}</span>
+    ) : <ChangeIndicator value={change} />}
   </article>
+);
+
+const TinyInventorySliceMarkers: React.FC<PieCustomLayerProps<AnalyticsPieDatum>> = ({
+  dataWithArc,
+  centerX,
+  centerY,
+}) => (
+  <g aria-hidden="true">
+    {dataWithArc.filter(({ value, arc }) => value > 0 && arc.angleDeg < 2).map((datum) => {
+      const angle = (datum.arc.startAngle + datum.arc.endAngle) / 2;
+      const innerRadius = datum.arc.innerRadius + 1;
+      const outerRadius = datum.arc.outerRadius - 1;
+      return (
+        <line
+          key={datum.id}
+          x1={centerX + Math.sin(angle) * innerRadius}
+          y1={centerY - Math.cos(angle) * innerRadius}
+          x2={centerX + Math.sin(angle) * outerRadius}
+          y2={centerY - Math.cos(angle) * outerRadius}
+          stroke={datum.color}
+          strokeWidth={2}
+        />
+      );
+    })}
+  </g>
 );
 
 interface PanelHeaderProps {
@@ -289,6 +316,7 @@ export const Analytics: React.FC = () => {
   const loading = hasRequest && analyticsQuery.isPending && !data;
   const error = analyticsQuery.error instanceof Error ? analyticsQuery.error.message : null;
   const chartTheme = isDarkMode ? CHART_THEME.dark : CHART_THEME.light;
+  const colorMode = isDarkMode ? 'dark' : 'light';
   const nivoTheme = useMemo(() => createNivoTheme(chartTheme), [chartTheme]);
 
   const applyPreset = (presetId: PresetId) => {
@@ -322,11 +350,60 @@ export const Analytics: React.FC = () => {
     { id: 'In stock', value: data.inventory_summary.in_stock_count },
     { id: 'Sold', value: data.inventory_summary.sold_count },
   ] : [], [data, inventoryHasData]);
+  const lineTickValues = useMemo(() => selectEvenlySpacedTicks(
+    lineChartData[0]?.data.map(({ x }) => x) ?? [],
+    6,
+  ), [lineChartData]);
+  const topCategoryMargins = useMemo(() => getHorizontalBarMargins(
+    topCategoryChartData.map(({ category }) => category),
+    topCategoryChartData.map(({ sales }) => formatWholeCurrency(sales)),
+  ), [topCategoryChartData]);
   const categoryTotal = categoryChartData.reduce((sum, category) => sum + category.value, 0);
   const inventoryTotal = inventoryChartData.reduce((sum, category) => sum + category.value, 0);
   const selectedJewelleryLabel = JEWELLERY_OPTIONS.find(
     ({ value }) => value === selectedJewellery,
   )?.label ?? 'All jewellery';
+  const analyticsMetalRates = useMemo(() => {
+    const responseRates = data?.metal_rates ?? EMPTY_METAL_RATES;
+    if (responseRates.length > 0) {
+      return selectedJewellery === 'all'
+        ? responseRates
+        : responseRates.filter(({ metal }) => metal.toLowerCase() === selectedJewellery);
+    }
+    if (
+      data
+      && data.silver_rate_10g > 0
+      && (selectedJewellery === 'all' || selectedJewellery === 'silver')
+    ) {
+      return [{
+        metal: 'silver',
+        rate_per_10g: data.silver_rate_10g,
+        change_percentage: data.silver_rate_change_percentage,
+      }];
+    }
+    return EMPTY_METAL_RATES;
+  }, [data, selectedJewellery]);
+  const activeMetalRate = useRotatingMetalRate(analyticsMetalRates);
+  const useMetalBreakdownColors = selectedJewellery === 'all';
+  const breakdownColorByLabel = useMemo(() => createBreakdownColorMap(
+    categoryChartData.map(({ id }) => id),
+    {
+      useMetalColors: useMetalBreakdownColors,
+      mode: colorMode,
+    },
+  ), [categoryChartData, colorMode, useMetalBreakdownColors]);
+  const breakdownColor = (label: string) => (
+    breakdownColorByLabel.get(label) ?? getChartColor(0, colorMode)
+  );
+  const inventoryColorByLabel = useMemo(() => createBreakdownColorMap(
+    inventoryChartData.map(({ id }) => id),
+    { useMetalColors: false, mode: colorMode },
+  ), [colorMode, inventoryChartData]);
+  const inventoryColor = (label: string) => (
+    inventoryColorByLabel.get(label) ?? getChartColor(0, colorMode)
+  );
+  const previousTrendColor = getChartColor(0, colorMode);
+  const currentTrendColor = getChartColor(1, colorMode);
 
   const totalSalesTrend = data?.total_sales_change_percentage ?? 0;
   const previousSales = data?.sales_trend.previous.sales_value ?? 0;
@@ -493,9 +570,12 @@ export const Analytics: React.FC = () => {
               icon={<Package className="analytics-kpi__svg" />}
             />
             <AnalyticsKpi
-              label="Silver rate (per 10g)"
-              value={formatCurrency(data.silver_rate_10g)}
-              change={data.silver_rate_change_percentage}
+              label={activeMetalRate
+                ? `${formatMetalName(activeMetalRate.metal)} rate (per 10g)`
+                : 'Metal rate (per 10g)'}
+              value={activeMetalRate ? formatCurrency(activeMetalRate.rate_per_10g) : 'N/A'}
+              change={activeMetalRate?.change_percentage}
+              context={selectedJewellery === 'all' ? 'No rates configured' : 'Rate not set'}
               tone="green"
               icon={<Coins className="analytics-kpi__svg" />}
             />
@@ -517,16 +597,16 @@ export const Analytics: React.FC = () => {
                 {lineChartData[0]?.data.length ? (
                   <ResponsiveLine
                     data={lineChartData}
-                    margin={{ top: 8, right: 8, bottom: 32, left: 48 }}
+                    margin={{ top: 8, right: 32, bottom: 36, left: 56 }}
                     xScale={{ type: 'point' }}
-                    yScale={{ type: 'linear', min: 'auto', max: 'auto', stacked: false, reverse: false }}
+                    yScale={{ type: 'linear', min: 0, max: 'auto', stacked: false, reverse: false }}
                     curve="monotoneX"
                     colors={[chartTheme.line]}
                     theme={nivoTheme}
                     enableGridX={false}
                     enableGridY
-                    axisBottom={{ tickSize: 0, tickPadding: 10, tickRotation: 0 }}
-                    axisLeft={{ tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactValue }}
+                    axisBottom={{ tickValues: lineTickValues, tickSize: 0, tickPadding: 10, tickRotation: 0 }}
+                    axisLeft={{ tickValues: 5, tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactCurrency }}
                     enablePoints
                     pointSize={6}
                     pointColor={chartTheme.point}
@@ -565,7 +645,7 @@ export const Analytics: React.FC = () => {
                       padAngle={1}
                       cornerRadius={1}
                       activeOuterRadiusOffset={5}
-                      colors={CATEGORY_COLORS}
+                      colors={(datum) => breakdownColor(String(datum.id))}
                       borderWidth={3}
                       borderColor={chartTheme.chartBorder}
                       enableArcLabels={false}
@@ -591,10 +671,10 @@ export const Analytics: React.FC = () => {
                   ) : null}
                 </div>
                 <div className="analytics-legend" aria-label="Sales category breakdown">
-                  {data.sales_by_category.length > 0 ? data.sales_by_category.map((category, index) => (
+                  {data.sales_by_category.length > 0 ? data.sales_by_category.map((category) => (
                     <div key={category.category} className="analytics-legend__row">
                       <span className="analytics-legend__label">
-                        <span className="analytics-legend__swatch" style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
+                        <span className="analytics-legend__swatch" style={{ backgroundColor: breakdownColor(category.category) }} />
                         <span title={category.category}>{category.category}</span>
                       </span>
                       <strong>
@@ -618,15 +698,15 @@ export const Analytics: React.FC = () => {
                     keys={['sales']}
                     indexBy="category"
                     layout="horizontal"
-                    margin={{ top: 4, right: 16, bottom: 28, left: 104 }}
+                    margin={topCategoryMargins}
                     padding={0.5}
-                    valueScale={{ type: 'linear' }}
+                    valueScale={{ type: 'linear', min: 0, max: 'auto' }}
                     indexScale={{ type: 'band', round: true }}
-                    colors={(bar) => CATEGORY_COLORS[bar.index % CATEGORY_COLORS.length]}
+                    colors={(bar) => breakdownColor(String(bar.data.category))}
                     borderRadius={4}
                     enableGridX
                     enableGridY={false}
-                    axisBottom={{ tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactValue }}
+                    axisBottom={{ tickValues: 5, tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactCurrency }}
                     axisLeft={{ tickSize: 0, tickPadding: 8, tickRotation: 0 }}
                     enableLabel
                     labelSkipWidth={0}
@@ -652,7 +732,7 @@ export const Analytics: React.FC = () => {
             <article className="analytics-panel analytics-panel--supporting">
               <PanelHeader eyebrow="Inventory mix" title="Inventory summary" icon={<Package className="analytics-panel__icon" />} tone="violet" />
               <div className="analytics-inventory-layout">
-                <div className="analytics-chart analytics-chart--inventory">
+                <div className="analytics-chart analytics-chart--donut">
                   {inventoryChartData.length > 0 ? (
                     <ResponsivePie
                       data={inventoryChartData}
@@ -661,13 +741,14 @@ export const Analytics: React.FC = () => {
                       padAngle={1}
                       cornerRadius={1}
                       activeOuterRadiusOffset={5}
-                      colors={[chartTheme.stock, chartTheme.sold]}
+                      colors={(datum) => inventoryColor(String(datum.id))}
                       borderWidth={3}
                       borderColor={chartTheme.chartBorder}
                       enableArcLabels={false}
                       enableArcLinkLabels={false}
                       sortByValue={false}
                       theme={nivoTheme}
+                      layers={['arcs', TinyInventorySliceMarkers]}
                       tooltip={({ datum }) => {
                         const percentage = inventoryTotal > 0 ? ((datum.value / inventoryTotal) * 100).toFixed(1) : '0.0';
                         return (
@@ -688,11 +769,11 @@ export const Analytics: React.FC = () => {
                 </div>
                 <div className="analytics-inventory-legend">
                   <div>
-                    <span><i className="analytics-inventory-legend__dot analytics-inventory-legend__dot--stock" />In stock</span>
+                    <span><i className="analytics-inventory-legend__dot" style={{ backgroundColor: inventoryColor('In stock') }} />In stock</span>
                     <strong>{data.inventory_summary.in_stock_count} <small>({data.inventory_summary.in_stock_percentage}%)</small></strong>
                   </div>
                   <div>
-                    <span><i className="analytics-inventory-legend__dot analytics-inventory-legend__dot--sold" />Sold</span>
+                    <span><i className="analytics-inventory-legend__dot" style={{ backgroundColor: inventoryColor('Sold') }} />Sold</span>
                     <strong>{data.inventory_summary.sold_count} <small>({data.inventory_summary.sold_percentage}%)</small></strong>
                   </div>
                 </div>
@@ -710,11 +791,11 @@ export const Analytics: React.FC = () => {
                 <div className="analytics-trend__bars">
                   <div className="analytics-trend__bar-group">
                     <div className="analytics-trend__bar-label"><span>{data.sales_trend.previous.period}</span><strong>{formatWholeCurrency(previousSales)}</strong></div>
-                    <div className="analytics-trend__track"><span className="analytics-trend__bar analytics-trend__bar--previous" style={{ width: previousSalesWidth }} /></div>
+                    <div className="analytics-trend__track"><span className="analytics-trend__bar analytics-trend__bar--previous" style={{ width: previousSalesWidth, backgroundColor: previousTrendColor }} /></div>
                   </div>
                   <div className="analytics-trend__bar-group">
                     <div className="analytics-trend__bar-label"><span>{data.sales_trend.current.period}</span><strong>{formatWholeCurrency(currentSales)}</strong></div>
-                    <div className="analytics-trend__track"><span className="analytics-trend__bar analytics-trend__bar--current" style={{ width: currentSalesWidth }} /></div>
+                    <div className="analytics-trend__track"><span className="analytics-trend__bar analytics-trend__bar--current" style={{ width: currentSalesWidth, backgroundColor: currentTrendColor }} /></div>
                   </div>
                 </div>
               </div>

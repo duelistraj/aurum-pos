@@ -317,6 +317,33 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 json={"metal": metal, "purity": 100, "rate_per_gram": 100},
             )
             assert rate.status_code == 200, rate.text
+            rate_dashboard = await client.get(
+                "/api/v1/dashboard/summary",
+                headers=headers,
+            )
+            assert rate_dashboard.status_code == 200, rate_dashboard.text
+            assert rate_dashboard.json()["Silver_rate_per_10g"] == 1000
+            assert rate_dashboard.json()["metal_rates"] == [
+                {"metal": "silver", "rate_per_10g": 1000.0}
+            ]
+            analytics_to = datetime.now(UTC)
+            rate_analytics = await client.get(
+                "/api/v1/dashboard/analytics",
+                headers=headers,
+                params={
+                    "from_date": (analytics_to - timedelta(days=1)).isoformat(),
+                    "to_date": analytics_to.isoformat(),
+                    "metal": "all",
+                },
+            )
+            assert rate_analytics.status_code == 200, rate_analytics.text
+            assert rate_analytics.json()["metal_rates"] == [
+                {
+                    "metal": "silver",
+                    "rate_per_10g": 1000.0,
+                    "change_percentage": 100.0,
+                }
+            ]
 
             item = await client.post(
                 "/api/v1/items/",
@@ -455,6 +482,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert second_shop_dashboard.status_code == 200, second_shop_dashboard.text
             assert second_shop_dashboard.json()["inventory_items"] == 0
             assert second_shop_dashboard.json()["total_sales_amount"] == 0
+            assert second_shop_dashboard.json()["metal_rates"] == []
             second_shop_history = await client.get(
                 "/api/v1/change-log/history",
                 headers=second_shop_headers,

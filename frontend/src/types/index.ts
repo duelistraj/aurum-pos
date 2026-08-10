@@ -37,9 +37,21 @@ export interface ItemPOSWithPrice {
 }
 
 export interface MetalRate {
+  id?: string;
   metal: string;
   purity: number;
   rate_per_gram: number;
+  effective_from?: string | null;
+  created_at?: string | null;
+}
+
+export interface DashboardMetalRate {
+  metal: string;
+  rate_per_10g: number;
+}
+
+export interface AnalyticsMetalRate extends DashboardMetalRate {
+  change_percentage: number;
 }
 
 export interface SaleItem {
@@ -107,6 +119,7 @@ export interface DashboardSummary {
   inventory_items: number;
   total_stock_value: number;
   Silver_rate_per_10g: number;
+  metal_rates?: DashboardMetalRate[];
   total_sales_amount: number;
   total_sale_value: number;
   recent_activity: ChangeLogEntry[];
@@ -156,6 +169,7 @@ export interface AnalyticsDashboardResponse {
   inventory_items_change_percentage: number;
   silver_rate_10g: number;
   silver_rate_change_percentage: number;
+  metal_rates?: AnalyticsMetalRate[];
   total_stock_value: number;
   total_stock_value_change_percentage: number;
   sales_overview: SalesOverviewPoint[];

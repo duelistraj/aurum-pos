@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import TypedDict
 from uuid import UUID
 
 from sqlalchemy import Date, and_, case, cast, func, literal, select
@@ -13,6 +14,16 @@ from app.modules.sales.models import Sale, SaleItem
 from app.modules.shops.models import Shop
 
 HUNDRED = Decimal("100")
+METAL_DISPLAY_ORDER = ("gold", "silver", "platinum")
+
+
+class InventoryMetrics(TypedDict):
+    inventory_items: int
+    total_stock_value: Decimal
+    total_sale_value: Decimal
+    silver_rate_10g: Decimal
+    sold_count: int
+    rate_per_10g_by_metal: dict[str, Decimal]
 
 
 def _change_percentage(current: Decimal | int, previous: Decimal | int) -> float:
@@ -53,7 +64,7 @@ async def _inventory_metrics(
     timestamp: datetime,
     metal: str,
     use_current_state: bool = False,
-) -> dict[str, Decimal | int]:
+) -> InventoryMetrics:
     rates = await _rates_at(db, shop_id=shop_id, timestamp=timestamp)
     if use_current_state:
         inventory_at = (
@@ -167,8 +178,56 @@ async def _inventory_metrics(
         "total_stock_value": Decimal(total_stock_value or 0),
         "total_sale_value": Decimal(total_sale_value or 0),
         "silver_rate_10g": rates.get("silver", Decimal(0)) * 10,
-        "sold_count": sold_count,
+        "sold_count": int(sold_count or 0),
+        "rate_per_10g_by_metal": {name: rate * 10 for name, rate in rates.items()},
     }
+
+
+def _ordered_metal_names(rate_per_10g_by_metal: dict[str, Decimal]) -> list[str]:
+    known_names = [name for name in METAL_DISPLAY_ORDER if name in rate_per_10g_by_metal]
+    extra_names = sorted(set(rate_per_10g_by_metal).difference(METAL_DISPLAY_ORDER))
+    return [*known_names, *extra_names]
+
+
+def _dashboard_rate_metrics(
+    rate_per_10g_by_metal: dict[str, Decimal],
+) -> list[dict[str, str | float]]:
+    return [
+        {
+            "metal": name,
+            "rate_per_10g": round(float(rate_per_10g_by_metal[name]), 2),
+        }
+        for name in _ordered_metal_names(rate_per_10g_by_metal)
+    ]
+
+
+def _analytics_rate_metrics(
+    current_rate_per_10g_by_metal: dict[str, Decimal],
+    previous_rate_per_10g_by_metal: dict[str, Decimal],
+    *,
+    metal: str,
+) -> list[dict[str, str | float]]:
+    names = (
+        _ordered_metal_names(current_rate_per_10g_by_metal)
+        if metal == "all"
+        else [metal]
+        if metal in current_rate_per_10g_by_metal
+        else []
+    )
+    return [
+        {
+            "metal": name,
+            "rate_per_10g": round(float(current_rate_per_10g_by_metal[name]), 2),
+            "change_percentage": round(
+                _change_percentage(
+                    current_rate_per_10g_by_metal[name],
+                    previous_rate_per_10g_by_metal.get(name, Decimal(0)),
+                ),
+                2,
+            ),
+        }
+        for name in names
+    ]
 
 
 async def _sales_period_totals(
@@ -343,6 +402,7 @@ async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
         "inventory_items": metrics["inventory_items"],
         "total_stock_value": float(metrics["total_stock_value"]),
         "Silver_rate_per_10g": float(metrics["silver_rate_10g"]),
+        "metal_rates": _dashboard_rate_metrics(metrics["rate_per_10g_by_metal"]),
         "total_sales_amount": float(total_sales_amount or 0),
         "total_sale_value": float(metrics["total_sale_value"]),
         "recent_activity": [
@@ -482,6 +542,11 @@ async def get_dashboard_analytics(
                 previous_metrics["silver_rate_10g"],
             ),
             2,
+        ),
+        "metal_rates": _analytics_rate_metrics(
+            current_metrics["rate_per_10g_by_metal"],
+            previous_metrics["rate_per_10g_by_metal"],
+            metal=normalized_metal,
         ),
         "total_stock_value": round(float(current_metrics["total_stock_value"]), 2),
         "total_stock_value_change_percentage": round(
