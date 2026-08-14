@@ -243,7 +243,7 @@ async def _execute_create_sale(
 
     sale_items: list[SaleItem] = []
 
-    metal_names = {item.metal.lower() for item in items}
+    metal_names = {item.metal.lower() for item in items if item.category.lower() != "unique"}
     rates_result = await db.execute(
         select(MetalRate)
         .where(
@@ -260,19 +260,16 @@ async def _execute_create_sale(
     # Create sale items with locked pricing
     for item_id, quantity_requested in item_quantities.items():
         item = item_by_id[item_id]
-        selected_rate = rate_by_metal.get(item.metal.lower())
-
-        if selected_rate is None:
-            raise HTTPException(
-                400,
-                f"Metal rate not set for {item.metal}",
+        effective_rate = Decimal(0)
+        if item.category.lower() != "unique":
+            selected_rate = rate_by_metal.get(item.metal.lower())
+            if selected_rate is None:
+                raise HTTPException(400, f"Metal rate not set for {item.metal}")
+            effective_rate = calculate_effective_rate_per_gram(
+                metal=item.metal,
+                purity=item.purity,
+                base_rate_per_gram=selected_rate.rate_per_gram,
             )
-
-        effective_rate = calculate_effective_rate_per_gram(
-            metal=item.metal,
-            purity=item.purity,
-            base_rate_per_gram=selected_rate.rate_per_gram,
-        )
 
         breakdown = lock_price_at_sale(
             metal=item.metal,
@@ -281,6 +278,7 @@ async def _execute_create_sale(
             net_weight=item.net_weight,
             rate_per_gram=effective_rate,
             making_charge=item.making_charge,
+            fixed_rate=item.fixed_rate,
             tax_rate_percent=shop.tax_rate_percent,
         )
 
@@ -307,6 +305,7 @@ async def _execute_create_sale(
             item_purity=item.purity,
             item_net_weight=item.net_weight,
             item_making_charge=item.making_charge,
+            item_fixed_rate=item.fixed_rate,
         )
 
         db.add(sale_item)

@@ -151,6 +151,7 @@ async def test_item_import_creates_analytics_baseline(tmp_path) -> None:
             "purity": 92.5,
             "net_weight": 2.5,
             "making_charge": 100,
+            "fixed_rate": 0,
             "quantity": 3,
             "status": "in_stock",
             "notes": None,

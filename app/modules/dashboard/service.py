@@ -75,6 +75,7 @@ async def _inventory_metrics(
                 Item.purity,
                 Item.net_weight,
                 Item.making_charge,
+                Item.fixed_rate,
                 Item.quantity,
             )
             .where(
@@ -92,6 +93,7 @@ async def _inventory_metrics(
                 ItemHistory.purity,
                 ItemHistory.net_weight,
                 ItemHistory.making_charge,
+                ItemHistory.fixed_rate,
                 ItemHistory.quantity,
             )
             .where(
@@ -129,7 +131,7 @@ async def _inventory_metrics(
         else_=inventory_at.c.making_charge * inventory_at.c.net_weight,
     )
     suggested_value = case(
-        (func.lower(inventory_at.c.category) == "unique", inventory_at.c.making_charge),
+        (func.lower(inventory_at.c.category) == "unique", inventory_at.c.fixed_rate),
         else_=metal_value + making_value,
     )
     positive_quantity = case(

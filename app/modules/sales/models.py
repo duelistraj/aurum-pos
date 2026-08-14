@@ -218,6 +218,7 @@ class SaleItem(Base):
     item_purity: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     item_net_weight: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
     item_making_charge: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    item_fixed_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
 
     sale = relationship(
         "Sale",

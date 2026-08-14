@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   writeFile: vi.fn(),
   downloadFile: vi.fn(),
   showDownloadedFile: vi.fn(),
+  printPdf: vi.fn(),
 }));
 
 vi.mock('@capacitor/core', () => ({
@@ -41,7 +42,13 @@ vi.mock('./native/fileNotifications', () => ({
   },
 }));
 
-import { downloadBlob, downloadUrl } from './utils';
+vi.mock('./native/printing', () => ({
+  AurumPrinting: {
+    printPdf: mocks.printPdf,
+  },
+}));
+
+import { downloadBlob, downloadUrl, printInvoicePdf } from './utils';
 
 describe('signed URL downloads', () => {
   beforeEach(() => {
@@ -56,6 +63,7 @@ describe('signed URL downloads', () => {
     });
     mocks.downloadFile.mockReset().mockResolvedValue({});
     mocks.showDownloadedFile.mockReset().mockResolvedValue({ displayed: true });
+    mocks.printPdf.mockReset().mockResolvedValue(undefined);
   });
 
   it('uses direct navigation for browser downloads', async () => {
@@ -103,6 +111,23 @@ describe('signed URL downloads', () => {
     expect(mocks.showDownloadedFile.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.writeFile.mock.invocationCallOrder[0],
     );
+  });
+
+  it('queues an exact app-cache PDF with Android printing without a download notification', async () => {
+    mocks.isNative = true;
+    const pdf = new TextEncoder().encode('%PDF invoice').buffer;
+
+    await printInvoicePdf(pdf, 'INV-1.pdf');
+
+    expect(mocks.writeFile).toHaveBeenCalledWith(expect.objectContaining({
+      path: 'INV-1.pdf',
+      directory: 'CACHE',
+    }));
+    expect(mocks.printPdf).toHaveBeenCalledWith({
+      uri: 'file:///data/user/0/com.duelistraj.aurumpos/cache/invoice.pdf',
+      jobName: 'INV-1.pdf',
+    });
+    expect(mocks.showDownloadedFile).not.toHaveBeenCalled();
   });
 
   it('does not report a completed download when native transfer fails', async () => {

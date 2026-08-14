@@ -24,6 +24,8 @@ class S3Client(Protocol):
 
     def delete_object(self, **kwargs: object) -> dict[str, Any]: ...
 
+    def get_object(self, **kwargs: object) -> dict[str, Any]: ...
+
     def generate_presigned_url(
         self,
         client_method: str,
@@ -116,6 +118,38 @@ class InvoiceStorage:
             await anyio.to_thread.run_sync(delete)
         except (BotoCoreError, ClientError) as exc:
             raise InvoiceStorageError("Invoice deletion failed") from exc
+
+    async def read_pdf(
+        self,
+        *,
+        object_key: str,
+        expected_checksum_sha256: str | None = None,
+    ) -> bytes:
+        def read() -> bytes:
+            response = self._get_client().get_object(
+                Bucket=self.bucket,
+                Key=object_key,
+                ChecksumMode="ENABLED",
+            )
+            body = response.get("Body")
+            if body is None or not hasattr(body, "read"):
+                raise InvoiceStorageError("Invoice object has no readable body")
+            pdf = body.read()
+            if not isinstance(pdf, bytes):
+                raise InvoiceStorageError("Invoice object body is invalid")
+            return pdf
+
+        try:
+            pdf = await anyio.to_thread.run_sync(read)
+        except InvoiceStorageError:
+            raise
+        except (BotoCoreError, ClientError) as exc:
+            raise InvoiceStorageError("Invoice download failed") from exc
+        if expected_checksum_sha256:
+            actual_checksum = hashlib.sha256(pdf).hexdigest()
+            if actual_checksum != expected_checksum_sha256:
+                raise InvoiceStorageError("Invoice checksum does not match")
+        return pdf
 
     async def generate_download_url(
         self,

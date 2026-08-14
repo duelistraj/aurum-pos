@@ -12,8 +12,9 @@ class ItemBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     metal: str = Field(min_length=1, max_length=50)
     purity: Decimal = Field(ge=0, le=100)
-    net_weight: Decimal = Field(ge=0)
-    making_charge: Decimal = Field(ge=0)
+    net_weight: Decimal = Field(default=Decimal(0), ge=0)
+    making_charge: Decimal = Field(default=Decimal(0), ge=0)
+    fixed_rate: Decimal = Field(default=Decimal(0), ge=0)
     quantity: int = Field(1, ge=0)
     notes: str | None = Field(default=None, max_length=4000)
 
@@ -24,21 +25,32 @@ class ItemBase(BaseModel):
             return values
 
         values_by_field = dict(values)
-        category = values_by_field.get("category")
+        category = str(values_by_field.get("category", "jewellery")).strip().lower()
+        values_by_field["category"] = category
         net_weight = values_by_field.get("net_weight")
         if category == "unique":
+            legacy_making_charge = Decimal(str(values_by_field.get("making_charge", 0) or 0))
+            if values_by_field.get("fixed_rate") in (None, "") and legacy_making_charge > 0:
+                values_by_field["fixed_rate"] = legacy_making_charge
             values_by_field["net_weight"] = 0
+            values_by_field["making_charge"] = 0
         elif net_weight is not None and Decimal(str(net_weight)) == 0:
             raise ValueError("net_weight can only be 0 for unique items")
+        else:
+            values_by_field["fixed_rate"] = 0
         return values_by_field
 
-    @field_serializer("purity", "net_weight", "making_charge")
+    @field_serializer("purity", "net_weight", "making_charge", "fixed_rate")
     def serialize_decimal(self, value: Decimal) -> float:
         return float(value)
 
 
 class ItemCreate(ItemBase):
-    pass
+    @model_validator(mode="after")
+    def require_unique_fixed_rate(self) -> "ItemCreate":
+        if self.category == "unique" and self.fixed_rate <= 0:
+            raise ValueError("fixed_rate must be greater than 0 for unique items")
+        return self
 
 
 class ItemUpdate(BaseModel):
@@ -50,6 +62,7 @@ class ItemUpdate(BaseModel):
     purity: Decimal | None = Field(None, ge=0, le=100)
     net_weight: Decimal | None = Field(None, ge=0)
     making_charge: Decimal | None = Field(None, ge=0)
+    fixed_rate: Decimal | None = Field(None, ge=0)
     quantity: int | None = Field(None, ge=0)
     notes: str | None = Field(default=None, max_length=4000)
 
@@ -75,6 +88,7 @@ class PricingBreakdown(BaseModel):
     net_weight: float
     metal_value: float
     making_charge: float
+    fixed_rate: float
     suggested_price: float
     subtotal: float
     gst_rate_percent: float

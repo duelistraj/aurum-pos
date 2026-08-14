@@ -8,6 +8,7 @@ import {
   subscribeAuthEvents,
 } from './utils/auth';
 import { apiClient } from './api/client';
+import { useShop } from './context/ShopContext';
 import { useNetworkState } from './utils/network';
 import './index.css';
 
@@ -63,12 +64,14 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const location = useLocation();
+  const { reload } = useShop();
 
   useEffect(() => {
     let active = true;
     setIsAuthenticated(null);
     void apiClient.restoreSession()
-      .then((authenticated) => {
+      .then(async (authenticated) => {
+        if (authenticated) await reload();
         if (active) setIsAuthenticated(authenticated);
       });
     const unsubscribe = subscribeAuthEvents(() => {
@@ -78,7 +81,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       active = false;
       unsubscribe();
     };
-  }, [location.pathname]);
+  }, [location.pathname, reload]);
 
   if (isAuthenticated === null) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;

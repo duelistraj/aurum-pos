@@ -8,6 +8,7 @@ import { Navbar } from '../components/Navbar';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
 import { downloadBlob } from '../utils';
+import { getPreference, setPreference } from '../utils/storage';
 import { Items } from './Items';
 
 vi.mock('../api/client', () => ({
@@ -27,6 +28,10 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
+vi.mock('../utils/storage', () => ({
+  getPreference: vi.fn(),
+  setPreference: vi.fn(),
+}));
 vi.mock('../utils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils')>();
   return {
@@ -107,6 +112,8 @@ describe('Inventory entitlement usage', () => {
     isPhoneViewport = false;
     viewportListeners.clear();
     installMatchMedia();
+    vi.mocked(getPreference).mockResolvedValue(null);
+    vi.mocked(setPreference).mockResolvedValue(undefined);
     vi.mocked(useConfig).mockReturnValue({
       appName: 'Aurum POS',
       isDarkMode: false,
@@ -206,6 +213,122 @@ describe('Inventory entitlement usage', () => {
       expect.objectContaining({ status: 'in_stock' }),
     ));
     expect(screen.getAllByText('In Stock').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument();
+  });
+
+  it('restores validated inventory filters from the active shop preference', async () => {
+    vi.mocked(getPreference).mockResolvedValue(JSON.stringify({
+      metal: 'gold',
+      category: 'ring',
+      status: 'sold',
+    }));
+
+    renderInventoryWithNavbar();
+
+    await waitFor(() => expect(getPreference).toHaveBeenCalledWith('inventory-filters:shop-1'));
+    await waitFor(() => expect(apiClient.getItems).toHaveBeenCalledWith(
+      expect.objectContaining({ metal: 'gold', category: 'ring', status: 'sold' }),
+    ));
+  });
+
+  it('persists inventory filter selections under the active shop key', async () => {
+    const user = userEvent.setup();
+    renderInventoryWithNavbar();
+    await waitFor(() => expect(apiClient.getItems).toHaveBeenCalled());
+
+    await user.click(screen.getByText('All Metals'));
+    await user.click(screen.getByText('Gold', { exact: true }));
+
+    await waitFor(() => expect(setPreference).toHaveBeenCalledWith(
+      'inventory-filters:shop-1',
+      JSON.stringify({ metal: 'gold', category: 'all', status: 'in_stock' }),
+    ));
+  });
+
+  it('falls back to safe defaults when stored filters are invalid', async () => {
+    vi.mocked(getPreference).mockResolvedValue('{not-json');
+
+    renderInventoryWithNavbar();
+
+    await waitFor(() => expect(apiClient.getItems).toHaveBeenCalledWith(
+      expect.objectContaining({ metal: undefined, category: undefined, status: 'in_stock' }),
+    ));
+  });
+
+  it('uses metal summary cards and a single fixed-rate field for unique items', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getItemsSummary).mockResolvedValue({
+      total_items: 20,
+      in_stock: 18,
+      unique_items: 1,
+      sold_items: 2,
+      items_925_count: 5,
+      metal_summaries: {
+        gold: { in_stock: 8, sold_items: 1, unique_items: 0, purity_counts: {} },
+        silver: { in_stock: 7, sold_items: 1, unique_items: 1, purity_counts: {} },
+        platinum: { in_stock: 3, sold_items: 0, unique_items: 0, purity_counts: {} },
+      },
+    });
+    vi.mocked(apiClient.getLatestItem).mockResolvedValue({
+      id: 'unique-1',
+      sku: 'UNIQUE-1',
+      barcode: '12345678',
+      category: 'unique',
+      name: 'Fixed price necklace',
+      metal: 'Silver',
+      purity: 92.5,
+      net_weight: 0,
+      making_charge: 0,
+      fixed_rate: 850,
+      quantity: 1,
+      notes: null,
+      status: 'in_stock',
+    });
+
+    renderInventoryWithNavbar();
+
+    expect(await screen.findByText('Gold Items')).toBeInTheDocument();
+    expect(screen.getByText('Silver Items')).toBeInTheDocument();
+    expect(screen.getByText('Platinum Items')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add Item' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Add New Item' });
+    const fixedRateLabel = within(dialog).getByText('Fixed Rate *');
+    expect(fixedRateLabel.parentElement?.querySelector('input')).toHaveValue(850);
+    expect(within(dialog).queryByText('Net Weight (g) *')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Making Charge *')).not.toBeInTheDocument();
+  });
+
+  it('places sold items second for every specific-metal summary', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.getItemsSummary).mockResolvedValue({
+      total_items: 12,
+      in_stock: 9,
+      unique_items: 1,
+      sold_items: 3,
+      items_925_count: 2,
+      metal_summaries: {
+        gold: { in_stock: 3, sold_items: 1, unique_items: 0, purity_counts: { 75: 1, 91.6: 2 } },
+        silver: { in_stock: 3, sold_items: 1, unique_items: 1, purity_counts: { 92.5: 2 } },
+        platinum: { in_stock: 3, sold_items: 1, unique_items: 0, purity_counts: { 90: 1, 95: 2 } },
+      },
+    });
+    renderInventoryWithNavbar();
+    await screen.findByText('Gold Items');
+
+    const cardLabels = () => Array.from(document.querySelectorAll('.inventory-summary-icon'))
+      .map((icon) => icon.parentElement?.querySelector('p')?.textContent);
+    const chooseMetal = async (currentLabel: string, nextLabel: string) => {
+      await user.click(screen.getByText(currentLabel, { exact: true }));
+      await user.click(screen.getByText(nextLabel, { exact: true }));
+    };
+
+    await chooseMetal('All Metals', 'Gold');
+    expect(cardLabels()).toEqual(['In Stock', 'Sold Items', '18K Items', '22K Items']);
+    await chooseMetal('Gold', 'Platinum');
+    expect(cardLabels()).toEqual(['In Stock', 'Sold Items', '900 Items', '950 Items']);
+    await chooseMetal('Platinum', 'Silver');
+    expect(cardLabels()).toEqual(['In Stock', 'Sold Items', 'Unique Items', '925 Items']);
   });
 
   it('refreshes the shared active-item count after adding inventory', async () => {
@@ -214,7 +337,6 @@ describe('Inventory entitlement usage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Account and settings' }));
     expect(await screen.findByText('12/50 active items')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Manage' }));
     await user.click(screen.getByRole('button', { name: 'Add Item' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Add New Item' });
@@ -312,7 +434,6 @@ describe('Inventory entitlement usage', () => {
     expect(document.getElementById('inventory-item-details-item-1')).toBeNull();
     expect(document.getElementById('inventory-item-details-item-2')).not.toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Manage' }));
     expect(screen.getByRole('checkbox', { name: 'Select all items on this page' }))
       .toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Show details for 12345678' }));
@@ -386,7 +507,7 @@ describe('Inventory entitlement usage', () => {
     expect(await screen.findByText('Second page item')).toBeInTheDocument();
   });
 
-  it('uses an ordered compact action bar and download menu on phones', async () => {
+  it('uses a compact role-gated action bar and download menu on phones', async () => {
     setPhoneViewport(true);
     const user = userEvent.setup();
     const inventoryItem = {
@@ -418,25 +539,20 @@ describe('Inventory entitlement usage', () => {
       name: 'Inventory management actions',
     });
     const initialActionButtons = within(actions).getAllByRole('button');
-    expect(initialActionButtons).toHaveLength(2);
+    expect(initialActionButtons).toHaveLength(1);
     expect(initialActionButtons[0]).toHaveAccessibleName('Add Item');
-    expect(initialActionButtons[1]).toHaveAccessibleName('Manage');
-    expect(initialActionButtons[1]).toHaveClass('inventory-page__manage-action--phone');
 
-    await user.click(screen.getByRole('button', { name: 'Manage' }));
     await user.click(screen.getByRole('checkbox', { name: 'Select 12345678' }));
 
     const actionButtons = within(actions).getAllByRole('button');
 
-    expect(actionButtons).toHaveLength(3);
-    expect(actionButtons[0]).toHaveAccessibleName('Add Item');
-    expect(actionButtons[0]).not.toHaveTextContent('Add Item');
-    expect(actionButtons[1]).toHaveAccessibleName('Download selected item labels');
-    expect(actionButtons[1]).not.toHaveTextContent('Download');
-    expect(actionButtons[2]).toHaveAccessibleName('Exit Manage');
-    expect(actionButtons[2]).toHaveClass('inventory-page__manage-action--phone');
+    expect(actionButtons).toHaveLength(2);
+    expect(actionButtons[0]).toHaveAccessibleName('Download selected item labels');
+    expect(actionButtons[0]).not.toHaveTextContent('Download');
+    expect(actionButtons[1]).toHaveAccessibleName('Add Item');
+    expect(actionButtons[1]).not.toHaveTextContent('Add Item');
 
-    await user.click(actionButtons[1]);
+    await user.click(actionButtons[0]);
 
     const menu = screen.getByRole('menu', {
       name: 'Download selected item labels',
@@ -451,9 +567,9 @@ describe('Inventory entitlement usage', () => {
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-    expect(actionButtons[1]).toHaveFocus();
+    expect(actionButtons[0]).toHaveFocus();
 
-    await user.click(actionButtons[1]);
+    await user.click(actionButtons[0]);
     await user.click(screen.getByRole('menuitem', { name: 'XLSX' }));
 
     await waitFor(() => {
@@ -492,7 +608,6 @@ describe('Inventory entitlement usage', () => {
     renderInventoryWithNavbar();
 
     expect(await screen.findByText('Tablet Silver Ring')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Manage' }));
     await user.click(screen.getByRole('checkbox', { name: 'Select 87654321' }));
 
     const actions = screen.getByRole('group', {
@@ -500,11 +615,10 @@ describe('Inventory entitlement usage', () => {
     });
     const actionButtons = within(actions).getAllByRole('button');
 
-    expect(actionButtons).toHaveLength(3);
-    expect(actionButtons[0]).toHaveAccessibleName('Exit Manage');
+    expect(actionButtons).toHaveLength(2);
+    expect(actionButtons[0]).toHaveAccessibleName('Add Item');
+    expect(actionButtons[0]).toHaveTextContent('Add Item');
     expect(actionButtons[1]).toHaveAccessibleName('Download');
-    expect(actionButtons[2]).toHaveAccessibleName('Add Item');
-    expect(actionButtons[2]).toHaveTextContent('Add Item');
 
     await user.click(actionButtons[1]);
 
@@ -513,18 +627,19 @@ describe('Inventory entitlement usage', () => {
     });
     expect(menu).not.toHaveClass('inventory-download__menu--compact');
     expect(within(menu).getByText('Excel (.xlsx)')).toBeInTheDocument();
-    expect(within(menu).getByText('Download as Excel file')).toBeInTheDocument();
+    expect(within(menu).queryByText('Download as Excel file')).not.toBeInTheDocument();
     expect(within(menu).getByText('PDF (.pdf)')).toBeInTheDocument();
-    expect(within(menu).getByText('Download as PDF file')).toBeInTheDocument();
+    expect(within(menu).queryByText('Download as PDF file')).not.toBeInTheDocument();
     expect(menu.querySelector('.document-format-icon--xlsx')).not.toBeNull();
     expect(menu.querySelector('.document-format-icon--pdf')).not.toBeNull();
+    expect(menu.querySelector('.document-format-icon--xlsx')).toHaveClass('h-6', 'w-6');
+    expect(menu.querySelector('.document-format-icon--pdf')).toHaveClass('h-6', 'w-6');
 
     act(() => setPhoneViewport(true));
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     const phoneActions = within(actions).getAllByRole('button');
-    expect(phoneActions[0]).toHaveAccessibleName('Add Item');
-    expect(phoneActions[1]).toHaveAccessibleName('Download selected item labels');
-    expect(phoneActions[2]).toHaveAccessibleName('Exit Manage');
+    expect(phoneActions[0]).toHaveAccessibleName('Download selected item labels');
+    expect(phoneActions[1]).toHaveAccessibleName('Add Item');
   });
 });

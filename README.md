@@ -71,6 +71,10 @@ Do not commit local AWS credentials or add them to the application settings.
 Invoice numbers are assigned by the server, and checkout retries reuse a durable client operation key.
 Sale requests commit a durable invoice job; the worker generates and uploads the PDF after the sale transaction completes.
 The download endpoint reports a temporary pending state until the exact PostgreSQL-indexed object is ready.
+Hosted Pro organizations can optionally queue customer invoice delivery through Aurum's shared WhatsApp Business sender.
+The application stores tenant delivery audits and global opt-out suppression while all Meta credentials, templates, sender configuration, and billing remain Aurum-level configuration.
+Keep `WHATSAPP_ENABLED=false` until the shared Utility template and signed webhook are production-ready.
+See [Shared Aurum WhatsApp invoice delivery](docs/WHATSAPP_INVOICE_DELIVERY.md) for the interface, configuration, privacy model, assumptions, and rollout procedure.
 
 In another terminal:
 

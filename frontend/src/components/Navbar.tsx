@@ -208,9 +208,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       ) : null}
       <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${mobileOpen ? ' sidebar--mobile-open' : ''}`}>
         <div className="sidebar__topline">
-          <Link to="/" className="sidebar__brand" aria-label={`${appName} dashboard`} onClick={handleNavigation}>
+          <div className="sidebar__brand" aria-label={appName}>
             <BrandLockup appName={appName || 'Aurum POS'} isPro={isPro} />
-          </Link>
+          </div>
           <button
             type="button"
             className="sidebar__icon-button sidebar__mobile-close"

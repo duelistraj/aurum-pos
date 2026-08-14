@@ -15,7 +15,6 @@ import {
   Search, 
   ChevronLeft, 
   ChevronRight, 
-  Settings,
   Sparkles,
   LayoutGrid,
   Circle,
@@ -33,6 +32,7 @@ import { queryKeys } from '../api/queryKeys';
 import { Item } from '../types';
 import { useShop } from '../context/ShopContext';
 import { formatCurrency, formatWeight, downloadBlob } from '../utils';
+import { getPreference, setPreference } from '../utils/storage';
 import {
   getCanonicalMetal,
   getDefaultPurity,
@@ -51,6 +51,45 @@ const ITEM_STATUS_LABEL_BY_STATUS: Record<string, string> = {
 };
 
 const PHONE_VIEWPORT_QUERY = '(max-width: 639px)';
+const INVENTORY_FILTERS_KEY_PREFIX = 'inventory-filters:';
+const DEFAULT_INVENTORY_FILTERS = {
+  metal: 'all',
+  category: 'all',
+  status: 'in_stock',
+} as const;
+const INVENTORY_CATEGORY_FILTERS = new Set([
+  'all', 'jewellery', 'unique', 'ring', 'necklace', 'bracelet', 'earring',
+  'pendant', 'other',
+]);
+const INVENTORY_STATUS_FILTERS = new Set(['all', 'in_stock', 'sold']);
+
+interface InventoryFilters {
+  metal: string;
+  category: string;
+  status: string;
+}
+
+const parseInventoryFilters = (value: string | null): InventoryFilters => {
+  if (!value) return { ...DEFAULT_INVENTORY_FILTERS };
+  try {
+    const parsed = JSON.parse(value) as Partial<InventoryFilters>;
+    const validMetals = new Set(METAL_FILTER_OPTIONS.map((option) => option.value));
+    return {
+      metal: typeof parsed.metal === 'string' && validMetals.has(parsed.metal)
+        ? parsed.metal
+        : DEFAULT_INVENTORY_FILTERS.metal,
+      category: typeof parsed.category === 'string'
+        && INVENTORY_CATEGORY_FILTERS.has(parsed.category)
+        ? parsed.category
+        : DEFAULT_INVENTORY_FILTERS.category,
+      status: typeof parsed.status === 'string' && INVENTORY_STATUS_FILTERS.has(parsed.status)
+        ? parsed.status
+        : DEFAULT_INVENTORY_FILTERS.status,
+    };
+  } catch {
+    return { ...DEFAULT_INVENTORY_FILTERS };
+  }
+};
 
 const subscribeToPhoneViewport = (onChange: () => void) => {
   if (typeof window === 'undefined' || !window.matchMedia) return () => undefined;
@@ -70,33 +109,6 @@ const usePhoneViewport = () => React.useSyncExternalStore(
 );
 
 type LabelDownloadFormat = 'xlsx' | 'pdf';
-
-interface ManageModeButtonProps {
-  compact: boolean;
-  isManageMode: boolean;
-  onClick: () => void;
-}
-
-const ManageModeButton: React.FC<ManageModeButtonProps> = ({
-  compact,
-  isManageMode,
-  onClick,
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`inventory-page__manage-action flex items-center space-x-2 border px-5 py-2.5 rounded-app-control shadow-xs transition-all duration-200 font-bold focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-      compact ? 'inventory-page__manage-action--phone' : ''
-    } ${
-      isManageMode
-        ? 'bg-emerald-50 dark:bg-emerald-950/20 text-slate-950 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/30 focus:ring-emerald-500'
-        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 focus:ring-slate-500'
-    }`}
-  >
-    <Settings className={`w-5 h-5 ${isManageMode ? 'text-emerald-500' : 'text-slate-500'}`} />
-    <span>{isManageMode ? 'Exit Manage' : 'Manage'}</span>
-  </button>
-);
 
 interface AddItemButtonProps {
   compact: boolean;
@@ -184,7 +196,7 @@ const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
         className={`inventory-download__menu absolute mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 flex flex-col animate-fade-in ${
           compact
             ? 'inventory-download__menu--compact'
-            : 'right-0 p-4 gap-3 w-80'
+            : 'inventory-download__menu--standard right-0'
         }`}
       >
         <button
@@ -193,21 +205,18 @@ const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
           onClick={() => onDownload('xlsx')}
           className={compact
             ? 'inventory-download__option--compact'
-            : 'flex items-center text-left p-3.5 rounded-app-control border border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all duration-200'}
+            : 'inventory-download__option inventory-download__option--xlsx'}
         >
           <div className={compact
             ? 'inventory-download__format-icon'
-            : 'mr-3.5 text-emerald-600 dark:text-emerald-500 flex-shrink-0'}
+            : 'inventory-download__option-icon text-emerald-600 dark:text-emerald-500'}
           >
-            <ExcelIcon className={compact ? 'h-6 w-6' : 'h-10 w-10'} />
+            <ExcelIcon className="h-6 w-6" />
           </div>
           {compact ? (
             <span>XLSX</span>
           ) : (
-            <div>
-              <p className="font-bold text-slate-900 dark:text-white text-sm">Excel (.xlsx)</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Download as Excel file</p>
-            </div>
+            <span className="font-bold text-slate-900 dark:text-white text-sm">Excel (.xlsx)</span>
           )}
         </button>
 
@@ -217,21 +226,18 @@ const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
           onClick={() => onDownload('pdf')}
           className={compact
             ? 'inventory-download__option--compact'
-            : 'flex items-center text-left p-3.5 rounded-app-control border border-red-200 dark:border-red-900 bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-200'}
+            : 'inventory-download__option inventory-download__option--pdf'}
         >
           <div className={compact
             ? 'inventory-download__format-icon'
-            : 'mr-3.5 text-red-500 dark:text-red-500 flex-shrink-0'}
+            : 'inventory-download__option-icon text-red-500 dark:text-red-500'}
           >
-            <PDFIcon className={compact ? 'h-6 w-6' : 'h-10 w-10'} />
+            <PDFIcon className="h-6 w-6" />
           </div>
           {compact ? (
             <span>PDF</span>
           ) : (
-            <div>
-              <p className="font-bold text-slate-900 dark:text-white text-sm">PDF (.pdf)</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Download as PDF file</p>
-            </div>
+            <span className="font-bold text-slate-900 dark:text-white text-sm">PDF (.pdf)</span>
           )}
         </button>
       </div>
@@ -284,6 +290,7 @@ export const Items: React.FC = () => {
   const [selectedMetal, setSelectedMetal] = React.useState('all');
   const [selectedCategory, setSelectedCategory] = React.useState('all');
   const [selectedStatus, setSelectedStatus] = React.useState('in_stock');
+  const [filtersReadyShopId, setFiltersReadyShopId] = React.useState<string | null>(null);
   
   // Pagination State
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -292,12 +299,25 @@ export const Items: React.FC = () => {
   const [totalPages, setTotalPages] = React.useState(0);
 
   // Summary counts
-  const [summary, setSummary] = React.useState({
+  const [summary, setSummary] = React.useState<{
+    total_items: number;
+    in_stock: number;
+    unique_items: number;
+    sold_items: number;
+    items_925_count: number;
+    metal_summaries: Record<string, {
+      in_stock: number;
+      sold_items: number;
+      unique_items: number;
+      purity_counts: Record<string, number>;
+    }>;
+  }>({
     total_items: 0,
     in_stock: 0,
     unique_items: 0,
     sold_items: 0,
     items_925_count: 0,
+    metal_summaries: {},
   });
 
   // Modal and Mode States
@@ -305,7 +325,6 @@ export const Items: React.FC = () => {
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [selectedItems, setSelectedItems] = React.useState<Set<string>>(new Set());
   const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
-  const [isManageMode, setIsManageMode] = React.useState(false);
   const [availableMetals, setAvailableMetals] = React.useState<Record<string, number[]>>({});
   const [latestItem, setLatestItem] = React.useState<Item | null>(null);
   
@@ -339,6 +358,7 @@ export const Items: React.FC = () => {
     purity: '92.5',
     net_weight: '',
     making_charge: '',
+    fixed_rate: '',
     quantity: '1',
     notes: '',
   });
@@ -354,8 +374,42 @@ export const Items: React.FC = () => {
     setEditingItem(null);
     setShowModal(false);
     setCurrentPage(1);
+    setSearchTerm('');
+    setDebouncedSearch('');
     setError('');
   }, [shopId]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setFiltersReadyShopId(null);
+    setItemsLoading(Boolean(shopId));
+    setSelectedMetal(DEFAULT_INVENTORY_FILTERS.metal);
+    setSelectedCategory(DEFAULT_INVENTORY_FILTERS.category);
+    setSelectedStatus(DEFAULT_INVENTORY_FILTERS.status);
+    if (!shopId) return () => { cancelled = true; };
+
+    void getPreference(`${INVENTORY_FILTERS_KEY_PREFIX}${shopId}`).then((storedValue) => {
+      if (cancelled || activeShopRef.current !== shopId) return;
+      const filters = parseInventoryFilters(storedValue);
+      setSelectedMetal(filters.metal);
+      setSelectedCategory(filters.category);
+      setSelectedStatus(filters.status);
+      setFiltersReadyShopId(shopId);
+    });
+    return () => { cancelled = true; };
+  }, [shopId]);
+
+  React.useEffect(() => {
+    if (!shopId || filtersReadyShopId !== shopId) return;
+    void setPreference(
+      `${INVENTORY_FILTERS_KEY_PREFIX}${shopId}`,
+      JSON.stringify({
+        metal: selectedMetal,
+        category: selectedCategory,
+        status: selectedStatus,
+      }),
+    );
+  }, [filtersReadyShopId, selectedCategory, selectedMetal, selectedStatus, shopId]);
 
   // Category and Status drop-down options config
   const categoryOptions = [
@@ -452,7 +506,7 @@ export const Items: React.FC = () => {
     try {
       const data = await apiClient.getItemsSummary();
       if (activeShopRef.current !== requestedShopId) return;
-      setSummary(data);
+      setSummary({ ...data, metal_summaries: data.metal_summaries ?? {} });
     } catch (err) {
       console.warn('Failed to load items summary from backend, calculating locally:', err);
       try {
@@ -471,6 +525,7 @@ export const Items: React.FC = () => {
             unique_items: uniqueCount,
             sold_items: soldCount,
             items_925_count: items925Count,
+            metal_summaries: {},
           });
         }
       } catch (innerErr) {
@@ -480,6 +535,7 @@ export const Items: React.FC = () => {
   }, [shopId]);
 
   const loadItems = React.useCallback(async () => {
+    if (!shopId || filtersReadyShopId !== shopId) return;
     const requestedShopId = shopId;
     const requestId = itemsRequestRef.current + 1;
     itemsRequestRef.current = requestId;
@@ -534,7 +590,7 @@ export const Items: React.FC = () => {
     } finally {
       if (itemsRequestRef.current === requestId) setItemsLoading(false);
     }
-  }, [shopId, currentPage, rowsPerPage, debouncedSearch, selectedMetal, selectedCategory, selectedStatus]);
+  }, [shopId, filtersReadyShopId, currentPage, rowsPerPage, debouncedSearch, selectedMetal, selectedCategory, selectedStatus]);
 
   const loadLatestItem = React.useCallback(async () => {
     const requestedShopId = shopId;
@@ -560,6 +616,7 @@ export const Items: React.FC = () => {
       purity: '92.5',
       net_weight: '',
       making_charge: '',
+      fixed_rate: '',
       quantity: '1',
       notes: '',
       barcode: '',
@@ -582,6 +639,7 @@ export const Items: React.FC = () => {
         purity: String(latestItem.purity),
         net_weight: '',
         making_charge: latestItem.making_charge?.toString() ?? '',
+        fixed_rate: latestItem.fixed_rate?.toString() ?? '',
         quantity: '1',
         notes: '',
         barcode: '',
@@ -592,20 +650,8 @@ export const Items: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleManageToggle = () => {
-    if (isManageMode) {
-      setIsManageMode(false);
-      setSelectedItems(new Set());
-      setShowDownloadDropdown(false);
-    } else if (canManage) {
-      setIsManageMode(true);
-    } else {
-      setError('Your shop role does not allow inventory management.');
-    }
-  };
-
   const openEditItem = (item: Item) => {
-    if (!isManageMode) return;
+    if (!canManage) return;
     setEditingItem(item);
     const metal = getCanonicalMetal(item.metal, availableMetals);
     setFormData({
@@ -616,6 +662,7 @@ export const Items: React.FC = () => {
       purity: String(item.purity),
       net_weight: String(item.net_weight),
       making_charge: item.making_charge?.toString() ?? '',
+      fixed_rate: item.fixed_rate?.toString() ?? '',
       quantity: String(item.quantity),
       notes: item.notes ?? '',
       barcode: item.barcode,
@@ -682,9 +729,12 @@ export const Items: React.FC = () => {
         ? 0
         : parseFloat(formData.purity);
 
-      const makingChargeValue = parseFloat(formData.making_charge);
-      if (Number.isNaN(makingChargeValue)) {
-        throw new Error('Making Charge is required');
+      const isUnique = formData.category === 'unique';
+      const makingChargeValue = isUnique ? 0 : parseFloat(formData.making_charge);
+      const fixedRateValue = isUnique ? parseFloat(formData.fixed_rate) : 0;
+      if (Number.isNaN(makingChargeValue)) throw new Error('Making Charge is required');
+      if (isUnique && (Number.isNaN(fixedRateValue) || fixedRateValue <= 0)) {
+        throw new Error('Fixed Rate must be greater than 0');
       }
 
       const quantityValue = parseInt(formData.quantity, 10);
@@ -699,8 +749,9 @@ export const Items: React.FC = () => {
         name: formData.name,
         metal: formData.metal,
         purity: purityValue,
-        net_weight: parseFloat(formData.net_weight),
+        net_weight: isUnique ? 0 : parseFloat(formData.net_weight),
         making_charge: makingChargeValue,
+        fixed_rate: fixedRateValue,
         quantity: quantityValue,
         notes: formData.notes || null,
       };
@@ -729,7 +780,7 @@ export const Items: React.FC = () => {
   };
 
   const handleDeleteItem = async (itemId: string) => {
-    if (!isManageMode) return;
+    if (!canManage) return;
     const shouldDelete = window.confirm(
       'Delete this item? This action cannot be undone.'
     );
@@ -762,8 +813,8 @@ export const Items: React.FC = () => {
   };
 
   const handleDownloadBatchLabels = async (format: LabelDownloadFormat) => {
-    if (!isManageMode) {
-      setError('Enter manage mode to download labels.');
+    if (!canManage) {
+      setError('Your shop role does not allow label downloads.');
       return;
     }
 
@@ -785,7 +836,7 @@ export const Items: React.FC = () => {
   };
 
   const handleSelectItem = (itemId: string) => {
-    if (!isManageMode) return;
+    if (!canManage) return;
     const newSelected = new Set(selectedItems);
     if (newSelected.has(itemId)) {
       newSelected.delete(itemId);
@@ -797,7 +848,7 @@ export const Items: React.FC = () => {
   };
 
   const handleSelectAll = () => {
-    if (!isManageMode) return;
+    if (!canManage) return;
     if (selectedItems.size === items.length && items.length > 0) {
       setSelectedItems(new Set());
       setShowDownloadDropdown(false);
@@ -842,6 +893,35 @@ export const Items: React.FC = () => {
   };
 
   const purityOptions = getPurityOptions(formData.metal, availableMetals);
+  const selectedMetalSummary = summary.metal_summaries[selectedMetal];
+  const purityCount = (purity: string) => selectedMetalSummary?.purity_counts[purity] ?? 0;
+  const summaryCards = selectedMetal === 'all'
+    ? [
+        { label: 'In Stock', value: summary.in_stock, icon: CheckCircle },
+        { label: 'Gold Items', value: summary.metal_summaries.gold?.in_stock ?? 0, icon: Circle },
+        { label: 'Silver Items', value: summary.metal_summaries.silver?.in_stock ?? 0, icon: Disc },
+        { label: 'Platinum Items', value: summary.metal_summaries.platinum?.in_stock ?? 0, icon: Award },
+      ]
+    : selectedMetal === 'gold'
+      ? [
+          { label: 'In Stock', value: selectedMetalSummary?.in_stock ?? 0, icon: CheckCircle },
+          { label: 'Sold Items', value: selectedMetalSummary?.sold_items ?? 0, icon: ShoppingBag },
+          { label: '18K Items', value: purityCount('75'), icon: Gem },
+          { label: '22K Items', value: purityCount('91.6'), icon: Tag },
+        ]
+      : selectedMetal === 'platinum'
+        ? [
+            { label: 'In Stock', value: selectedMetalSummary?.in_stock ?? 0, icon: CheckCircle },
+            { label: 'Sold Items', value: selectedMetalSummary?.sold_items ?? 0, icon: ShoppingBag },
+            { label: '900 Items', value: purityCount('90'), icon: Gem },
+            { label: '950 Items', value: purityCount('95'), icon: Tag },
+          ]
+        : [
+            { label: 'In Stock', value: selectedMetalSummary?.in_stock ?? 0, icon: CheckCircle },
+            { label: 'Sold Items', value: selectedMetalSummary?.sold_items ?? 0, icon: ShoppingBag },
+            { label: 'Unique Items', value: selectedMetalSummary?.unique_items ?? 0, icon: Gem },
+            { label: '925 Items', value: purityCount('92.5'), icon: Tag },
+          ];
 
   return (
     <div className="app-page min-h-screen bg-transparent text-slate-800 dark:text-slate-100 transition-colors duration-200">
@@ -852,37 +932,25 @@ export const Items: React.FC = () => {
           <div className="inventory-page__title">
               <h1 className="text-4xl font-bold text-slate-900 dark:text-white">Inventory</h1>
               <p className="text-slate-400 dark:text-slate-400 mt-1 font-medium">
-                {isManageMode
-                  ? 'Manage mode enabled - add, edit, delete, and label downloads are available.'
-                  : 'Inventory is view-only. Click Manage to unlock add, edit, delete, and label download actions.'}
+                {canManage
+                  ? 'Add, edit, remove, and print labels for your inventory.'
+                  : 'Browse and search your shop inventory.'}
               </p>
           </div>
-          <div
+          {canManage ? <div
             role="group"
             aria-label="Inventory management actions"
             className={`inventory-page__actions ${
               isPhoneViewport ? 'inventory-page__actions--phone' : ''
             }`}
           >
-            {isPhoneViewport ? (
-              <AddItemButton
-                compact
-                disabled={!isManageMode}
-                onClick={openAddItemModal}
-              />
-            ) : (
-              <ManageModeButton
-                compact={false}
-                isManageMode={isManageMode}
-                onClick={handleManageToggle}
-              />
-            )}
+            {isPhoneViewport ? null : <AddItemButton compact={false} disabled={false} onClick={openAddItemModal} />}
 
             {selectedItems.size > 0 ? (
               <DownloadLabelsMenu
                 compact={isPhoneViewport}
                 containerRef={dropdownRef}
-                disabled={!isManageMode}
+                disabled={false}
                 isOpen={showDownloadDropdown}
                 onToggle={() => setShowDownloadDropdown((current) => !current)}
                 onDownload={(format) => {
@@ -892,69 +960,23 @@ export const Items: React.FC = () => {
               />
             ) : null}
 
-            {isPhoneViewport ? (
-              <ManageModeButton
-                compact
-                isManageMode={isManageMode}
-                onClick={handleManageToggle}
-              />
-            ) : (
-              <AddItemButton
-                compact={false}
-                disabled={!isManageMode}
-                onClick={openAddItemModal}
-              />
-            )}
-          </div>
+            {isPhoneViewport ? <AddItemButton compact disabled={false} onClick={openAddItemModal} /> : null}
+          </div> : null}
         </div>
 
         {/* Summary Metrics Cards (Responsive grid with 4 cards) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-slide-down">
-          {/* In Stock */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
-              <CheckCircle className="w-6 h-6" />
+          {summaryCards.map(({ label, value, icon: Icon }) => (
+            <div key={label} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
+              <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
+                <Icon className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{value}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">In Stock</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{summary.in_stock}</p>
-            </div>
-          </div>
-
-          {/* Unique Items */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
-              <Gem className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Unique Items</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{summary.unique_items}</p>
-            </div>
-          </div>
-
-          {/* Sold Items */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
-              <ShoppingBag className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Sold Items</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{summary.sold_items}</p>
-            </div>
-          </div>
-
-          {/* 925 Items */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-            <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
-              <Tag className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">925 Items</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                {summary.items_925_count}
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Error Alert */}
@@ -1193,13 +1215,13 @@ export const Items: React.FC = () => {
                 <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800">
                   <tr>
                     <th className={`w-9 px-1 py-3 text-left text-xs font-semibold text-slate-400 sm:w-12 sm:px-5 sm:py-4 ${
-                      isManageMode ? 'table-cell' : 'hidden sm:table-cell'
+                      canManage ? 'table-cell' : 'hidden'
                     }`}>
                       <input
                         type="checkbox"
                         checked={selectedItems.size === items.length && items.length > 0}
                         onChange={handleSelectAll}
-                        disabled={!isManageMode}
+                        disabled={!canManage}
                         aria-label="Select all items on this page"
                         className="checkbox-round"
                       />
@@ -1226,7 +1248,7 @@ export const Items: React.FC = () => {
                       Weight
                     </th>
                     <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
-                      Making Charge
+                      Charge / Rate
                     </th>
                     <th className="w-20 px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:w-auto sm:px-6 sm:py-4 sm:text-xs">
                       Status
@@ -1254,19 +1276,19 @@ export const Items: React.FC = () => {
                             }`}
                           >
                             <td className={`px-1 py-3 sm:px-5 sm:py-5 ${
-                              isManageMode ? 'table-cell' : 'hidden sm:table-cell'
+                              canManage ? 'table-cell' : 'hidden'
                             }`}>
                               <input
                                 type="checkbox"
                                 checked={selectedItems.has(item.id)}
                                 onChange={() => handleSelectItem(item.id)}
-                                disabled={!isManageMode}
+                                disabled={!canManage}
                                 aria-label={`Select ${item.barcode}`}
                                 className="checkbox-round"
                               />
                             </td>
-                            <td className="hidden px-6 py-5 sm:table-cell">
-                              <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
+                            <td className="inventory-sku-cell hidden px-6 py-5 sm:table-cell">
+                              <span className="inventory-sku-pill bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
                                 {item.sku}
                               </span>
                             </td>
@@ -1302,12 +1324,12 @@ export const Items: React.FC = () => {
                               </span>
                             </td>
                             <td className="hidden px-6 py-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:table-cell">
-                              Net: {formatWeight(item.net_weight)}
+                              {item.category === 'unique' ? 'Fixed price' : `Net: ${formatWeight(item.net_weight)}`}
                             </td>
                             <td className="hidden px-6 py-5 text-base font-semibold text-slate-900 dark:text-white sm:table-cell">
-                              {item.making_charge !== null && item.making_charge !== undefined
-                                ? formatCurrency(item.making_charge)
-                                : '-'}
+                              {item.category === 'unique'
+                                ? formatCurrency(item.fixed_rate ?? 0)
+                                : formatCurrency(item.making_charge)}
                             </td>
                             <td className="px-2 py-3 sm:px-6 sm:py-5">
                               <ItemStatusBadge status={item.status} />
@@ -1319,7 +1341,7 @@ export const Items: React.FC = () => {
                                     <button
                                       type="button"
                                       onClick={() => openEditItem(item)}
-                                      disabled={!isManageMode}
+                                      disabled={!canManage}
                                       aria-label={`Edit ${item.barcode}`}
                                       className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                                       title="Edit item"
@@ -1329,7 +1351,7 @@ export const Items: React.FC = () => {
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteItem(item.id)}
-                                      disabled={!isManageMode}
+                                      disabled={!canManage}
                                       aria-label={`Delete ${item.barcode}`}
                                       className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                                       title="Delete item"
@@ -1361,7 +1383,7 @@ export const Items: React.FC = () => {
                           </tr>
                           {isExpanded ? (
                             <tr id={detailsId} className="bg-slate-50/60 dark:bg-slate-950/40 sm:hidden">
-                              <td colSpan={isManageMode ? 5 : 4} className="px-3 pb-4 pt-2">
+                              <td colSpan={canManage ? 5 : 4} className="px-3 pb-4 pt-2">
                                 <div className="grid grid-cols-2 gap-3 rounded-app-inset border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                                   <div className="col-span-2">
                                     <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -1384,13 +1406,15 @@ export const Items: React.FC = () => {
                                     ['Category', item.category.charAt(0).toUpperCase() + item.category.slice(1)],
                                     ['Quantity', String(item.quantity)],
                                     ['Metal', `${item.metal} ${item.purity > 0 ? `${item.purity}%` : '(unspecified)'}`],
-                                    ['Net weight', formatWeight(item.net_weight)],
-                                    [
-                                      'Making charge',
-                                      item.making_charge !== null && item.making_charge !== undefined
-                                        ? formatCurrency(item.making_charge)
-                                        : '-',
-                                    ],
+                                    ...(item.category === 'unique'
+                                      ? [['Fixed rate', formatCurrency(item.fixed_rate ?? 0)]]
+                                      : [
+                                          ['Net weight', formatWeight(item.net_weight)],
+                                          [
+                                            item.category === 'other' ? 'Fixed making charge' : 'Making charge',
+                                            formatCurrency(item.making_charge),
+                                          ],
+                                        ]),
                                   ].map(([label, value]) => (
                                     <div key={label}>
                                       <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -1407,7 +1431,7 @@ export const Items: React.FC = () => {
                                     </p>
                                     <ItemStatusBadge status={item.status} />
                                   </div>
-                                  {isManageMode && item.status === 'in_stock' ? (
+                                  {canManage && item.status === 'in_stock' ? (
                                     <div className="col-span-2 flex gap-3 border-t border-slate-200 pt-3 dark:border-slate-800">
                                       <Button
                                         type="button"
@@ -1802,32 +1826,45 @@ export const Items: React.FC = () => {
                 </div>
               )}
             </div>
-            <Input
-              label="Net Weight (g) *"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              placeholder="0.00"
-              value={formData.net_weight}
-              onChange={(e) =>
-                setFormData({ ...formData, net_weight: e.target.value })
-              }
-              required
-              className="py-2.5 rounded-app-control"
-            />
-            <Input
-              label="Making Charge *"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              placeholder="0.00"
-              value={formData.making_charge}
-              onChange={(e) =>
-                setFormData({ ...formData, making_charge: e.target.value })
-              }
-              required
-              className="py-2.5 rounded-app-control"
-            />
+            {formData.category === 'unique' ? (
+              <Input
+                label="Fixed Rate *"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={formData.fixed_rate}
+                onChange={(e) => setFormData({ ...formData, fixed_rate: e.target.value })}
+                required
+                className="py-2.5 rounded-app-control"
+              />
+            ) : (
+              <>
+                <Input
+                  label="Net Weight (g) *"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.net_weight}
+                  onChange={(e) => setFormData({ ...formData, net_weight: e.target.value })}
+                  required
+                  className="py-2.5 rounded-app-control"
+                />
+                <Input
+                  label={formData.category === 'other' ? 'Fixed Making Charge *' : 'Making Charge *'}
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.making_charge}
+                  onChange={(e) => setFormData({ ...formData, making_charge: e.target.value })}
+                  required
+                  className="py-2.5 rounded-app-control"
+                />
+              </>
+            )}
             <div className="md:col-span-2">
               <Input
                 label="Notes (Optional)"

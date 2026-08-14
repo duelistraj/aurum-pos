@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     worker_invoice_max_attempts: int = Field(default=8, ge=1, le=50)
     worker_invoice_batch_size: int = Field(default=20, ge=1, le=200)
     worker_invoice_concurrency: int = Field(default=2, ge=1, le=8)
+    whatsapp_enabled: bool = False
+    whatsapp_graph_api_version: str = "v23.0"
+    whatsapp_waba_id: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_sender_name: str = "Aurum POS"
+    whatsapp_access_token: str | None = None
+    whatsapp_app_secret: str | None = None
+    whatsapp_webhook_verify_token: str | None = None
+    whatsapp_template_name: str = "aurum_invoice_delivery_v1"
+    whatsapp_template_language: str = "en_US"
+    whatsapp_template_status: str = "unknown"
+    whatsapp_recipient_hmac_key: str | None = None
+    worker_whatsapp_max_attempts: int = Field(default=8, ge=1, le=50)
+    worker_whatsapp_batch_size: int = Field(default=20, ge=1, le=200)
+    worker_whatsapp_concurrency: int = Field(default=4, ge=1, le=20)
     public_site_url: str = "https://aurumpos.net"
     worker_instance_id: str | None = None
 
@@ -157,6 +172,25 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "hosted deployment requires provider configuration: "
                     f"{', '.join(missing_hosted)}"
+                )
+        if self.whatsapp_enabled:
+            whatsapp_requirements = {
+                "WHATSAPP_WABA_ID": self.whatsapp_waba_id,
+                "WHATSAPP_PHONE_NUMBER_ID": self.whatsapp_phone_number_id,
+                "WHATSAPP_ACCESS_TOKEN": self.whatsapp_access_token,
+                "WHATSAPP_APP_SECRET": self.whatsapp_app_secret,
+                "WHATSAPP_WEBHOOK_VERIFY_TOKEN": self.whatsapp_webhook_verify_token,
+                "WHATSAPP_RECIPIENT_HMAC_KEY": self.whatsapp_recipient_hmac_key,
+            }
+            missing_whatsapp = [
+                name
+                for name, value in whatsapp_requirements.items()
+                if not value or not value.strip()
+            ]
+            if missing_whatsapp:
+                raise ValueError(
+                    "WhatsApp delivery requires provider configuration: "
+                    f"{', '.join(missing_whatsapp)}"
                 )
         return self
 

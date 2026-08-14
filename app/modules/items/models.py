@@ -31,7 +31,7 @@ class Item(Base):
         CheckConstraint("quantity >= 0", name="items_quantity_nonnegative"),
         CheckConstraint("purity >= 0 AND purity <= 100", name="items_purity_range"),
         CheckConstraint(
-            "net_weight >= 0 AND making_charge >= 0",
+            "net_weight >= 0 AND making_charge >= 0 AND fixed_rate >= 0",
             name="items_nonnegative_money_weight",
         ),
         CheckConstraint(
@@ -39,7 +39,8 @@ class Item(Base):
             name="items_status_allowed",
         ),
         CheckConstraint(
-            "(category = 'unique' AND net_weight = 0) OR (category <> 'unique' AND net_weight > 0)",
+            "(category = 'unique' AND net_weight = 0 AND making_charge = 0) OR "
+            "(category <> 'unique' AND net_weight > 0 AND fixed_rate = 0)",
             name="items_unique_weight_contract",
         ),
         Index(
@@ -125,6 +126,10 @@ class Item(Base):
         nullable=False,
     )
 
+    fixed_rate: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal(0), server_default="0"
+    )
+
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -184,7 +189,7 @@ class ItemHistory(Base):
         ),
         CheckConstraint(
             "quantity >= 0 AND purity >= 0 AND purity <= 100 "
-            "AND net_weight >= 0 AND making_charge >= 0",
+            "AND net_weight >= 0 AND making_charge >= 0 AND fixed_rate >= 0",
             name="item_history_values_valid",
         ),
     )
@@ -204,6 +209,9 @@ class ItemHistory(Base):
     purity: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     net_weight: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
     making_charge: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    fixed_rate: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal(0), server_default="0"
+    )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     effective_from: Mapped[datetime] = mapped_column(

@@ -40,12 +40,14 @@ def _draw_single_label(c, item):
         f"Purity: {item.purity}%",
     )
 
-    # Display "unique" for unique items, otherwise display weight
-    weight_text = "unique" if item.category == "unique" else f"{item.net_weight} g"
+    # Display the fixed rate for unique items, otherwise display weight.
+    weight_text = (
+        f"Rate: {item.fixed_rate}" if item.category == "unique" else f"{item.net_weight} g"
+    )
     c.drawString(
         left_margin,
         top - 8 * mm,
-        f"Net: {weight_text}",
+        weight_text if item.category == "unique" else f"Net: {weight_text}",
     )
 
     # =========================
@@ -102,15 +104,18 @@ def _draw_pdf_batch_label(c, item):
 
     c.setFont("Helvetica", 6.5)
     if getattr(item, "category", None) == "unique":
-        weight_text = "unique"
+        weight_text = "Fixed price"
     else:
         net_weight = getattr(item, "net_weight", None)
         weight_text = f"{net_weight} g" if net_weight is not None else "-"
 
     purity_val = getattr(item, "purity", None)
     purity_text = f"{purity_val}%" if purity_val not in (None, 0.0, 0, 0.00) else ""
-    making_charge = getattr(item, "making_charge", None)
-    mc_text = f"MC: {making_charge}" if making_charge is not None else "MC: -"
+    if getattr(item, "category", None) == "unique":
+        mc_text = f"Rate: {getattr(item, 'fixed_rate', 0)}"
+    else:
+        making_charge = getattr(item, "making_charge", None)
+        mc_text = f"MC: {making_charge}" if making_charge is not None else "MC: -"
 
     second_line_parts = [weight_text, mc_text]
     if purity_text:
@@ -167,10 +172,11 @@ def generate_batch_labels_pdf(items: Sequence) -> bytes:
 def generate_batch_labels_xlsx(items: Sequence) -> bytes:
     """
     Generates an XLSX file where:
-    - Each row contains 3 items (Name, Purity, MC, Weight, Barcode)
+    - Each row contains 3 items (Name, Purity, Charge or Rate, Weight, Barcode)
     - If items are not in multiples of 3, dummy1/dummy2 are added
     - Columns: Name 1, Name 2, Name 3, Purity 1, Purity 2, Purity 3,
-      MC 1, MC 2, MC 3, Wt. 1, Wt. 2, Wt. 3, Barcode 1, Barcode 2, Barcode 3
+      Charge 1, Charge 2, Charge 3, Wt. 1, Wt. 2, Wt. 3, Barcode 1, Barcode 2,
+      Barcode 3
     """
     wb = Workbook()
     ws = wb.active
@@ -188,9 +194,9 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         "Purity 1",
         "Purity 2",
         "Purity 3",
-        "MC 1",
-        "MC 2",
-        "MC 3",
+        "Charge 1",
+        "Charge 2",
+        "Charge 3",
         "Wt. 1",
         "Wt. 2",
         "Wt. 3",
@@ -232,15 +238,16 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
             else:
                 row_data.append("")
 
-        # Making charge per gram (columns 7-9)
+        # Making charge or unique fixed rate (columns 7-9)
         for j in range(3):
             if i + j < len(items_list):
                 item = items_list[i + j]
-                mc_text = (
-                    f"{item.making_charge}"
-                    if getattr(item, "making_charge", None) is not None
-                    else ""
+                value = (
+                    getattr(item, "fixed_rate", 0)
+                    if getattr(item, "category", None) == "unique"
+                    else getattr(item, "making_charge", None)
                 )
+                mc_text = f"{value}" if value is not None else ""
                 row_data.append(mc_text)
             else:
                 row_data.append("")

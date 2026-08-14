@@ -1473,6 +1473,17 @@ body {
   min-width: 8.5rem;
 }
 
+.inventory-sku-cell {
+  min-width: 8.5rem;
+}
+
+.inventory-sku-pill {
+  display: inline-flex;
+  width: max-content;
+  max-width: none;
+  white-space: nowrap;
+}
+
 .inventory-metal-pill {
   display: inline-flex;
   width: max-content;
@@ -1626,6 +1637,71 @@ body {
   outline: none;
   background: var(--app-accent-soft);
   color: var(--app-accent-dark);
+}
+
+.inventory-download__menu--standard {
+  width: 13rem;
+  gap: .35rem;
+  padding: .5rem;
+}
+
+.inventory-download__option {
+  display: flex;
+  width: 100%;
+  min-height: 2.9rem;
+  align-items: center;
+  gap: .75rem;
+  border-radius: .65rem;
+  cursor: pointer;
+  padding: .55rem .75rem;
+  text-align: left;
+  transition: background .16s ease, border-color .16s ease;
+}
+
+.inventory-download__option--xlsx {
+  border: 1px solid rgb(167 243 208);
+  background: rgb(236 253 245 / .45);
+}
+
+.inventory-download__option--pdf {
+  border: 1px solid rgb(254 202 202);
+  background: rgb(254 242 242 / .45);
+}
+
+.inventory-download__option--xlsx:hover,
+.inventory-download__option--xlsx:focus-visible {
+  border-color: rgb(110 231 183);
+  background: rgb(236 253 245);
+}
+
+.inventory-download__option--pdf:hover,
+.inventory-download__option--pdf:focus-visible {
+  border-color: rgb(252 165 165);
+  background: rgb(254 242 242);
+}
+
+.inventory-download__option:focus-visible {
+  outline: 2px solid var(--app-focus);
+  outline-offset: 1px;
+}
+
+.inventory-download__option-icon {
+  display: flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 1.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.dark .inventory-download__option--xlsx {
+  border-color: rgb(6 78 59);
+  background: rgb(2 44 34 / .3);
+}
+
+.dark .inventory-download__option--pdf {
+  border-color: rgb(127 29 29);
+  background: rgb(69 10 10 / .3);
 }
 
 .inventory-download__format-icon {

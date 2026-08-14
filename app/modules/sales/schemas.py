@@ -18,12 +18,14 @@ class SaleCreate(BaseModel):
     customer_phone: str = Field(min_length=5, max_length=15)
     customer_address: str | None = Field(default=None, max_length=255)
     total_amount: float | None = None
+    send_invoice_via_whatsapp: bool = False
 
 
 class SaleOut(BaseModel):
     id: UUID
     invoice_no: str
     total_amount: float
+    whatsapp_delivery_status: str | None = None
 
 
 class InvoiceDownloadOut(BaseModel):
@@ -48,6 +50,8 @@ class InvoiceSummaryOut(BaseModel):
     total_amount: float
     pdf_status: InvoicePdfStatus
     pdf_generated_at: datetime | None
+    whatsapp_delivery_status: str | None = None
+    whatsapp_consent_confirmed_at: datetime | None = None
 
 
 class InvoicePageOut(BaseModel):

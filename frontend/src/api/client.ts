@@ -13,6 +13,8 @@ import {
   ItemPOSWithPrice,
   MetalRate,
   Sale,
+  WhatsAppCapability,
+  WhatsAppDelivery,
 } from '../types';
 import {
   clearAuthData,
@@ -326,6 +328,7 @@ type SaleCreatePayload = {
   customer_phone: string;
   customer_address?: string;
   total_amount?: number;
+  send_invoice_via_whatsapp?: boolean;
 };
 
 export const apiClient = {
@@ -617,6 +620,12 @@ export const apiClient = {
       unique_items: number;
       sold_items: number;
       items_925_count: number;
+      metal_summaries?: Record<string, {
+        in_stock: number;
+        sold_items: number;
+        unique_items: number;
+        purity_counts: Record<string, number>;
+      }>;
     }>('/items/summary');
     return data;
   },
@@ -687,6 +696,7 @@ export const apiClient = {
       customer_phone: sale.customer_phone,
       customer_address: sale.customer_address,
       total_amount: sale.total_amount,
+      send_invoice_via_whatsapp: sale.send_invoice_via_whatsapp ?? false,
     }, {
       headers: { 'Idempotency-Key': idempotencyKey },
     });
@@ -765,6 +775,35 @@ export const apiClient = {
     throw new Error(
       'Invoice is still being prepared. You can download it from Transactions shortly.',
     );
+  },
+
+  async getInvoicePdf(saleId: string) {
+    const response = await client.get<ArrayBuffer>(`/sales/${saleId}/invoice/content`, {
+      responseType: 'arraybuffer',
+    });
+    return response.data;
+  },
+
+  async getWhatsAppCapability() {
+    const { data } = await client.get<WhatsAppCapability>('/whatsapp/capability');
+    return data;
+  },
+
+  async sendInvoiceToWhatsApp(
+    saleId: string,
+    payload: {
+      confirm_customer_request: boolean;
+      recipient_phone?: string;
+      resend?: boolean;
+    },
+    idempotencyKey: string,
+  ) {
+    const { data } = await client.post<WhatsAppDelivery>(
+      `/sales/${saleId}/whatsapp-deliveries`,
+      payload,
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+    return data;
   },
 };
 

@@ -1,6 +1,7 @@
 import secrets
 import string
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import case, func, select
@@ -25,6 +26,7 @@ def record_item_history(db: AsyncSession, item: Item, *, event_type: str) -> Non
             purity=item.purity,
             net_weight=item.net_weight,
             making_charge=item.making_charge,
+            fixed_rate=item.fixed_rate,
             quantity=item.quantity,
             status=item.status,
             effective_from=datetime.now(UTC),
@@ -58,9 +60,10 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
     if not item_data.get("barcode"):
         item_data["barcode"] = await generate_unique_barcode(db, shop_id=shop_id)
 
-    # If category is unique, always set net_weight to 0
+    # Unique items use one fixed rate and have no weight or making charge.
     if item_data.get("category") == "unique":
         item_data["net_weight"] = 0
+        item_data["making_charge"] = 0
 
     item = Item(shop_id=shop_id, **item_data)
     db.add(item)
@@ -101,11 +104,18 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
         "purity": float(item.purity),
         "net_weight": float(item.net_weight),
         "making_charge": float(item.making_charge) if item.making_charge is not None else None,
+        "fixed_rate": float(item.fixed_rate),
         "quantity": item.quantity,
         "notes": item.notes,
     }
 
     requested_updates = data.model_dump(exclude_unset=True)
+    resulting_category = requested_updates.get("category", item.category)
+    if resulting_category == "unique":
+        if "fixed_rate" not in requested_updates and "making_charge" in requested_updates:
+            requested_updates["fixed_rate"] = requested_updates["making_charge"]
+        requested_updates["net_weight"] = 0
+        requested_updates["making_charge"] = 0
     requested_quantity = requested_updates.get("quantity")
     if item.quantity <= 0 and requested_quantity is not None and requested_quantity > 0:
         await enforce_item_activation_limit(db, shop_id)
@@ -118,14 +128,17 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
         "purity": item.purity,
         "net_weight": item.net_weight,
         "making_charge": item.making_charge,
+        "fixed_rate": item.fixed_rate,
         "quantity": item.quantity,
         "notes": item.notes,
     }
     validated_item = ItemBase.model_validate({**current_item_data, **requested_updates})
+    if validated_item.category == "unique" and validated_item.fixed_rate <= 0:
+        raise ValueError("fixed_rate must be greater than 0 for unique items")
     validated_data = validated_item.model_dump()
     fields_to_update = set(requested_updates)
-    if "category" in fields_to_update and validated_item.category == "unique":
-        fields_to_update.add("net_weight")
+    if "category" in fields_to_update:
+        fields_to_update.update({"net_weight", "making_charge", "fixed_rate"})
     item_data = {field: validated_data[field] for field in fields_to_update}
 
     # Remove status from tracking if it exists
@@ -141,6 +154,8 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
         and item_data_for_logging["making_charge"] is not None
     ):
         item_data_for_logging["making_charge"] = float(item_data_for_logging["making_charge"])
+    if "fixed_rate" in item_data_for_logging and item_data_for_logging["fixed_rate"] is not None:
+        item_data_for_logging["fixed_rate"] = float(item_data_for_logging["fixed_rate"])
 
     # Build a more user-friendly change log with only changed fields
     changes = {}
@@ -193,6 +208,7 @@ async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None
         "purity": float(item.purity),
         "net_weight": float(item.net_weight),
         "making_charge": float(item.making_charge) if item.making_charge is not None else None,
+        "fixed_rate": float(item.fixed_rate),
         "quantity": item.quantity,
         "notes": item.notes,
     }
@@ -422,10 +438,67 @@ async def get_items_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
         await db.execute(stmt)
     ).one()
 
+    inventory_rows = (
+        await db.execute(
+            select(
+                func.lower(Item.metal),
+                Item.purity,
+                func.coalesce(
+                    func.sum(case((Item.status == "in_stock", Item.quantity), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                (Item.status == "in_stock") & (Item.category == "unique"),
+                                Item.quantity,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+            )
+            .where(Item.shop_id == shop_id, Item.archived_at.is_(None))
+            .group_by(func.lower(Item.metal), Item.purity)
+        )
+    ).all()
+    sold_rows = (
+        await db.execute(
+            select(
+                func.lower(func.coalesce(SaleItem.item_metal, Item.metal)),
+                func.coalesce(func.sum(SaleItem.quantity), 0),
+            )
+            .select_from(SaleItem)
+            .outerjoin(
+                Item,
+                (Item.id == SaleItem.item_id) & (Item.shop_id == SaleItem.shop_id),
+            )
+            .where(SaleItem.shop_id == shop_id)
+            .group_by(func.lower(func.coalesce(SaleItem.item_metal, Item.metal)))
+        )
+    ).all()
+    metal_summaries: dict[str, dict[str, Any]] = {
+        metal: {"in_stock": 0, "sold_items": 0, "unique_items": 0, "purity_counts": {}}
+        for metal in ("gold", "silver", "platinum")
+    }
+    for metal, purity, stock_count, unique_count in inventory_rows:
+        if metal not in metal_summaries:
+            continue
+        metal_summary = metal_summaries[metal]
+        metal_summary["in_stock"] += int(stock_count)
+        metal_summary["unique_items"] += int(unique_count)
+        purity_key = format(float(purity), "g")
+        metal_summary["purity_counts"][purity_key] = int(stock_count)
+    for metal, metal_sold_count in sold_rows:
+        if metal in metal_summaries:
+            metal_summaries[metal]["sold_items"] = int(metal_sold_count)
+
     return {
         "total_items": int(total_items),
         "in_stock": int(in_stock),
         "unique_items": int(unique_items),
         "sold_items": int(sold_count),
         "items_925_count": int(items_925_count),
+        "metal_summaries": metal_summaries,
     }

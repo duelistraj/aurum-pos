@@ -1,6 +1,6 @@
 import React from 'react';
 import { Capacitor } from '@capacitor/core';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { Plus, Minus, AlertCircle, Camera, X } from 'lucide-react';
 import {
@@ -64,6 +64,7 @@ export const POS: React.FC = () => {
   const [error, setError] = React.useState<string>('');
   const [success, setSuccess] = React.useState<string>('');
   const [showCheckout, setShowCheckout] = React.useState(false);
+  const [sendInvoiceViaWhatsApp, setSendInvoiceViaWhatsApp] = React.useState(false);
   const [showCameraScanner, setShowCameraScanner] = React.useState(false);
   const [cameraError, setCameraError] = React.useState<string>('');
   const [customerDetails, setCustomerDetails] = React.useState<CustomerDetails>(
@@ -77,6 +78,12 @@ export const POS: React.FC = () => {
   const location = useLocation();
   const streamRef = React.useRef<MediaStream | null>(null);
   const cartRef = React.useRef(cart);
+  const whatsAppCapability = useQuery({
+    queryKey: ['shops', shopId, 'whatsapp', 'capability'],
+    queryFn: () => apiClient.getWhatsAppCapability(),
+    enabled: Boolean(shopId),
+    staleTime: 60_000,
+  });
 
   // Sync cart ref to prevent stale closures in async loops
   React.useEffect(() => {
@@ -87,6 +94,7 @@ export const POS: React.FC = () => {
     setCart([]);
     setCustomerDetails({ name: '', phone: '', address: '' });
     setShowCheckout(false);
+    setSendInvoiceViaWhatsApp(false);
     setError('');
     setSuccess('');
     void clearCheckoutIdempotencyKey();
@@ -323,6 +331,10 @@ export const POS: React.FC = () => {
     (sum, item) => sum + item.pricing.making_charge * item.cartQuantity,
     0
   );
+  const fixedRates = cart.reduce(
+    (sum, item) => sum + (item.pricing.fixed_rate ?? 0) * item.cartQuantity,
+    0
+  );
   const gstAmount = cart.reduce(
     (sum, item) => sum + item.pricing.gst_amount * item.cartQuantity,
     0,
@@ -355,6 +367,7 @@ export const POS: React.FC = () => {
         customer_phone: customerDetails.phone,
         customer_address: customerDetails.address,
         total_amount: totalWithGst,
+        send_invoice_via_whatsapp: sendInvoiceViaWhatsApp,
       };
       const idempotencyKey = await getCheckoutIdempotencyKey(salePayload);
       const sale = await apiClient.createSale(salePayload, idempotencyKey);
@@ -376,12 +389,17 @@ export const POS: React.FC = () => {
 
       setSuccess(
         invoiceDownloaded
-          ? 'Sale completed and invoice downloaded.'
-          : 'Sale completed. The invoice could not be opened; retry from Transactions.',
+          ? `Sale completed and invoice downloaded.${
+            sendInvoiceViaWhatsApp ? ' WhatsApp delivery queued.' : ''
+          }`
+          : `Sale completed. The invoice could not be opened; retry from Transactions.${
+            sendInvoiceViaWhatsApp ? ' WhatsApp delivery is queued.' : ''
+          }`,
       );
       await clearCheckoutIdempotencyKey();
       setCart([]);
       setCustomerDetails({ name: '', phone: '', address: '' });
+      setSendInvoiceViaWhatsApp(false);
       setShowCheckout(false);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -494,12 +512,14 @@ export const POS: React.FC = () => {
                           {item.name}
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                          {formatMetalLabel(item.metal, item.purity)} • {item.net_weight}g
+                          {item.category === 'unique'
+                            ? 'Fixed price item'
+                            : `${formatMetalLabel(item.metal, item.purity)} • ${item.net_weight}g`}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/50 px-2 py-1 rounded-app-control inline-block font-mono font-medium mt-1">
-                          Base: {formatCurrency(item.pricing.metal_value)} + Making:{' '}
-                          {formatCurrency(item.pricing.making_charge)}{' '}
-                          {isFixedMakingCategory(item.category) ? 'Fixed' : '/ gram'}
+                          {item.category === 'unique'
+                            ? `Fixed rate: ${formatCurrency(item.pricing.fixed_rate ?? 0)}`
+                            : `Base: ${formatCurrency(item.pricing.metal_value)} + Making: ${formatCurrency(item.pricing.making_charge)} ${isFixedMakingCategory(item.category) ? 'Fixed' : '/ gram'}`}
                         </p>
                       </div>
 
@@ -560,6 +580,14 @@ export const POS: React.FC = () => {
                       {formatCurrency(subtotal)}
                     </span>
                   </div>
+                  {fixedRates > 0 ? (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 dark:text-slate-400 font-medium">Fixed Rates:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-base">
+                        {formatCurrency(fixedRates)}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500 dark:text-slate-400 font-medium">Making Charges:</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200 text-base">
@@ -659,6 +687,32 @@ export const POS: React.FC = () => {
               inputMode="tel"
               className="py-2.5 rounded-app-control"
             />
+            {whatsAppCapability.data?.enabled ? (
+              <label className={`flex items-start gap-3 rounded-app-inset border p-4 ${
+                whatsAppCapability.data.available
+                  ? 'cursor-pointer border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20'
+                  : 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-70 dark:border-slate-800 dark:bg-slate-950/40'
+              }`}>
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-emerald-600"
+                  checked={sendInvoiceViaWhatsApp}
+                  disabled={!whatsAppCapability.data.available}
+                  onChange={(event) => setSendInvoiceViaWhatsApp(event.target.checked)}
+                />
+                <span className="space-y-1">
+                  <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">
+                    Send customer invoice on WhatsApp
+                    {!whatsAppCapability.data.available ? ' - Pro required' : ''}
+                  </span>
+                  <span className="block text-xs leading-5 text-slate-600 dark:text-slate-400">
+                    I confirm the customer requested WhatsApp delivery. Aurum POS will send the
+                    invoice on behalf of {activeMembership?.shop_name ?? 'this store'} from Aurum's
+                    shared WhatsApp number.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <Input
               label="Address (Optional)"
               placeholder="Enter customer address"

@@ -429,6 +429,15 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 "unique_items": 0,
                 "sold_items": 0,
                 "items_925_count": 0,
+                "metal_summaries": {
+                    metal: {
+                        "in_stock": 0,
+                        "sold_items": 0,
+                        "unique_items": 0,
+                        "purity_counts": {},
+                    }
+                    for metal in ("gold", "silver", "platinum")
+                },
             }
 
             second_shop_rate = await client.get(

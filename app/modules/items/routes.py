@@ -1,4 +1,5 @@
 import math
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
@@ -140,19 +141,20 @@ async def pos_scan(
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found or is out of stock")
 
-    base_rate = await get_latest_metal_rate(
-        db,
-        shop_id=context.shop.id,
-        metal=item.metal,
-    )
-    if base_rate is None:
-        raise HTTPException(status_code=400, detail="Metal rate not configured for this item")
-
-    rate_per_gram = calculate_effective_rate_per_gram(
-        metal=item.metal,
-        purity=item.purity,
-        base_rate_per_gram=base_rate.rate_per_gram,
-    )
+    rate_per_gram = Decimal(0)
+    if item.category.lower() != "unique":
+        base_rate = await get_latest_metal_rate(
+            db,
+            shop_id=context.shop.id,
+            metal=item.metal,
+        )
+        if base_rate is None:
+            raise HTTPException(status_code=400, detail="Metal rate not configured for this item")
+        rate_per_gram = calculate_effective_rate_per_gram(
+            metal=item.metal,
+            purity=item.purity,
+            base_rate_per_gram=base_rate.rate_per_gram,
+        )
 
     pricing = lock_price_at_sale(
         metal=item.metal,
@@ -161,6 +163,7 @@ async def pos_scan(
         net_weight=item.net_weight,
         rate_per_gram=rate_per_gram,
         making_charge=item.making_charge,
+        fixed_rate=item.fixed_rate,
         tax_rate_percent=context.shop.tax_rate_percent,
     )
     pricing["suggested_price"] = pricing["subtotal"]

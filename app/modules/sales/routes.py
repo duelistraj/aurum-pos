@@ -26,6 +26,12 @@ from app.modules.sales.schemas import (
 )
 from app.modules.sales.service import create_sale, get_sale_by_id, list_invoices
 from app.modules.sales.storage import InvoiceStorage, InvoiceStorageError, get_invoice_storage
+from app.modules.whatsapp.schemas import (
+    WhatsAppDeliveryCreate,
+    WhatsAppDeliveryOut,
+    WhatsAppDeliveryStatus,
+)
+from app.modules.whatsapp.service import latest_delivery_by_sale, queue_invoice_delivery
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
 
@@ -68,9 +74,27 @@ async def create(
                 sale_id=sale.id,
             )
         )
+    whatsapp_delivery = None
+    if data.send_invoice_via_whatsapp:
+        whatsapp_delivery = await queue_invoice_delivery(
+            db,
+            sale=sale,
+            organization_id=context.organization.id,
+            shop_id=context.shop.id,
+            user_id=context.user.id,
+            phone=sale.customer_phone,
+            source="checkout",
+            idempotency_key=("checkout:" + hashlib.sha256(idempotency_key.encode()).hexdigest()),
+            confirm_customer_request=True,
+        )
     await db.commit()
 
-    return sale
+    return SaleOut(
+        id=sale.id,
+        invoice_no=sale.invoice_no,
+        total_amount=float(sale.total_amount),
+        whatsapp_delivery_status=(whatsapp_delivery.status if whatsapp_delivery else None),
+    )
 
 
 @router.get("/idempotency/{idempotency_key}", response_model=SaleOut)
@@ -132,6 +156,11 @@ async def invoices(
         cursor_created_at=cursor_created_at,
         cursor_id=cursor_id,
     )
+    deliveries = await latest_delivery_by_sale(
+        db,
+        shop_id=context.shop.id,
+        sale_ids=[row.id for row in rows],
+    )
     last_row = rows[-1] if rows and has_more else None
     return InvoicePageOut(
         invoices=[
@@ -144,6 +173,12 @@ async def invoices(
                 total_amount=float(row.total_amount),
                 pdf_status=cast(InvoicePdfStatus, row.invoice_pdf_status),
                 pdf_generated_at=row.pdf_generated_at,
+                whatsapp_delivery_status=(
+                    deliveries[row.id].status if row.id in deliveries else None
+                ),
+                whatsapp_consent_confirmed_at=(
+                    deliveries[row.id].consent_confirmed_at if row.id in deliveries else None
+                ),
             )
             for row in rows
         ],
@@ -211,4 +246,78 @@ async def invoice(
     return InvoiceDownloadOut(
         url=url,
         expires_in_seconds=storage.expiry_seconds,
+    )
+
+
+@router.get("/{sale_id}/invoice/content")
+async def invoice_content(
+    sale_id: UUID,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+    storage: InvoiceStorage = Depends(get_invoice_storage),
+) -> Response:
+    sale = await get_sale_by_id(db, sale_id=sale_id, shop_id=context.shop.id)
+    if sale is None:
+        raise HTTPException(status_code=404, detail="Sale does not exist")
+    if sale.s3_object_key is None or sale.invoice_pdf_status != "ready":
+        raise HTTPException(status_code=409, detail="Invoice PDF is not ready")
+    try:
+        pdf = await storage.read_pdf(
+            object_key=sale.s3_object_key,
+            expected_checksum_sha256=sale.pdf_checksum_sha256,
+        )
+    except InvoiceStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Invoice storage is unavailable",
+        ) from exc
+    safe_invoice_no = "".join(
+        character if character.isalnum() or character in "._-" else "_"
+        for character in sale.invoice_no
+    )
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_invoice_no}.pdf"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post(
+    "/{sale_id}/whatsapp-deliveries",
+    response_model=WhatsAppDeliveryOut,
+    dependencies=[RequireWritableShop],
+)
+async def send_invoice_to_whatsapp(
+    sale_id: UUID,
+    data: WhatsAppDeliveryCreate,
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=8, max_length=100),
+    ],
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> WhatsAppDeliveryOut:
+    sale = await get_sale_by_id(db, sale_id=sale_id, shop_id=context.shop.id)
+    if sale is None:
+        raise HTTPException(status_code=404, detail="Sale does not exist")
+    delivery = await queue_invoice_delivery(
+        db,
+        sale=sale,
+        organization_id=context.organization.id,
+        shop_id=context.shop.id,
+        user_id=context.user.id,
+        phone=data.recipient_phone or sale.customer_phone,
+        source="invoice_history",
+        idempotency_key=idempotency_key,
+        confirm_customer_request=data.confirm_customer_request,
+        resend=data.resend,
+    )
+    await db.commit()
+    return WhatsAppDeliveryOut(
+        delivery_id=delivery.id,
+        status=cast(WhatsAppDeliveryStatus, delivery.status),
+        consent_confirmed_at=delivery.consent_confirmed_at,
     )

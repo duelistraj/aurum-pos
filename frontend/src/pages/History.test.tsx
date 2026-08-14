@@ -5,20 +5,23 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
-import { downloadUrl } from '../utils';
+import { downloadUrl, printInvoicePdf } from '../utils';
 import { Transactions } from './History';
 
 vi.mock('../api/client', () => ({
   apiClient: {
     getChangeLogHistory: vi.fn(),
     getInvoiceDownload: vi.fn(),
+    getInvoicePdf: vi.fn(),
+    getWhatsAppCapability: vi.fn(),
+    sendInvoiceToWhatsApp: vi.fn(),
     listInvoices: vi.fn(),
   },
 }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 vi.mock('../utils', async (importOriginal) => {
   const original = await importOriginal<typeof import('../utils')>();
-  return { ...original, downloadUrl: vi.fn() };
+  return { ...original, downloadUrl: vi.fn(), printInvoicePdf: vi.fn() };
 });
 
 const renderTransactions = (initialEntry = '/transactions') => {
@@ -95,6 +98,8 @@ describe('Transactions', () => {
         total_amount: 12500,
         pdf_status: 'ready',
         pdf_generated_at: '2026-07-28T08:31:00Z',
+        whatsapp_delivery_status: null,
+        whatsapp_consent_confirmed_at: null,
       }],
       total: 1,
       page: 1,
@@ -106,6 +111,19 @@ describe('Transactions', () => {
       expires_in_seconds: 600,
     });
     vi.mocked(downloadUrl).mockResolvedValue(undefined);
+    vi.mocked(printInvoicePdf).mockResolvedValue(undefined);
+    vi.mocked(apiClient.getInvoicePdf).mockResolvedValue(new ArrayBuffer(8));
+    vi.mocked(apiClient.getWhatsAppCapability).mockResolvedValue({
+      enabled: true,
+      available: true,
+      pro_required: true,
+      sender_name: 'Aurum POS',
+      template_status: 'approved',
+    });
+    vi.mocked(apiClient.sendInvoiceToWhatsApp).mockResolvedValue({
+      delivery_id: 'delivery-1',
+      status: 'pending',
+    });
   });
 
   it('shows activity by default without exposing invoice numbers', async () => {
@@ -152,6 +170,8 @@ describe('Transactions', () => {
 
     await user.click(screen.getByRole('button', { name: 'Download INV-2026-000001' }));
 
+    expect(screen.queryByText(/^Download$/)).not.toBeInTheDocument();
+
     await waitFor(() => {
       expect(apiClient.getInvoiceDownload).toHaveBeenCalledWith('sale-1');
       expect(downloadUrl).toHaveBeenCalledWith(
@@ -159,6 +179,44 @@ describe('Transactions', () => {
         'INV-2026-000001.pdf',
       );
     });
+  });
+
+  it('prints the exact stored invoice from an icon-only action', async () => {
+    const user = userEvent.setup();
+    renderTransactions('/transactions?tab=invoices');
+
+    await user.click(await screen.findByRole('button', {
+      name: 'Print INV-2026-000001',
+    }));
+
+    await waitFor(() => {
+      expect(apiClient.getInvoicePdf).toHaveBeenCalledWith('sale-1');
+      expect(printInvoicePdf).toHaveBeenCalledWith(
+        expect.any(ArrayBuffer),
+        'INV-2026-000001.pdf',
+      );
+    });
+    expect(screen.queryByText(/^Print$/)).not.toBeInTheDocument();
+  });
+
+  it('confirms shared-sender consent before queuing a WhatsApp invoice', async () => {
+    const user = userEvent.setup();
+    renderTransactions('/transactions?tab=invoices');
+
+    await user.click(await screen.findByRole('button', {
+      name: 'WhatsApp INV-2026-000001',
+    }));
+
+    expect(screen.getByRole('dialog', { name: 'Send invoice on WhatsApp' }))
+      .toHaveTextContent('Aurum POS will send it on behalf of Demo Shop');
+    await user.click(screen.getByRole('button', { name: 'Confirm and send' }));
+
+    await waitFor(() => expect(apiClient.sendInvoiceToWhatsApp).toHaveBeenCalledWith(
+      'sale-1',
+      expect.objectContaining({ confirm_customer_request: true }),
+      expect.any(String),
+    ));
+    expect(screen.queryByText(/^WhatsApp$/)).not.toBeInTheDocument();
   });
 
   it('expands one compact invoice row into complete mobile details', async () => {

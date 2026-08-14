@@ -178,8 +178,8 @@ describe('Navbar', () => {
   it('keeps complete branding available in the collapsed rail without a handle', () => {
     renderNavbar(['/'], true);
 
-    expect(screen.getByRole('link', { name: 'Aurum POS dashboard' }))
-      .toContainElement(screen.getByRole('img', { name: 'Aurum' }));
+    const logo = screen.getByRole('img', { name: 'Aurum' });
+    expect(logo.closest('a')).toBeNull();
     expect(screen.getByText('Aurum POS')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^(Expand|Collapse) navigation$/ }))
       .not.toBeInTheDocument();

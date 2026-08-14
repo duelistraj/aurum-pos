@@ -7,6 +7,12 @@ import app.modules.auth.models  # noqa: F401
 from app.modules.notifications.models import EmailOutbox  # noqa
 from app.modules.shops.models import Shop, ShopDeviceAccess, ShopInvitation, ShopMembership  # noqa
 from app.modules.subscriptions.models import BillingEvent, PlaySubscription, Subscription  # noqa
+from app.modules.whatsapp.models import (  # noqa
+    WhatsAppDeliveryJob,
+    WhatsAppIntegrationState,
+    WhatsAppInvoiceDelivery,
+    WhatsAppRecipientSuppression,
+)
 
 
 import os

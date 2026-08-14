@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import io
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -23,10 +24,12 @@ class FakeS3Client:
         fail_upload: bool = False,
         fail_presign: bool = False,
         existing_checksum: str | None = None,
+        stored_body: bytes | None = None,
     ) -> None:
         self.fail_upload = fail_upload
         self.fail_presign = fail_presign
         self.existing_checksum = existing_checksum
+        self.stored_body = stored_body
         self.put_kwargs: dict[str, Any] | None = None
         self.head_kwargs: dict[str, Any] | None = None
         self.delete_kwargs: dict[str, Any] | None = None
@@ -50,6 +53,14 @@ class FakeS3Client:
     def delete_object(self, **kwargs: object) -> dict[str, Any]:
         self.delete_kwargs = dict(kwargs)
         return {}
+
+    def get_object(self, **kwargs: object) -> dict[str, Any]:
+        if self.stored_body is None:
+            raise ClientError(
+                {"Error": {"Code": "NoSuchKey", "Message": "Missing"}},
+                "GetObject",
+            )
+        return {"Body": io.BytesIO(self.stored_body)}
 
     def generate_presigned_url(
         self,
@@ -180,6 +191,41 @@ async def test_delete_uses_only_the_exact_postgres_object_key() -> None:
         "Bucket": "invoice-bucket",
         "Key": "shops/shop/invoices/2026/id.pdf",
     }
+
+
+@pytest.mark.asyncio
+async def test_read_returns_only_a_checksum_verified_exact_pdf() -> None:
+    pdf = b"%PDF exact stored invoice"
+    client = FakeS3Client(stored_body=pdf)
+    storage = InvoiceStorage(
+        region="ap-southeast-1",
+        bucket="invoice-bucket",
+        expiry_seconds=600,
+        client=cast(S3Client, client),
+    )
+
+    result = await storage.read_pdf(
+        object_key="shops/shop/invoices/2026/id.pdf",
+        expected_checksum_sha256=hashlib.sha256(pdf).hexdigest(),
+    )
+
+    assert result == pdf
+
+
+@pytest.mark.asyncio
+async def test_read_rejects_a_pdf_with_a_different_checksum() -> None:
+    storage = InvoiceStorage(
+        region="ap-southeast-1",
+        bucket="invoice-bucket",
+        expiry_seconds=600,
+        client=cast(S3Client, FakeS3Client(stored_body=b"%PDF altered")),
+    )
+
+    with pytest.raises(InvoiceStorageError, match="checksum does not match"):
+        await storage.read_pdf(
+            object_key="shops/shop/invoices/2026/id.pdf",
+            expected_checksum_sha256=hashlib.sha256(b"%PDF original").hexdigest(),
+        )
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,9 @@ import {
   ChevronRight,
   Download,
   FileText,
+  MessageCircle,
+  Phone,
+  Printer,
   RefreshCw,
   Search,
 } from 'lucide-react';
@@ -20,10 +23,11 @@ import {
   Input,
   ListboxSelect,
   Loader,
+  Modal,
 } from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import type { InvoicePdfStatus, InvoiceSummary } from '../types';
-import { downloadUrl, formatCurrency, formatDate } from '../utils';
+import { downloadUrl, formatCurrency, formatDate, printInvoicePdf } from '../utils';
 
 interface InvoiceFilters {
   search: string;
@@ -95,13 +99,24 @@ const endOfLocalDayIso = (date: string): string | undefined => {
   return new Date(`${date}T23:59:59.999`).toISOString();
 };
 
+const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <span className={`relative inline-block ${className}`} aria-hidden="true">
+    <MessageCircle className="absolute inset-0 h-full w-full" />
+    <Phone className="absolute left-1/4 top-1/4 h-1/2 w-1/2 fill-current stroke-[2.5]" />
+  </span>
+);
+
 export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
   const queryClient = useQueryClient();
+  const { activeMembership } = useShop();
   const [filters, setFilters] = React.useState<InvoiceFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = React.useState<InvoiceFilters>(EMPTY_FILTERS);
   const [page, setPage] = React.useState(1);
   const [cursorByPage, setCursorByPage] = React.useState<Record<number, InvoiceCursor>>({});
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
+  const [printingId, setPrintingId] = React.useState<string | null>(null);
+  const [sendingId, setSendingId] = React.useState<string | null>(null);
+  const [whatsAppInvoice, setWhatsAppInvoice] = React.useState<InvoiceSummary | null>(null);
   const [expandedInvoiceId, setExpandedInvoiceId] = React.useState<string | null>(null);
   const [downloadError, setDownloadError] = React.useState('');
   const queryParams = {
@@ -118,6 +133,12 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     queryKey: queryKeys.invoices(shopId, queryParams),
     queryFn: () => apiClient.listInvoices(queryParams),
     enabled: Boolean(shopId),
+  });
+  const whatsAppCapability = useQuery({
+    queryKey: ['shops', shopId, 'whatsapp', 'capability'],
+    queryFn: () => apiClient.getWhatsAppCapability(),
+    enabled: Boolean(shopId),
+    staleTime: 60_000,
   });
 
   const applyFilters = (event: React.FormEvent<HTMLFormElement>) => {
@@ -167,6 +188,111 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const printInvoice = async (invoice: InvoiceSummary) => {
+    setPrintingId(invoice.sale_id);
+    setDownloadError('');
+    try {
+      const pdf = await apiClient.getInvoicePdf(invoice.sale_id);
+      await printInvoicePdf(pdf, `${invoice.invoice_no}.pdf`);
+    } catch (caught) {
+      setDownloadError(
+        caught instanceof Error ? caught.message : 'Unable to print this invoice',
+      );
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
+  const confirmWhatsAppDelivery = async () => {
+    if (!whatsAppInvoice) return;
+    setSendingId(whatsAppInvoice.sale_id);
+    setDownloadError('');
+    try {
+      const idempotencyKey = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `whatsapp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await apiClient.sendInvoiceToWhatsApp(
+        whatsAppInvoice.sale_id,
+        {
+          confirm_customer_request: true,
+          recipient_phone: whatsAppInvoice.customer_phone,
+          resend: Boolean(whatsAppInvoice.whatsapp_delivery_status),
+        },
+        idempotencyKey,
+      );
+      setWhatsAppInvoice(null);
+      await queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'invoices'] });
+    } catch (caught) {
+      setDownloadError(
+        caught instanceof Error ? caught.message : 'Unable to send this invoice on WhatsApp',
+      );
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const invoiceActions = (invoice: InvoiceSummary, mobile = false) => {
+    const isDownloading = downloadingId === invoice.sale_id;
+    const isPrinting = printingId === invoice.sale_id;
+    const isSending = sendingId === invoice.sale_id;
+    const isPdfReady = invoice.pdf_status === 'ready';
+    const actionClass = mobile ? 'h-11 w-11 p-0' : 'h-9 w-9 p-0';
+    return (
+      <div className={`flex items-center ${mobile ? 'justify-start' : 'justify-end'} gap-2`}>
+        <Button
+          type="button"
+          size="sm"
+          className={actionClass}
+          variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
+          isLoading={isDownloading}
+          disabled={downloadingId !== null}
+          title={invoice.pdf_status === 'failed' ? 'Retry invoice' : 'Download invoice'}
+          aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no}${mobile ? ' from details' : ''}`}
+          onClick={() => void downloadInvoice(invoice)}
+        >
+          {invoice.pdf_status === 'failed' ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className={actionClass}
+          variant="secondary"
+          isLoading={isPrinting}
+          disabled={!isPdfReady || printingId !== null}
+          title="Print invoice"
+          aria-label={`Print ${invoice.invoice_no}${mobile ? ' from details' : ''}`}
+          onClick={() => void printInvoice(invoice)}
+        >
+          <Printer className="h-4 w-4" />
+        </Button>
+        {whatsAppCapability.data?.enabled ? (
+          <Button
+            type="button"
+            size="sm"
+            className={actionClass}
+            variant="secondary"
+            isLoading={isSending}
+            disabled={!whatsAppCapability.data.available || sendingId !== null}
+            title={whatsAppCapability.data.available
+              ? 'Send invoice on WhatsApp'
+              : 'WhatsApp invoice delivery requires Pro'}
+            aria-label={`WhatsApp ${invoice.invoice_no}${mobile ? ' from details' : ''}`}
+            onClick={() => {
+              setDownloadError('');
+              setWhatsAppInvoice(invoice);
+            }}
+          >
+            <WhatsAppIcon className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
+    );
   };
 
   const invoices = invoicesQuery.data?.invoices ?? [];
@@ -297,7 +423,6 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {invoices.map((invoice) => {
                   const status = STATUS_PRESENTATION[invoice.pdf_status];
-                  const isDownloading = downloadingId === invoice.sale_id;
                   const isExpanded = expandedInvoiceId === invoice.sale_id;
                   const detailsId = `invoice-details-${invoice.sale_id}`;
                   return (
@@ -329,25 +454,17 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                           {formatCurrency(invoice.total_amount)}
                         </td>
                         <td className="px-2 py-3 sm:px-5 sm:py-4">
-                          <Badge variant={status.variant}>{status.label}</Badge>
+                          <div className="flex flex-col items-start gap-1.5">
+                            <Badge variant={status.variant}>{status.label}</Badge>
+                            {invoice.whatsapp_delivery_status ? (
+                              <Badge variant="info">
+                                WhatsApp: {invoice.whatsapp_delivery_status}
+                              </Badge>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="hidden px-5 py-4 text-right sm:table-cell">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
-                            isLoading={isDownloading}
-                            disabled={downloadingId !== null}
-                            aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no}`}
-                            onClick={() => void downloadInvoice(invoice)}
-                          >
-                            {invoice.pdf_status === 'failed' ? (
-                              <RefreshCw className="h-4 w-4" />
-                            ) : (
-                              <Download className="h-4 w-4" />
-                            )}
-                            <span>{invoice.pdf_status === 'failed' ? 'Retry' : 'Download'}</span>
-                          </Button>
+                          {invoiceActions(invoice)}
                         </td>
                         <td className="px-1 py-2 sm:hidden">
                           <button
@@ -408,27 +525,17 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                                 <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
                                   PDF status
                                 </p>
-                                <Badge variant={status.variant}>{status.label}</Badge>
+                                <div className="flex flex-wrap gap-2">
+                                  <Badge variant={status.variant}>{status.label}</Badge>
+                                  {invoice.whatsapp_delivery_status ? (
+                                    <Badge variant="info">
+                                      WhatsApp: {invoice.whatsapp_delivery_status}
+                                    </Badge>
+                                  ) : null}
+                                </div>
                               </div>
                               <div className="col-span-2 border-t border-slate-200 pt-3 dark:border-slate-800">
-                                <Button
-                                  type="button"
-                                  className="w-full"
-                                  variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
-                                  isLoading={isDownloading}
-                                  disabled={downloadingId !== null}
-                                  aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no} from details`}
-                                  onClick={() => void downloadInvoice(invoice)}
-                                >
-                                  {invoice.pdf_status === 'failed' ? (
-                                    <RefreshCw className="h-4 w-4" />
-                                  ) : (
-                                    <Download className="h-4 w-4" />
-                                  )}
-                                  <span>
-                                    {invoice.pdf_status === 'failed' ? 'Retry invoice' : 'Download invoice'}
-                                  </span>
-                                </Button>
+                                {invoiceActions(invoice, true)}
                               </div>
                             </div>
                           </td>
@@ -483,6 +590,45 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           </div>
         ) : null}
       </Card>
+      <Modal
+        isOpen={whatsAppInvoice !== null}
+        title="Send invoice on WhatsApp"
+        size="md"
+        onClose={() => setWhatsAppInvoice(null)}
+        footer={(
+          <>
+            <Button type="button" variant="secondary" onClick={() => setWhatsAppInvoice(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              isLoading={sendingId !== null}
+              onClick={() => void confirmWhatsAppDelivery()}
+            >
+              Confirm and send
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+          {downloadError ? <Alert type="error" message={downloadError} /> : null}
+          <p>
+            The customer requested delivery to <strong>{whatsAppInvoice?.customer_phone}</strong>.
+          </p>
+          <p>
+            Aurum POS will send it on behalf of {activeMembership?.shop_name ?? 'this store'}.
+          </p>
+          <p>
+            It will come from Aurum's shared WhatsApp number, so invoices from other Aurum stores
+            may appear in the same customer conversation.
+          </p>
+          {whatsAppInvoice?.whatsapp_delivery_status ? (
+            <p className="font-semibold text-amber-700 dark:text-amber-400">
+              This invoice has already been queued or sent. Confirming will send it again.
+            </p>
+          ) : null}
+        </div>
+      </Modal>
     </div>
   );
 };

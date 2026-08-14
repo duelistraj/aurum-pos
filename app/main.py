@@ -31,6 +31,8 @@ from app.modules.shops.routes import (
     router as shops_router,
 )
 from app.modules.subscriptions.routes import router as subscriptions_router
+from app.modules.whatsapp.routes import protected_router as whatsapp_router
+from app.modules.whatsapp.routes import webhook_router as whatsapp_webhook_router
 from app.version import APP_VERSION
 
 
@@ -112,6 +114,7 @@ app.include_router(shops_router, prefix=API_PREFIX)
 app.include_router(organizations_router, prefix=API_PREFIX)
 app.include_router(subscriptions_router, prefix=API_PREFIX)
 app.include_router(billing_router, prefix=API_PREFIX)
+app.include_router(whatsapp_webhook_router, prefix=API_PREFIX)
 
 # Protect all other routers
 protected_dependencies = [RequireCashier]
@@ -120,6 +123,7 @@ app.include_router(sales_router, prefix=API_PREFIX, dependencies=protected_depen
 app.include_router(metal_rate_router, prefix=API_PREFIX, dependencies=protected_dependencies)
 app.include_router(dashboard_router, prefix=API_PREFIX, dependencies=protected_dependencies)
 app.include_router(changelog_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(whatsapp_router, prefix=API_PREFIX, dependencies=protected_dependencies)
 
 
 @app.get("/", tags=["Health"])
@@ -191,6 +195,11 @@ async def worker_readiness(
                             SELECT MIN(created_at)
                             FROM invoice_jobs
                             WHERE status IN ('pending', 'processing')
+                        ),
+                        (
+                            SELECT MIN(created_at)
+                            FROM whatsapp_delivery_jobs
+                            WHERE status IN ('pending', 'processing')
                         )
                     ) AS oldest_pending_at,
                     (
@@ -201,6 +210,10 @@ async def worker_readiness(
                         SELECT COUNT(*)
                         FROM invoice_jobs
                         WHERE status = 'failed'
+                    ) + (
+                        SELECT COUNT(*)
+                        FROM whatsapp_delivery_jobs
+                        WHERE status IN ('failed', 'unknown')
                     ) AS terminal_failures
                 """
             )

@@ -30,7 +30,9 @@ describe('Header', () => {
     await user.click(screen.getByRole('button', { name: 'Open navigation' }));
 
     expect(onOpenSidebar).toHaveBeenCalledOnce();
-    expect(screen.getByRole('img', { name: 'Aurum' }).getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+    const logo = screen.getByRole('img', { name: 'Aurum' });
+    expect(logo.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+    expect(logo.closest('a')).toBeNull();
   });
 
   it('hides the duplicate mobile logo while navigation is open', () => {

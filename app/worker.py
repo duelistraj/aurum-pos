@@ -17,6 +17,7 @@ from app.jobs.account_deletions import process_account_deletions
 from app.jobs.emails import process_email_batch
 from app.jobs.invoices import process_invoice_jobs
 from app.jobs.ownership_transfers import process_organization_ownership_transfers
+from app.jobs.whatsapp import process_whatsapp_deliveries
 from app.modules.billing.service import (
     apply_play_purchase,
     decrypt_purchase_token,
@@ -282,6 +283,7 @@ async def run_once(*, reconcile: bool, cleanup: bool = False) -> None:
         process_invoice_jobs(),
         process_account_deletions(),
         process_organization_ownership_transfers(),
+        process_whatsapp_deliveries(),
     ]
     if reconcile:
         tasks.append(reconcile_play_subscriptions())
@@ -308,6 +310,7 @@ async def run_forever() -> None:
         periodic("heartbeat", _record_worker_heartbeat, interval_seconds=20),
         periodic("email", process_email_batch, interval_seconds=2),
         periodic("invoice", process_invoice_jobs, interval_seconds=2),
+        periodic("whatsapp", process_whatsapp_deliveries, interval_seconds=2),
         periodic("account-deletion", process_account_deletions, interval_seconds=10),
         periodic(
             "ownership-transfer",

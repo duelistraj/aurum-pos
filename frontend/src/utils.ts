@@ -3,6 +3,7 @@ import { FileTransfer } from '@capacitor/file-transfer';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
 import { AurumFileNotifications } from './native/fileNotifications';
+import { AurumPrinting } from './native/printing';
 
 export const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-IN', {
@@ -112,4 +113,52 @@ export const downloadUrl = async (url: string, filename: string) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+const arrayBufferToBase64 = (data: ArrayBuffer): string => {
+  let binary = '';
+  const bytes = new Uint8Array(data);
+  for (let index = 0; index < bytes.byteLength; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return window.btoa(binary);
+};
+
+export const printInvoicePdf = async (data: ArrayBuffer, filename: string) => {
+  if (Capacitor.isNativePlatform()) {
+    const savedFile = await Filesystem.writeFile({
+      path: filename,
+      data: arrayBufferToBase64(data),
+      directory: Directory.Cache,
+    });
+    await AurumPrinting.printPdf({ uri: savedFile.uri, jobName: filename });
+    return;
+  }
+
+  const blobUrl = window.URL.createObjectURL(
+    new Blob([data], { type: 'application/pdf' }),
+  );
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.width = '1px';
+  frame.style.height = '1px';
+  frame.style.opacity = '0';
+  frame.src = blobUrl;
+  document.body.appendChild(frame);
+  await new Promise<void>((resolve, reject) => {
+    frame.onload = () => {
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
+    frame.onerror = () => reject(new Error('Unable to open the invoice for printing'));
+  });
+  window.setTimeout(() => {
+    frame.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  }, 60_000);
 };

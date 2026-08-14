@@ -62,12 +62,15 @@ Evidence:
 
 Hosted entitlement belongs to an organization.
 Self-hosted organizations are unlimited.
-Hosted Free organizations have one writable primary shop, two distinct seats, and a 50-active-item allowance in the primary shop.
+Hosted Free organizations have one writable primary shop, two distinct seats, and a 500-active-item allowance in the primary shop.
 Hosted Pro organizations have up to three writable shops, ten distinct seats, and unlimited active inventory.
 After Pro expiry, additional shops remain readable and reject server-side mutations.
 Sold and zero-quantity rows do not consume that allowance, and sold rows remain immutable to preserve invoice and audit history.
 Item activation locks the shop before counting.
 Item updates, sales, and archival append immutable inventory snapshots, while deletion is a soft archive that preserves sale references.
+Unique inventory items use a per-unit `fixed_rate` with zero net weight and making charge, while all weight-based categories keep `fixed_rate` at zero.
+The fixed rate is snapshotted on sale items, participates in dashboard valuation, and receives the shop tax rate during checkout without requiring a metal rate.
+The client stores validated inventory metal, category, and status filters in a shop-scoped device preference and restores them before the first inventory request.
 Metal-rate writes preserve one compatible current row and append immutable history for as-of analytics.
 Sale creation locks inventory rows, prices with `Decimal`, stores seller, tax, item, and price snapshots, decrements stock, assigns a server-controlled invoice sequence, and records a shop-scoped idempotency result.
 The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
@@ -112,6 +115,27 @@ Evidence:
 - `app/jobs/invoices.py::process_invoice_jobs`
 - `app/modules/sales/storage.py::InvoiceStorage`
 - `app/modules/sales/routes.py::invoice`
+
+### Shared WhatsApp invoice delivery and printing
+
+Hosted Pro organizations can queue customer invoice delivery through one Aurum-owned WhatsApp Business Account and sender number.
+Meta credentials, sender identity, template state, webhook secrets, feature state, and provider billing are application-level Aurum configuration rather than tenant settings.
+The approved Utility template identifies the originating store, labels delivery as Aurum POS, and contains no promotional content.
+Checkout requires explicit confirmation that the customer requested delivery, sends WhatsApp in addition to the normal shop invoice download, and stores the staff actor, time, consent copy version, organization, shop, sale, recipient, source, and status.
+Delivery audit rows use forced shop RLS, while global job-control and keyed recipient-suppression tables support cross-tenant workers and shared-sender opt-outs.
+The worker reads only the exact checksum-verified stored invoice, uses fenced leasing and bounded retry, and leaves ambiguous provider timeouts in an unknown terminal state to prevent duplicate automatic sends.
+Signed Meta webhooks advance delivery status, synchronize the shared template state, and suppress recipients who opt out or explicitly block Aurum.
+A new explicitly confirmed customer request is audited before clearing a global recipient suppression.
+Invoice-history download, print, and WhatsApp actions are icon-only, and print retrieves the exact stored PDF through an authenticated shop-scoped endpoint.
+Android printing writes the PDF to application cache and passes only a validated app-cache PDF path to the native Android print manager.
+Merchant-owned WABAs and sender numbers are reserved for a future enhancement.
+
+Evidence:
+- `app/modules/whatsapp/models.py::WhatsAppInvoiceDelivery`
+- `app/modules/whatsapp/routes.py::receive_webhook`
+- `app/jobs/whatsapp.py::process_whatsapp_deliveries`
+- `frontend/src/pages/Invoices.tsx::InvoiceHistory`
+- `frontend/android/app/src/main/java/com/duelistraj/aurumpos/AurumPrintingPlugin.java`
 
 ### Production release health
 

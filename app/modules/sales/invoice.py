@@ -238,7 +238,8 @@ def _invoice_lines(
             )
         )
         net_weight = unit_net_weight * quantity_decimal
-        metal_value = _decimal(pricing.get("metal_value")) * quantity_decimal
+        fixed_rate = _decimal(pricing.get("fixed_rate")) * quantity_decimal
+        metal_value = (_decimal(pricing.get("metal_value")) * quantity_decimal) + fixed_rate
         making_charge = _decimal(pricing.get("making_charge")) * quantity_decimal
         gst_amount = _decimal(pricing.get("gst_amount")) * quantity_decimal
         description = Paragraph(escape(str(item_name)), styles["small"])

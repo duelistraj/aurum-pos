@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from app.modules.items.pricing import calculate_suggested_price, lock_price_at_sale
-from app.modules.items.schemas import ItemUpdate
+from app.modules.items.schemas import ItemCreate, ItemUpdate
 from app.modules.metal_rates.service import calculate_effective_rate_per_gram
 
 
@@ -61,7 +61,7 @@ def test_ring_and_pendant_use_per_weight_making_charge(category: str) -> None:
     assert pricing["final_price"] == Decimal("231.00")
 
 
-def test_unique_item_price_is_only_the_fixed_making_charge() -> None:
+def test_unique_item_legacy_price_maps_to_fixed_rate() -> None:
     pricing = calculate_suggested_price(
         category="unique",
         net_weight=0,
@@ -69,7 +69,45 @@ def test_unique_item_price_is_only_the_fixed_making_charge() -> None:
         making_charge=Decimal("1250.555"),
     )
     assert pricing["metal_value"] == Decimal("0.00")
+    assert pricing["making_charge"] == Decimal("0.00")
+    assert pricing["fixed_rate"] == Decimal("1250.56")
     assert pricing["suggested_price"] == Decimal("1250.56")
+
+
+def test_unique_item_fixed_rate_receives_shop_tax() -> None:
+    pricing = lock_price_at_sale(
+        metal="silver",
+        category="unique",
+        purity=0,
+        net_weight=0,
+        rate_per_gram=0,
+        making_charge=0,
+        fixed_rate=1000,
+        tax_rate_percent=3,
+    )
+
+    assert pricing["metal_value"] == Decimal("0.00")
+    assert pricing["making_charge"] == Decimal("0.00")
+    assert pricing["fixed_rate"] == Decimal("1000.00")
+    assert pricing["gst_amount"] == Decimal("30.00")
+    assert pricing["final_price"] == Decimal("1030.00")
+
+
+def test_unique_item_payload_normalizes_legacy_making_charge_to_fixed_rate() -> None:
+    item = ItemCreate(
+        sku="UNIQUE-1",
+        category="Unique",
+        name="Fixed price necklace",
+        metal="Silver",
+        purity=92.5,
+        net_weight=12,
+        making_charge=850,
+    )
+
+    assert item.category == "unique"
+    assert item.net_weight == 0
+    assert item.making_charge == 0
+    assert item.fixed_rate == 850
 
 
 def test_item_update_is_partial() -> None:

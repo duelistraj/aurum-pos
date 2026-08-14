@@ -8,6 +8,7 @@ export interface Item {
   purity: number;
   net_weight: number;
   making_charge: number;
+  fixed_rate?: number;
   quantity: number;
   notes: string | null;
   status: string;
@@ -28,6 +29,7 @@ export interface ItemPOSWithPrice {
   pricing: {
     metal_value: number;
     making_charge: number;
+    fixed_rate?: number;
     suggested_price: number;
     subtotal: number;
     gst_rate_percent: number;
@@ -69,6 +71,7 @@ export interface Sale {
   customer_phone: string;
   customer_address?: string;
   total_amount: number;
+  whatsapp_delivery_status?: string | null;
 }
 
 export interface InvoiceDownload {
@@ -87,6 +90,22 @@ export interface InvoiceSummary {
   total_amount: number;
   pdf_status: InvoicePdfStatus;
   pdf_generated_at: string | null;
+  whatsapp_delivery_status: string | null;
+  whatsapp_consent_confirmed_at: string | null;
+}
+
+export interface WhatsAppCapability {
+  enabled: boolean;
+  available: boolean;
+  pro_required: boolean;
+  sender_name: string;
+  template_status: string;
+}
+
+export interface WhatsAppDelivery {
+  delivery_id: string;
+  status: string;
+  consent_confirmed_at?: string;
 }
 
 export interface InvoicePage {

@@ -17,6 +17,13 @@ vi.mock('@capacitor/core', () => ({
 vi.mock('../api/client', () => ({
   apiClient: {
     getItemForPOS: vi.fn(),
+    getWhatsAppCapability: vi.fn().mockResolvedValue({
+      enabled: false,
+      available: false,
+      pro_required: true,
+      sender_name: 'Aurum POS',
+      template_status: 'unknown',
+    }),
   },
 }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));

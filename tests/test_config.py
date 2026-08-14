@@ -134,3 +134,13 @@ def test_email_sender_rejects_invalid_address() -> None:
             jwt_secret_key="test-secret-key",
             email_from="not-an-email",
         )
+
+
+def test_whatsapp_feature_cannot_start_with_partial_aurum_configuration() -> None:
+    with pytest.raises(ValidationError, match="WhatsApp delivery requires"):
+        Settings(
+            database_url="postgresql+asyncpg://example",
+            jwt_secret_key="test-secret-key",
+            whatsapp_enabled=True,
+            whatsapp_phone_number_id="aurum-sender",
+        )
