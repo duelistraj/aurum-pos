@@ -3,6 +3,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEBUG_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/build-android.yml"
 RELEASE_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/android-release.yml"
+PROMOTION_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/android-promote.yml"
 ANDROID_BUILD = REPOSITORY_ROOT / "frontend/android/app/build.gradle"
 ANDROID_MANIFEST = REPOSITORY_ROOT / "frontend/android/app/src/main/AndroidManifest.xml"
 ANDROID_ACTIVITY = (
@@ -55,11 +56,18 @@ def test_signed_aab_releases_directly_to_play_with_provenance_only() -> None:
     assert "packageName: com.duelistraj.aurumpos" in source
     assert "tracks: internal" in source
     assert "status: completed" in source
-    assert "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093" in source
-    assert 'track: "alpha"' in source
-    assert "versionCodes: [$version_code]" in source
-    assert "$ANDROID_VERSION_CODE" in source
+    assert 'node frontend/scripts/promote-play-release.mjs "$ANDROID_VERSION_CODE"' in source
     assert "tracks: production" not in source
+
+
+def test_existing_internal_release_can_be_promoted_without_rebuilding() -> None:
+    source = PROMOTION_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "version_code:" in source
+    assert "Verify immutable tested revision" in source
+    assert "has no successful CI run" in source
+    assert "bundleRelease" not in source
+    assert 'node frontend/scripts/promote-play-release.mjs "${{ inputs.version_code }}"' in source
 
 
 def test_android_version_code_comes_from_release_environment() -> None:

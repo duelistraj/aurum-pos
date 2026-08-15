@@ -1,0 +1,84 @@
+name: Promote Android to Play Closed Testing
+
+run-name: Promote Android ${{ inputs.version_code }} from ${{ inputs.ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full source commit SHA that already passed CI
+        required: true
+        type: string
+      version_code:
+        description: Existing Play Internal Testing version code
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: aurum-pos-play-testing
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: play-internal
+    steps:
+      - name: Require Play release secret
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: test -n "$PLAY_SERVICE_ACCOUNT_JSON"
+
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify immutable tested revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REF: ${{ inputs.ref }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_REF" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::ref must be a full 40-character commit SHA"
+            exit 1
+          }
+          git cat-file -e "${RELEASE_REF}^{commit}" || {
+            echo "::error::The requested revision is unavailable"
+            exit 1
+          }
+          git merge-base --is-ancestor "$RELEASE_REF" origin/main || {
+            echo "::error::The requested revision is not reachable from main"
+            exit 1
+          }
+          SUCCESSFUL_RUNS="$(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow CI \
+              --commit "$RELEASE_REF" \
+              --status success \
+              --json databaseId \
+              --jq length
+          )"
+          [[ "$SUCCESSFUL_RUNS" -gt 0 ]] || {
+            echo "::error::The requested revision has no successful CI run"
+            exit 1
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.18.0"
+
+      - name: Verify pinned JavaScript toolchain
+        run: test "$(node --version)" = "v24.18.0"
+
+      - name: Promote existing release to Play Closed Testing
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PACKAGE_NAME: com.duelistraj.aurumpos
+        run: node frontend/scripts/promote-play-release.mjs "${{ inputs.version_code }}"

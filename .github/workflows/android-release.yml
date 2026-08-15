@@ -198,70 +198,8 @@ jobs:
           tracks: internal
           status: completed
 
-      - name: Authenticate Google Play promotion
-        id: google-auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          credentials_json: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
-          create_credentials_file: false
-
       - name: Promote tested release to Play Closed Testing
         env:
-          ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PACKAGE_NAME: com.duelistraj.aurumpos
-        run: |
-          set -Eeuo pipefail
-          API_ROOT="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME/edits"
-          EDIT_ID="$(
-            curl --fail --silent --show-error \
-              --request POST \
-              --header "Authorization: Bearer $ACCESS_TOKEN" \
-              --header "Content-Type: application/json" \
-              --data '{}' \
-              "$API_ROOT" | jq --exit-status --raw-output '.id'
-          )"
-          cleanup_edit() {
-            if [[ -n "${EDIT_ID:-}" ]]; then
-              curl --fail --silent --show-error \
-                --request DELETE \
-                --header "Authorization: Bearer $ACCESS_TOKEN" \
-                "$API_ROOT/$EDIT_ID" >/dev/null || true
-            fi
-          }
-          trap cleanup_edit EXIT
-
-          jq --null-input \
-            --arg version_code "$ANDROID_VERSION_CODE" \
-            --arg release_name "Aurum POS $ANDROID_VERSION_CODE" \
-            '{
-              track: "alpha",
-              releases: [{
-                name: $release_name,
-                status: "completed",
-                versionCodes: [$version_code]
-              }]
-            }' >"$RUNNER_TEMP/play-closed-track.json"
-
-          curl --fail --silent --show-error \
-            --request PUT \
-            --header "Authorization: Bearer $ACCESS_TOKEN" \
-            --header "Content-Type: application/json" \
-            --data-binary @"$RUNNER_TEMP/play-closed-track.json" \
-            "$API_ROOT/$EDIT_ID/tracks/alpha" \
-            --output "$RUNNER_TEMP/play-closed-track-response.json"
-          jq --exit-status '.track == "alpha"' \
-            "$RUNNER_TEMP/play-closed-track-response.json" >/dev/null
-
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer $ACCESS_TOKEN" \
-            --header "Content-Type: application/json" \
-            "$API_ROOT/$EDIT_ID:commit" \
-            --output "$RUNNER_TEMP/play-closed-commit-response.json"
-          jq --exit-status '.id != null' \
-            "$RUNNER_TEMP/play-closed-commit-response.json" >/dev/null
-          EDIT_ID=""
-          printf 'Promoted Android version code %s to Play Closed Testing (alpha).\n' \
-            "$ANDROID_VERSION_CODE" >>"$GITHUB_STEP_SUMMARY"
+        run: node frontend/scripts/promote-play-release.mjs "$ANDROID_VERSION_CODE"
