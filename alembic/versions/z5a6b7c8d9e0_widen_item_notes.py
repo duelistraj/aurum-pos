@@ -17,6 +17,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # migration-safety: allow - widening varchar(50) to varchar(100) is metadata-only.
     op.alter_column(
         "items",
         "notes",
