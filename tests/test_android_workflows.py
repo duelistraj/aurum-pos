@@ -40,7 +40,7 @@ def test_signed_aab_enables_google_and_requires_stable_signing() -> None:
         "./gradlew :app:connectedDebugAndroidTest"
     )
     assert "environment: play-internal" in source
-    assert "group: aurum-pos-play-internal" in source
+    assert "group: aurum-pos-play-testing" in source
     assert "cancel-in-progress: false" in source
     assert "rm -f release.keystore" in source
 
@@ -55,6 +55,10 @@ def test_signed_aab_releases_directly_to_play_with_provenance_only() -> None:
     assert "packageName: com.duelistraj.aurumpos" in source
     assert "tracks: internal" in source
     assert "status: completed" in source
+    assert "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093" in source
+    assert 'track: "alpha"' in source
+    assert "versionCodes: [$version_code]" in source
+    assert "$ANDROID_VERSION_CODE" in source
     assert "tracks: production" not in source
 
 
