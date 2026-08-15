@@ -3,15 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Download,
   FileText,
   MessageCircle,
   Phone,
   Printer,
   RefreshCw,
-  Search,
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
@@ -25,6 +22,8 @@ import {
   Loader,
   Modal,
 } from '../components/UI';
+import { TablePagination } from '../components/TablePagination';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useShop } from '../context/ShopContext';
 import type { InvoicePdfStatus, InvoiceSummary } from '../types';
 import { downloadUrl, formatCurrency, formatDate, printInvoicePdf } from '../utils';
@@ -39,11 +38,6 @@ interface InvoiceFilters {
   fromDate: string;
   toDate: string;
   pdfStatus: '' | InvoicePdfStatus;
-}
-
-interface InvoiceCursor {
-  createdAt: string;
-  id: string;
 }
 
 interface ShopProfile {
@@ -102,6 +96,30 @@ const endOfLocalDayIso = (date: string): string | undefined => {
   return new Date(`${date}T23:59:59.999`).toISOString();
 };
 
+const invoiceDateFormatter = new Intl.DateTimeFormat('en-IN', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+const invoiceTimeFormatter = new Intl.DateTimeFormat('en-IN', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const InvoiceDateTime: React.FC<{ createdAt: string }> = ({ createdAt }) => {
+  const date = new Date(createdAt);
+  return (
+    <span className="invoice-date-time">
+      <CalendarDays className="invoice-date-time__icon" aria-hidden="true" />
+      <span className="invoice-date-time__value">
+        <span className="invoice-date-time__date">{invoiceDateFormatter.format(date)}</span>
+        <span className="invoice-date-time__time">{invoiceTimeFormatter.format(date)}</span>
+      </span>
+    </span>
+  );
+};
+
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = '' }) => (
   <span className={`relative inline-block ${className}`} aria-hidden="true">
     <MessageCircle className="absolute inset-0 h-full w-full" />
@@ -113,9 +131,9 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
   const queryClient = useQueryClient();
   const { activeMembership } = useShop();
   const [filters, setFilters] = React.useState<InvoiceFilters>(EMPTY_FILTERS);
-  const [appliedFilters, setAppliedFilters] = React.useState<InvoiceFilters>(EMPTY_FILTERS);
+  const debouncedSearch = useDebouncedValue(filters.search, 300);
   const [page, setPage] = React.useState(1);
-  const [cursorByPage, setCursorByPage] = React.useState<Record<number, InvoiceCursor>>({});
+  const [rowsPerPage, setRowsPerPage] = React.useState(10);
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [printingId, setPrintingId] = React.useState<string | null>(null);
   const [sendingId, setSendingId] = React.useState<string | null>(null);
@@ -124,18 +142,17 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
   const [downloadError, setDownloadError] = React.useState('');
   const queryParams = {
     page,
-    limit: 25,
-    search: appliedFilters.search || undefined,
-    from_date: startOfLocalDayIso(appliedFilters.fromDate),
-    to_date: endOfLocalDayIso(appliedFilters.toDate),
-    pdf_status: appliedFilters.pdfStatus || undefined,
-    cursor_created_at: cursorByPage[page]?.createdAt,
-    cursor_id: cursorByPage[page]?.id,
+    limit: rowsPerPage,
+    search: debouncedSearch || undefined,
+    from_date: startOfLocalDayIso(filters.fromDate),
+    to_date: endOfLocalDayIso(filters.toDate),
+    pdf_status: filters.pdfStatus || undefined,
   };
   const invoicesQuery = useQuery({
     queryKey: queryKeys.invoices(shopId, queryParams),
     queryFn: () => apiClient.listInvoices(queryParams),
     enabled: Boolean(shopId),
+    placeholderData: (previous) => previous,
   });
   const whatsAppCapability = useQuery({
     queryKey: ['shops', shopId, 'whatsapp', 'capability'],
@@ -144,24 +161,15 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     staleTime: 60_000,
   });
 
-  const applyFilters = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setAppliedFilters({ ...filters });
+  const updateFilters = (update: (current: InvoiceFilters) => InvoiceFilters) => {
+    setFilters(update);
     setPage(1);
-    setCursorByPage({});
-    setExpandedInvoiceId(null);
-  };
-
-  const resetFilters = () => {
-    setFilters(EMPTY_FILTERS);
-    setAppliedFilters(EMPTY_FILTERS);
-    setPage(1);
-    setCursorByPage({});
     setExpandedInvoiceId(null);
   };
 
   React.useEffect(() => {
     setExpandedInvoiceId(null);
+    setPage(1);
   }, [shopId]);
 
   const toggleExpandedInvoice = (saleId: string) => {
@@ -241,7 +249,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     const isPrinting = printingId === invoice.sale_id;
     const isSending = sendingId === invoice.sale_id;
     const isPdfReady = invoice.pdf_status === 'ready';
-    const actionClass = 'h-11 w-11 p-0';
+    const actionClass = 'invoice-action h-11 w-11';
     return (
       <div className={`flex items-center ${mobile ? 'justify-start' : 'justify-end'} gap-2`}>
         <Button
@@ -255,9 +263,9 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           onClick={() => void downloadInvoice(invoice)}
         >
           {isDownloading || invoice.pdf_status === 'failed' ? (
-            <RefreshCw className={`h-5 w-5 ${isDownloading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-6 w-6 ${isDownloading ? 'animate-spin' : ''}`} />
           ) : (
-            <Download className="h-5 w-5" />
+            <Download className="h-6 w-6" />
           )}
         </Button>
         <Button
@@ -271,9 +279,9 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           onClick={() => void printInvoice(invoice)}
         >
           {isPrinting ? (
-            <RefreshCw className="h-5 w-5 animate-spin" />
+            <RefreshCw className="h-6 w-6 animate-spin" />
           ) : (
-            <Printer className="h-5 w-5" />
+            <Printer className="h-6 w-6" />
           )}
         </Button>
         {whatsAppCapability.data?.enabled ? (
@@ -293,9 +301,9 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
             }}
           >
             {isSending ? (
-              <RefreshCw className="h-5 w-5 animate-spin" />
+              <RefreshCw className="h-6 w-6 animate-spin" />
             ) : (
-              <WhatsAppIcon className="h-5 w-5" />
+              <WhatsAppIcon className="h-6 w-6" />
             )}
           </Button>
         ) : null}
@@ -314,63 +322,59 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
       className="space-y-5"
     >
       <Card className="p-5 sm:p-6">
-        <form onSubmit={applyFilters} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <div className="md:col-span-2">
+        <div className="transaction-filter-layout invoice-filter-layout">
+          <div className="transaction-filter-search">
               <Input
                 id="invoice-search"
                 label="Search invoices"
                 placeholder="Invoice number, customer, or phone"
                 value={filters.search}
-                onChange={(event) => setFilters((current) => ({
+                onChange={(event) => updateFilters((current) => ({
                   ...current,
                   search: event.target.value,
                 }))}
               />
-            </div>
-            <Input
-              id="invoice-from-date"
-              label="From"
-              type="date"
-              value={filters.fromDate}
-              onChange={(event) => setFilters((current) => ({
-                ...current,
-                fromDate: event.target.value,
-              }))}
-            />
-            <Input
-              id="invoice-to-date"
-              label="To"
-              type="date"
-              min={filters.fromDate || undefined}
-              value={filters.toDate}
-              onChange={(event) => setFilters((current) => ({
-                ...current,
-                toDate: event.target.value,
-              }))}
-            />
-            <ListboxSelect
-              id="invoice-status"
-              label="PDF status"
-              value={filters.pdfStatus}
-              options={STATUS_OPTIONS}
-              placeholder="All statuses"
-              onValueChange={(value) => setFilters((current) => ({
-                ...current,
-                pdfStatus: value as InvoiceFilters['pdfStatus'],
-              }))}
-            />
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit">
-              <Search className="h-4 w-4" />
-              <span>Search</span>
-            </Button>
-            <Button type="button" variant="secondary" onClick={resetFilters}>
-              Reset
-            </Button>
-          </div>
-        </form>
+          <Input
+            id="invoice-from-date"
+            label="From"
+            type="date"
+            wrapperClassName="transaction-filter-from"
+            value={filters.fromDate}
+            onChange={(event) => {
+              const fromDate = event.target.value;
+              updateFilters((current) => ({
+                ...current,
+                fromDate,
+                toDate: current.toDate && current.toDate < fromDate ? '' : current.toDate,
+              }));
+            }}
+          />
+          <Input
+            id="invoice-to-date"
+            label="To"
+            type="date"
+            wrapperClassName="transaction-filter-to"
+            min={filters.fromDate || undefined}
+            value={filters.toDate}
+            onChange={(event) => updateFilters((current) => ({
+              ...current,
+              toDate: event.target.value,
+            }))}
+          />
+          <ListboxSelect
+            id="invoice-status"
+            label="PDF status"
+            className="transaction-filter-status"
+            value={filters.pdfStatus}
+            options={STATUS_OPTIONS}
+            placeholder="All statuses"
+            onValueChange={(value) => updateFilters((current) => ({
+              ...current,
+              pdfStatus: value as InvoiceFilters['pdfStatus'],
+            }))}
+          />
+        </div>
       </Card>
 
       {downloadError ? <Alert type="error" message={downloadError} /> : null}
@@ -379,25 +383,6 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
       ) : null}
 
       <Card className="overflow-hidden">
-        <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Invoice history</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {invoicesQuery.data?.total ?? 0} invoices in this shop
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={invoicesQuery.isFetching}
-            onClick={() => void invoicesQuery.refetch()}
-          >
-            <RefreshCw className={`h-4 w-4 ${invoicesQuery.isFetching ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </Button>
-        </div>
-
         {invoicesQuery.isPending ? (
           <div className="flex justify-center py-16">
             <Loader />
@@ -421,7 +406,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                   <th className="hidden px-5 py-3 font-bold sm:table-cell">Customer</th>
                   <th className="hidden px-5 py-3 font-bold sm:table-cell">Date</th>
                   <th className="w-[5.5rem] px-2 py-3 text-right text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Amount</th>
-                  <th className="w-[5.5rem] px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Status</th>
+                  <th className="w-[5.5rem] whitespace-nowrap px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Status</th>
                   <th className="hidden px-5 py-3 text-right font-bold sm:table-cell">Action</th>
                   <th className="w-11 px-1 py-3 sm:hidden">
                     <span className="sr-only">Details</span>
@@ -453,16 +438,13 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                           </p>
                         </td>
                         <td className="hidden px-5 py-4 text-sm text-slate-600 dark:text-slate-300 sm:table-cell">
-                          <span className="flex items-center gap-2">
-                            <CalendarDays className="h-4 w-4 text-slate-400" />
-                            {formatDate(invoice.created_at)}
-                          </span>
+                          <InvoiceDateTime createdAt={invoice.created_at} />
                         </td>
                         <td className="px-2 py-3 text-right text-xs font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4 sm:text-sm">
                           {formatCurrency(invoice.total_amount)}
                         </td>
-                        <td className="px-2 py-3 sm:px-5 sm:py-4">
-                          <div className="flex flex-col items-start gap-1.5">
+                        <td className="invoice-status-cell px-2 py-3 sm:px-5 sm:py-4">
+                          <div className="invoice-status-badges flex flex-col items-start gap-1.5">
                             <Badge variant={status.variant}>{status.label}</Badge>
                             {invoice.whatsapp_delivery_status ? (
                               <Badge variant="info">
@@ -557,47 +539,26 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           </div>
         )}
 
-        {pageCount > 1 ? (
-          <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 dark:border-slate-800">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={page <= 1}
-              onClick={() => {
-                setPage((current) => Math.max(1, current - 1));
-                setExpandedInvoiceId(null);
-              }}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span>Previous</span>
-            </Button>
-            <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              Page {page} of {pageCount}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={page >= pageCount}
-              onClick={() => {
-                const createdAt = invoicesQuery.data?.next_cursor_created_at;
-                const id = invoicesQuery.data?.next_cursor_id;
-                if (!createdAt || !id) return;
-                setCursorByPage((current) => ({
-                  ...current,
-                  [page + 1]: { createdAt, id },
-                }));
-                setPage((current) => current + 1);
-                setExpandedInvoiceId(null);
-              }}
-            >
-              <span>Next</span>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : null}
       </Card>
+      {(!invoicesQuery.isPending || invoices.length > 0) ? (
+        <TablePagination
+          currentPage={page}
+          totalPages={pageCount}
+          totalItems={invoicesQuery.data?.total ?? 0}
+          rowsPerPage={rowsPerPage}
+          itemLabel="invoices"
+          loading={invoicesQuery.isFetching}
+          onPageChange={(nextPage) => {
+            setPage(nextPage);
+            setExpandedInvoiceId(null);
+          }}
+          onRowsPerPageChange={(rows) => {
+            setRowsPerPage(rows);
+            setPage(1);
+            setExpandedInvoiceId(null);
+          }}
+        />
+      ) : null}
       <Modal
         isOpen={whatsAppInvoice !== null}
         title="Send invoice on WhatsApp"

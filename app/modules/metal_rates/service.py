@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.changelog.service import log_change
+from app.core.changelog.service import AuditActor, log_change
 from app.modules.metal_rates.models import MetalRate
 from app.modules.metal_rates.schemas import MetalRateCreate
 
@@ -40,6 +40,7 @@ async def add_metal_rate(
     data: MetalRateCreate,
     *,
     shop_id: UUID,
+    actor: AuditActor,
 ) -> MetalRate:
     """Append a metal rate so historical pricing remains reproducible."""
     metal_lower = data.metal.strip().lower()
@@ -85,6 +86,9 @@ async def add_metal_rate(
             "rate_per_gram": float(rate.rate_per_gram),
             "before": float(old_rate) if old_rate is not None else None,
         },
+        actor=actor,
+        subject_label=f"{rate.metal.title()} {float(rate.purity):g}%",
+        reference=rate.metal,
     )
     return rate
 

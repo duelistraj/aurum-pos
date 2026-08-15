@@ -31,8 +31,8 @@ The official product is distributed through Google Play.
 The web build supports the Android package and public account, legal, and recovery pages.
 
 1. Push application code to `main` and wait for public CI to succeed.
-2. Run `Release Android to Play Internal Testing` with the full tested commit SHA.
-3. The workflow builds a signed AAB and uploads it directly to the Google Play Internal Testing track.
+2. Run `Release Android to Play Testing` with the full tested commit SHA.
+3. The workflow builds a signed AAB, uploads it directly to Google Play Internal Testing, and promotes that exact version code to the Closed Testing `alpha` track.
 4. Promote the tested Play release to later tracks without rebuilding it.
 5. Promote the backend image separately by opening an `aurum-pos-ops` pull request that changes only `production/image.env` to the immutable digest for the approved revision.
 6. Merging that operations pull request deploys through GitHub OIDC and AWS SSM.

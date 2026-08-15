@@ -168,6 +168,97 @@ export interface ChangeLogPage {
   pages: number;
 }
 
+export type AuditActorKind = 'user' | 'system' | 'unknown';
+export type AuditDetailKind = 'changes' | 'facts' | 'sale';
+
+export interface AuditActor {
+  kind: AuditActorKind;
+  user_id: string | null;
+  name: string;
+  role: string | null;
+}
+
+export interface AuditActorOption {
+  user_id: string;
+  name: string;
+  role: string | null;
+}
+
+export interface AuditSubject {
+  type: string;
+  id: string;
+  label: string;
+  reference: string | null;
+}
+
+export interface AuditChange {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface AuditFact {
+  label: string;
+  value: unknown;
+}
+
+export interface AuditSaleItem {
+  item_id: string;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  quantity: number | null;
+  weight_grams: number | null;
+  amount: number;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  event_type: string;
+  area: string;
+  subject: AuditSubject;
+  actor: AuditActor;
+  summary: string;
+  details: {
+    kind: AuditDetailKind;
+    changes: AuditChange[];
+    facts: AuditFact[];
+    sale_items: AuditSaleItem[];
+    total: number | null;
+  };
+  created_at: string;
+}
+
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface SoldTransaction {
+  id: string;
+  item_id: string;
+  item_name: string;
+  sku: string | null;
+  barcode: string | null;
+  invoice_no: string | null;
+  quantity: number | null;
+  weight_grams: number | null;
+  amount: number;
+  created_at: string;
+}
+
+export interface SoldTransactionPage {
+  entries: SoldTransaction[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export interface DashboardSummary {
   inventory_items: number;
   total_stock_value: number;
@@ -181,7 +272,8 @@ export interface DashboardSummary {
 export interface CashierDashboardSummary {
   today_sales: number;
   invoice_count: number;
-  recent_sold_activity: ChangeLogEntry[];
+  units_sold: number;
+  recent_sold_activity: SoldTransaction[];
   metal_rates: DashboardMetalRate[];
 }
 

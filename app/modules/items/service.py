@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.changelog.service import log_change
+from app.core.changelog.service import AuditActor, log_change
 from app.modules.items.models import Item, ItemHistory
 from app.modules.items.schemas import ItemBase, ItemCreate, ItemUpdate
 from app.modules.subscriptions.service import enforce_item_activation_limit
@@ -71,7 +71,13 @@ async def generate_unique_barcode(db: AsyncSession, *, shop_id: UUID) -> str:
     raise RuntimeError("Unable to generate a unique barcode")
 
 
-async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> Item:
+async def create_item(
+    db: AsyncSession,
+    data: ItemCreate,
+    *,
+    shop_id: UUID,
+    actor: AuditActor,
+) -> Item:
     item_data = data.model_dump()
 
     if item_data.get("quantity", 1) > 0:
@@ -95,7 +101,14 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
         payload={
             "sku": item.sku,
             "barcode": item.barcode,
+            "name": item.name,
+            "category": item.category,
+            "item_type": item.item_type,
+            "quantity": item.quantity,
         },
+        actor=actor,
+        subject_label=item.name,
+        reference=item.barcode,
     )
 
     await db.flush()
@@ -103,7 +116,14 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
     return item
 
 
-async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop_id: UUID) -> Item:
+async def update_item(
+    db: AsyncSession,
+    item_id: UUID,
+    data: ItemUpdate,
+    *,
+    shop_id: UUID,
+    actor: AuditActor,
+) -> Item:
     item = await get_item_by_id(db, item_id, shop_id=shop_id, for_update=True)
     if not item:
         raise ValueError("Item does not exist")
@@ -273,6 +293,9 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
                 "barcode": item.barcode,
                 "changes": changes,
             },
+            actor=actor,
+            subject_label=item.name,
+            reference=item.barcode,
         )
 
     await db.flush()
@@ -280,7 +303,13 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
     return item
 
 
-async def _archive_item(db: AsyncSession, item: Item, *, shop_id: UUID) -> None:
+async def _archive_item(
+    db: AsyncSession,
+    item: Item,
+    *,
+    shop_id: UUID,
+    actor: AuditActor,
+) -> None:
     payload = {
         "sku": item.sku,
         "barcode": item.barcode,
@@ -308,6 +337,9 @@ async def _archive_item(db: AsyncSession, item: Item, *, shop_id: UUID) -> None:
         entity_id=item.id,
         action="delete",
         payload=payload,
+        actor=actor,
+        subject_label=item.name,
+        reference=item.barcode,
     )
     item.quantity = 0
     item.status = "archived"
@@ -315,14 +347,20 @@ async def _archive_item(db: AsyncSession, item: Item, *, shop_id: UUID) -> None:
     record_item_history(db, item, event_type="archive")
 
 
-async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None:
+async def delete_item(
+    db: AsyncSession,
+    item_id: UUID,
+    *,
+    shop_id: UUID,
+    actor: AuditActor,
+) -> None:
     item = await get_item_by_id(db, item_id, shop_id=shop_id, for_update=True)
     if not item:
         raise ValueError("Item does not exist")
     if item.status != "in_stock":
         raise ValueError("Only in_stock items can be deleted")
 
-    await _archive_item(db, item, shop_id=shop_id)
+    await _archive_item(db, item, shop_id=shop_id, actor=actor)
     await db.flush()
 
 
@@ -331,6 +369,7 @@ async def delete_items(
     item_ids: list[UUID],
     *,
     shop_id: UUID,
+    actor: AuditActor,
 ) -> None:
     result = await db.execute(
         select(Item)
@@ -350,7 +389,7 @@ async def delete_items(
         raise ValueError("Only in_stock items can be deleted")
 
     for item_id in item_ids:
-        await _archive_item(db, item_by_id[item_id], shop_id=shop_id)
+        await _archive_item(db, item_by_id[item_id], shop_id=shop_id, actor=actor)
 
     await db.flush()
 

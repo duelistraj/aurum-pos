@@ -146,6 +146,18 @@ describe('Manage Shop', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
 
+    const memberRole = await screen.findByRole('button', { name: 'Role for Store Manager' });
+    await user.click(memberRole);
+    const memberRoleListbox = screen.getByRole('listbox', { name: 'Role for Store Manager' });
+    expect(within(memberRoleListbox).queryByRole('option', { name: 'Select an option' }))
+      .not.toBeInTheDocument();
+    await user.click(within(memberRoleListbox).getByRole('option', { name: 'CASHIER' }));
+    await waitFor(() => {
+      expect(apiClient.updateStaff).toHaveBeenCalledWith('shop-1', 'manager-membership', {
+        role: 'CASHIER',
+      });
+    });
+
     await user.click(screen.getByRole('button', { name: 'Role CASHIER' }));
 
     const roleListbox = screen.getByRole('listbox', { name: 'Role' });
@@ -174,7 +186,9 @@ describe('Manage Shop', () => {
     renderManageShop('/manage-shop?tab=staff');
 
     await screen.findByText('Store Manager');
-    await user.click(screen.getByRole('button', { name: 'Make owner' }));
+    const makeOwner = screen.getByRole('button', { name: 'Make owner' });
+    expect(makeOwner).toHaveClass('staff-make-owner');
+    await user.click(makeOwner);
 
     expect(screen.getByRole('dialog', { name: 'Transfer organization ownership' }))
       .toBeInTheDocument();

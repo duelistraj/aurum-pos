@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from app.modules.dashboard.schemas import CashierAnalyticsResponse, CashierDashboardSummary
 from app.modules.items.schemas import CashierItemLookupOut
 
@@ -50,6 +53,7 @@ def test_cashier_dashboard_requires_all_three_display_rates() -> None:
         {
             "today_sales": 0,
             "invoice_count": 0,
+            "units_sold": 0,
             "recent_sold_activity": [],
             "metal_rates": [
                 {"metal": "gold", "rate_per_10g": 0},
@@ -67,19 +71,19 @@ def test_cashier_dashboard_sold_activity_has_a_strict_payload_allowlist() -> Non
         {
             "today_sales": 1500,
             "invoice_count": 1,
+            "units_sold": 1,
             "recent_sold_activity": [
                 {
                     "id": "00000000-0000-0000-0000-000000000001",
-                    "entity": "item",
-                    "action": "sold",
-                    "payload": {
-                        "barcode": "12345678",
-                        "invoice_no": "INV-2026-000001",
-                        "quantity": 1,
-                        "weight_grams": None,
-                        "pricing": {"total_price": 1500},
-                        "notes": "must not leak",
-                    },
+                    "item_id": "00000000-0000-0000-0000-000000000002",
+                    "item_name": "Gold Ring",
+                    "sku": "RING-1",
+                    "barcode": "12345678",
+                    "invoice_no": "INV-2026-000001",
+                    "quantity": 1,
+                    "weight_grams": None,
+                    "amount": 1500,
+                    "notes": "must not leak",
                     "created_at": "2026-08-15T08:30:00Z",
                 }
             ],
@@ -92,13 +96,46 @@ def test_cashier_dashboard_sold_activity_has_a_strict_payload_allowlist() -> Non
     )
 
     assert response.invoice_count == 1
-    assert response.recent_sold_activity[0].payload.model_dump() == {
+    assert response.units_sold == 1
+    assert response.recent_sold_activity[0].model_dump(exclude={"id", "item_id", "created_at"}) == {
+        "item_name": "Gold Ring",
+        "sku": "RING-1",
         "barcode": "12345678",
         "invoice_no": "INV-2026-000001",
         "quantity": 1,
         "weight_grams": None,
-        "pricing": {"total_price": 1500},
+        "amount": 1500,
     }
+
+
+def test_cashier_dashboard_rejects_more_than_three_recent_items() -> None:
+    activity = {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "item_id": "00000000-0000-0000-0000-000000000002",
+        "item_name": "Gold Ring",
+        "sku": "RING-1",
+        "barcode": "12345678",
+        "invoice_no": "INV-2026-000001",
+        "quantity": 1,
+        "weight_grams": None,
+        "amount": 1500,
+        "created_at": "2026-08-15T08:30:00Z",
+    }
+
+    with pytest.raises(ValidationError):
+        CashierDashboardSummary.model_validate(
+            {
+                "today_sales": 1500,
+                "invoice_count": 1,
+                "units_sold": 1,
+                "recent_sold_activity": [activity] * 4,
+                "metal_rates": [
+                    {"metal": "gold", "rate_per_10g": 0},
+                    {"metal": "silver", "rate_per_10g": 0},
+                    {"metal": "platinum", "rate_per_10g": 0},
+                ],
+            }
+        )
 
 
 def test_cashier_analytics_contract_has_every_hour_of_the_day() -> None:

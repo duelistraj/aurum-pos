@@ -770,12 +770,12 @@ describe('Inventory entitlement usage', () => {
     renderInventoryWithNavbar();
 
     expect(await screen.findByText('First page item')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '2' }));
+    await user.click(screen.getByRole('button', { name: 'Page 2' }));
 
     expect(screen.getByRole('status', { name: 'Loading inventory page' }))
       .toBeInTheDocument();
     expect(screen.getByText('First page item')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '2' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Page 2' })).toBeDisabled();
 
     resolveSecondPage?.({
       items: [secondItem],
@@ -814,18 +814,27 @@ describe('Inventory entitlement usage', () => {
     renderInventoryWithNavbar();
     const rowLabel = await screen.findByLabelText('Gesture Ring. Hold to edit, or press Enter.');
     fireEvent.pointerDown(rowLabel, { button: 0, clientX: 20, clientY: 20 });
+    expect(rowLabel).toHaveClass('inventory-table__row--pressing');
     await waitFor(
       () => expect(screen.getByRole('dialog', { name: 'Edit Item' })).toBeInTheDocument(),
       { timeout: 900 },
     );
+    expect(screen.getByRole('dialog', { name: 'Edit Item' })).toHaveClass('inventory-edit-modal');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
     await user.click(screen.getByRole('checkbox', { name: 'Select 13572468' }));
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     await user.click(screen.getByRole('button', { name: 'Delete selected items' }));
+    let deleteDialog = screen.getByRole('dialog', { name: 'Delete item' });
+    expect(deleteDialog).toHaveTextContent('Delete the selected item from inventory?');
+    expect(deleteDialog).toHaveTextContent('This action cannot be undone.');
+    expect(apiClient.deleteItems).not.toHaveBeenCalled();
+    await user.click(within(deleteDialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Delete item' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Delete selected items' }));
+    deleteDialog = screen.getByRole('dialog', { name: 'Delete item' });
+    await user.click(within(deleteDialog).getByRole('button', { name: 'Delete item' }));
     await waitFor(() => expect(apiClient.deleteItems).toHaveBeenCalledWith(['item-gesture']));
-    expect(confirm).toHaveBeenCalledWith('Delete 1 selected item? This action cannot be undone.');
-    confirm.mockRestore();
   });
 
   it('uses a compact role-gated action bar and download menu on phones', async () => {

@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import {
   Activity,
   AlertCircle,
-  ArrowUpRight,
   Clock,
   IndianRupee,
   Package,
@@ -195,9 +194,7 @@ export const Dashboard: React.FC = () => {
   const queryError = dashboardQuery.error;
   const currentIndiaDate = useIndiaDate();
   const welcomeName = user?.full_name?.trim().split(/\s+/)[0] || 'there';
-  const visibleActivity = summary?.recent_activity.filter(
-    (activity) => !(activity.entity === 'item' && activity.action === 'sold'),
-  ) ?? [];
+  const visibleActivity = summary?.recent_activity.slice(0, 3) ?? [];
   const dashboardMetalRates = React.useMemo(() => {
     if (summary?.metal_rates?.length) return summary.metal_rates;
     if (summary && Number.isFinite(summary.Silver_rate_per_10g) && summary.Silver_rate_per_10g > 0) {
@@ -214,13 +211,6 @@ export const Dashboard: React.FC = () => {
       value: summary ? safeFormatCurrency(summary.total_sales_amount) : formatCurrency(0),
       context: 'All recorded sales',
       tone: 'gold',
-    },
-    {
-      icon: <ArrowUpRight className="dashboard-stat__svg" />,
-      label: 'Catalog value',
-      value: summary ? safeFormatCurrency(summary.total_sale_value) : formatCurrency(0),
-      context: 'Estimated sale value',
-      tone: 'blue',
     },
     {
       icon: <Package className="dashboard-stat__svg" />,
@@ -254,10 +244,6 @@ export const Dashboard: React.FC = () => {
           <p className="dashboard-page__subtitle">Here is an overview of your shop today.</p>
           <p className="dashboard-page__date"><time>{currentIndiaDate}</time></p>
         </div>
-        <Link to="/transactions" className="dashboard-header-link">
-          <Activity className="dashboard-header-link__icon" />
-          View activity
-        </Link>
       </div>
 
       {queryError ? (
@@ -304,7 +290,7 @@ export const Dashboard: React.FC = () => {
           </div>
         ) : visibleActivity.length > 0 ? (
           <ul className="dashboard-activity__list">
-            {visibleActivity.slice(0, 4).map((activity) => <ActivityRow key={activity.id} activity={activity} />)}
+            {visibleActivity.map((activity) => <ActivityRow key={activity.id} activity={activity} />)}
           </ul>
         ) : (
           <div className="dashboard-activity__empty">

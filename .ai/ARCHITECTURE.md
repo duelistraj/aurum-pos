@@ -44,7 +44,7 @@ Staff join through hashed, expiring shop invitations.
 Owners and administrators can immediately deactivate memberships, while only the organization owner can request a durable ownership transfer to another active member.
 Access JWTs contain user and session identity but no role; opaque hashed refresh tokens rotate in the database.
 Roles are OWNER, ADMIN, MANAGER, and CASHIER.
-Cashiers can create sales, access every selected-shop invoice, read all-date sold-item activity, read metal rates, view today-only sales analytics, and look up one item by an exact barcode through purpose-built responses.
+Cashiers can create sales, access every selected-shop invoice, read current-day sold-item transactions, read metal rates, view today-only sales analytics, and look up one item by an exact barcode through purpose-built responses.
 Cashiers cannot browse inventory, stock and catalog values, non-sale activity logs, management analytics, or subscription usage.
 Managers additionally control inventory, rates, labels, and management reporting, administrators additionally manage shop settings, staff, and devices, and organization owners alone control administrator membership, organization ownership transfer, shop creation, and Play billing.
 Confirmed account deletions execute after seven days and can be cancelled with the confirmation token until cleanup begins.
@@ -86,7 +86,10 @@ Sale creation locks inventory rows, prices with `Decimal`, stores seller, tax, i
 The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
 Dashboard analytics use bounded date ranges and database aggregates instead of loading sale and inventory graphs into application memory.
 Cashier dashboard sales and invoice metrics plus Cashier analytics derive the current calendar day in `Asia/Kolkata`, convert its half-open bounds to UTC, and never accept a client-selected date range.
-Cashier recent activity and Transactions use an allowlisted sold-item feed across all dates, with optional barcode and timestamp filters that cannot be broadened to other activity types.
+Cashier recent activity and Transactions use an allowlisted sold-item feed restricted by the server to the current `Asia/Kolkata` calendar day, with barcode or invoice search that cannot be broadened to other activity types.
+Management audit history normalizes inventory, rate, sale, shop-settings, invitation, membership, and ownership events into a paginated table contract.
+New audit rows preserve actor ID, name, and role snapshots, historical rows identify their actor as Unknown, and worker-generated rows identify their actor as System.
+Completed sales remain one management audit row per invoice while their item-sold rows support the Cashier feed and expanded sale details.
 Cashier All sales analytics aggregate sale values by Gold Jewellery, Silver Jewellery, Platinum Jewellery, and Stones, while selecting one material drills into its item categories.
 Management and Cashier analytics rank the top three items by filtered sales value and report the sold amount as pieces or grams without exposing internal item IDs.
 The Cashier barcode lookup has a dedicated allowlisted response and returns no internal item ID, quantity balance, stock weight, pricing inputs, notes, or inventory aggregates.
@@ -162,7 +165,7 @@ The private operations repository retrieves each required runtime key from its o
 The migration administrator URL is fetched separately and is never installed in the API or worker runtime file.
 The public operator template validates the restricted runtime role, pauses the worker before migration, verifies the API release identity, and requires a heartbeat from the uniquely identified replacement worker.
 The official client supports Android and the authenticated production browser SPA.
-Its signed AAB is released directly to Google Play Internal Testing from an explicitly selected revision that already passed CI.
+Its signed AAB is released directly to Google Play Internal Testing from an explicitly selected revision that already passed CI, then the same version code is promoted to the Closed Testing `alpha` track.
 The private web manifest requires the same Android-approved source revision, pins the toolchain and deterministic artifact checksum, and deploys only through Amplify's manual deployment API.
 Backend production promotion is an independent immutable-digest pull request in the private operations repository.
 
@@ -185,7 +188,7 @@ Browser access tokens remain in memory, while the rotating browser refresh token
 Browsers persist only a random untrusted installation UUID and coordinate refresh and logout across tabs without storing or broadcasting credentials.
 Dashboard summary and analytics responses expose ordered configured metal rates while retaining the legacy silver-rate fields for client compatibility.
 The React client dispatches Cashiers to separate Dashboard, Inventory, and Analytics components so management data fetching code is never mounted for that role.
-Cashier Transactions combines the allowlisted sold-item feed with invoice history without mounting management activity queries, and the subscription query and controls are omitted.
+Transactions presents a normalized Audit Log table to manager-level roles and a current-day Sold Items table to Cashiers, while reusing the existing invoice history without mounting management audit queries for Cashiers.
 The authenticated client rotates configured dashboard rates and gives writable manager-level users one device-local reminder after 08:00 Asia/Kolkata when configured rates have not been refreshed during that IST day.
 Completed Android downloads are written to app-owned storage, and a native bridge accepts only those app-owned paths before posting a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
 Inventory and invoice data remain full tables at viewport widths of 640 pixels and above.

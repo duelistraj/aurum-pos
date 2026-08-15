@@ -31,6 +31,19 @@ class ChangeLog(Base):
             text("created_at DESC"),
             postgresql_where=text("invoice_no IS NOT NULL"),
         ),
+        Index(
+            "ix_change_log_shop_event_created",
+            "shop_id",
+            "event_type",
+            text("created_at DESC"),
+        ),
+        Index(
+            "ix_change_log_shop_actor_created",
+            "shop_id",
+            "actor_user_id",
+            text("created_at DESC"),
+            postgresql_where=text("actor_user_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -62,6 +75,16 @@ class ChangeLog(Base):
         String(20),
         nullable=False,  # create, update, sale
     )
+
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+
+    subject_label: Mapped[str | None] = mapped_column(String(200))
+    reference: Mapped[str | None] = mapped_column(String(100))
+
+    actor_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    actor_name: Mapped[str | None] = mapped_column(String(100))
+    actor_role: Mapped[str | None] = mapped_column(String(20))
 
     payload: Mapped[dict] = mapped_column(
         JSON,

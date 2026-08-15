@@ -2,13 +2,13 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TypedDict
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
-from sqlalchemy import Date, and_, case, cast, func, literal, select
+from sqlalchemy import Date, and_, case, cast, func, literal, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
-from app.modules.changelog.service import serialize_sold_change_log_entry
+from app.core.time import india_day_bounds
+from app.modules.changelog.service import get_sold_transaction_history
 from app.modules.items.catalog import format_category_name
 from app.modules.items.models import Item, ItemHistory
 from app.modules.metal_rates.models import MetalRateHistory
@@ -18,7 +18,6 @@ from app.modules.shops.models import Shop
 HUNDRED = Decimal("100")
 METAL_DISPLAY_ORDER = ("gold", "silver", "platinum")
 ANALYTICS_MATERIALS = frozenset((*METAL_DISPLAY_ORDER, "stone"))
-INDIA_TIMEZONE = ZoneInfo("Asia/Kolkata")
 TOP_SELLING_ITEM_LIMIT = 3
 
 
@@ -464,9 +463,12 @@ async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
     total_sales_amount = await db.scalar(select(Shop.total_sales_amount).where(Shop.id == shop_id))
     activity_result = await db.execute(
         select(ChangeLog)
-        .where(ChangeLog.shop_id == shop_id)
+        .where(
+            ChangeLog.shop_id == shop_id,
+            not_(and_(ChangeLog.entity == "item", ChangeLog.action == "sold")),
+        )
         .order_by(ChangeLog.created_at.desc())
-        .limit(5)
+        .limit(3)
     )
     return {
         "inventory_items": metrics["inventory_items"],
@@ -488,15 +490,8 @@ async def get_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
     }
 
 
-def _india_day_bounds() -> tuple[date, datetime, datetime]:
-    local_now = datetime.now(INDIA_TIMEZONE)
-    local_start = datetime.combine(local_now.date(), datetime.min.time(), tzinfo=INDIA_TIMEZONE)
-    local_end = local_start + timedelta(days=1)
-    return local_now.date(), local_start.astimezone(UTC), local_end.astimezone(UTC)
-
-
 async def get_cashier_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
-    _, start, end = _india_day_bounds()
+    _, start, end = india_day_bounds()
     today_sales, invoice_count = (
         await db.execute(
             select(
@@ -509,23 +504,24 @@ async def get_cashier_dashboard_summary(db: AsyncSession, *, shop_id: UUID) -> d
             )
         )
     ).one()
-    activity_result = await db.execute(
-        select(ChangeLog)
-        .where(
-            ChangeLog.shop_id == shop_id,
-            ChangeLog.entity == "item",
-            ChangeLog.action == "sold",
-        )
-        .order_by(ChangeLog.created_at.desc())
-        .limit(4)
+    units_sold = await _units_sold(
+        db,
+        shop_id=shop_id,
+        start=start,
+        end=end,
+        metal="all",
+    )
+    sold_history = await get_sold_transaction_history(
+        db,
+        shop_id=shop_id,
+        limit=3,
     )
     rates = await _rates_at(db, shop_id=shop_id, timestamp=datetime.now(UTC))
     return {
         "today_sales": round(float(today_sales or 0), 2),
         "invoice_count": int(invoice_count or 0),
-        "recent_sold_activity": [
-            serialize_sold_change_log_entry(entry) for entry in activity_result.scalars()
-        ],
+        "units_sold": units_sold,
+        "recent_sold_activity": sold_history["entries"],
         "metal_rates": [
             {
                 "metal": metal,
@@ -544,6 +540,36 @@ def _sale_item_material():
 
 def _cashier_item_filter(metal: str):
     return _sale_item_material() == metal
+
+
+async def _units_sold(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    start: datetime,
+    end: datetime,
+    metal: str,
+) -> int:
+    stock_mode = func.lower(func.coalesce(SaleItem.item_stock_mode, Item.stock_mode))
+    statement = (
+        select(
+            func.coalesce(
+                func.sum(case((stock_mode == "weight", 1), else_=SaleItem.quantity)),
+                0,
+            )
+        )
+        .select_from(SaleItem)
+        .join(Sale, and_(Sale.id == SaleItem.sale_id, Sale.shop_id == SaleItem.shop_id))
+        .outerjoin(Item, and_(Item.id == SaleItem.item_id, Item.shop_id == SaleItem.shop_id))
+        .where(
+            SaleItem.shop_id == shop_id,
+            Sale.created_at >= start,
+            Sale.created_at < end,
+        )
+    )
+    if metal != "all":
+        statement = statement.where(_cashier_item_filter(metal))
+    return int(await db.scalar(statement) or 0)
 
 
 async def _top_selling_items(
@@ -626,7 +652,7 @@ async def get_cashier_analytics(
     shop_id: UUID,
     metal: str,
 ) -> dict:
-    local_date, start, end = _india_day_bounds()
+    local_date, start, end = india_day_bounds()
     local_hour = func.extract("hour", func.timezone("Asia/Kolkata", Sale.created_at))
 
     if metal == "all":
@@ -680,26 +706,13 @@ async def get_cashier_analytics(
 
     total_sales, invoice_count = (await db.execute(sales_statement)).one()
 
-    stock_mode = func.lower(func.coalesce(SaleItem.item_stock_mode, Item.stock_mode))
-    units_statement = (
-        select(
-            func.coalesce(
-                func.sum(case((stock_mode == "weight", 1), else_=SaleItem.quantity)),
-                0,
-            )
-        )
-        .select_from(SaleItem)
-        .join(Sale, and_(Sale.id == SaleItem.sale_id, Sale.shop_id == SaleItem.shop_id))
-        .outerjoin(Item, and_(Item.id == SaleItem.item_id, Item.shop_id == SaleItem.shop_id))
-        .where(
-            SaleItem.shop_id == shop_id,
-            Sale.created_at >= start,
-            Sale.created_at < end,
-        )
+    units_sold = await _units_sold(
+        db,
+        shop_id=shop_id,
+        start=start,
+        end=end,
+        metal=metal,
     )
-    if metal != "all":
-        units_statement = units_statement.where(_cashier_item_filter(metal))
-    units_sold = await db.scalar(units_statement)
 
     hourly_totals = {
         int(hour): Decimal(amount or 0) for hour, amount in await db.execute(hourly_statement)
@@ -730,7 +743,7 @@ async def get_cashier_analytics(
         "metal": metal,
         "total_sales": round(float(total_sales_value), 2),
         "invoice_count": invoice_count_value,
-        "units_sold": int(units_sold or 0),
+        "units_sold": units_sold,
         "average_invoice_value": round(
             float(total_sales_value / invoice_count_value) if invoice_count_value else 0,
             2,

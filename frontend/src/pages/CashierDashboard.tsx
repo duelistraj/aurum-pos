@@ -7,15 +7,20 @@ import {
   Coins,
   FileText,
   IndianRupee,
+  PackageCheck,
   RefreshCw,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useShop } from '../context/ShopContext';
+import { formatMetalName } from '../features/metalRates/display';
 import { useIndiaDate } from '../hooks/useIndiaDate';
+import { useRotatingMetalRate } from '../hooks/useRotatingMetalRate';
 import { CashierDashboardSummary } from '../types';
 import { formatCurrency } from '../utils';
+
+const EMPTY_METAL_RATES: CashierDashboardSummary['metal_rates'] = [];
 
 interface CashierStatProps {
   label: string;
@@ -60,9 +65,9 @@ const formatActivityTime = (dateString?: string | null): string => {
 const SoldActivityRow: React.FC<{
   activity: CashierDashboardSummary['recent_sold_activity'][number];
 }> = ({ activity }) => {
-  const barcode = String(activity.payload.barcode ?? 'Unknown item');
-  const weight = Number(activity.payload.weight_grams ?? 0);
-  const quantity = Number(activity.payload.quantity ?? 0);
+  const barcode = activity.barcode ?? 'Unknown item';
+  const weight = Number(activity.weight_grams ?? 0);
+  const quantity = Number(activity.quantity ?? 0);
   const detail = weight > 0
     ? `${weight.toLocaleString('en-IN')} gram sold`
     : `${quantity.toLocaleString('en-IN')} ${quantity === 1 ? 'piece' : 'pieces'} sold`;
@@ -92,8 +97,8 @@ export const CashierDashboard: React.FC = () => {
     queryFn: () => apiClient.getCashierDashboardSummary(),
     enabled: Boolean(shopId),
   });
-  const rateByMetal = Object.fromEntries(
-    (summaryQuery.data?.metal_rates ?? []).map((rate) => [rate.metal.toLowerCase(), rate.rate_per_10g]),
+  const activeMetalRate = useRotatingMetalRate(
+    summaryQuery.data?.metal_rates ?? EMPTY_METAL_RATES,
   );
   const welcomeName = user?.full_name?.trim().split(/\s+/)[0] || 'there';
   const currentIndiaDate = useIndiaDate();
@@ -115,24 +120,19 @@ export const CashierDashboard: React.FC = () => {
       icon: <FileText className="dashboard-stat__svg" />,
     },
     {
-      label: 'Gold Rate per 10g',
-      value: formatCurrency(rateByMetal.gold ?? 0),
-      context: 'Current shop rate',
-      tone: 'gold',
-      icon: <Coins className="dashboard-stat__svg" />,
-    },
-    {
-      label: 'Silver Rate per 10g',
-      value: formatCurrency(rateByMetal.silver ?? 0),
-      context: 'Current shop rate',
-      tone: 'blue',
-      icon: <Coins className="dashboard-stat__svg" />,
-    },
-    {
-      label: 'Platinum Rate per 10g',
-      value: formatCurrency(rateByMetal.platinum ?? 0),
-      context: 'Current shop rate',
+      label: 'Units Sold',
+      value: String(summaryQuery.data?.units_sold ?? 0),
+      context: 'Weighted lines count as one',
       tone: 'violet',
+      icon: <PackageCheck className="dashboard-stat__svg" />,
+    },
+    {
+      label: activeMetalRate
+        ? `${formatMetalName(activeMetalRate.metal)} Rate per 10g`
+        : 'Metal Rate per 10g',
+      value: activeMetalRate ? formatCurrency(activeMetalRate.rate_per_10g) : 'N/A',
+      context: activeMetalRate ? 'Current shop rate' : 'No rates configured',
+      tone: 'blue',
       icon: <Coins className="dashboard-stat__svg" />,
     },
   ];
@@ -187,7 +187,7 @@ export const CashierDashboard: React.FC = () => {
           </div>
         ) : (summaryQuery.data?.recent_sold_activity ?? []).length > 0 ? (
           <ul className="dashboard-activity__list">
-            {summaryQuery.data?.recent_sold_activity.map((activity) => (
+            {summaryQuery.data?.recent_sold_activity.slice(0, 3).map((activity) => (
               <SoldActivityRow key={activity.id} activity={activity} />
             ))}
           </ul>

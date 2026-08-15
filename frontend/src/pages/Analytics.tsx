@@ -25,16 +25,15 @@ import { queryKeys } from '../api/queryKeys';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
 import {
+  ANALYTICS_CHART_TYPOGRAPHY,
   createBreakdownColorMap,
   formatCompactCurrency,
   getChartColor,
   selectEvenlySpacedTicks,
 } from '../features/analytics/chartConfig';
 import { TopSellingItems } from '../features/analytics/TopSellingItems';
-import { formatMetalName } from '../features/metalRates/display';
-import { useRotatingMetalRate } from '../hooks/useRotatingMetalRate';
-import { AnalyticsDashboardResponse, AnalyticsMetalRate } from '../types';
-import { formatCurrency, formatWholeCurrency } from '../utils';
+import { AnalyticsDashboardResponse } from '../types';
+import { formatWholeCurrency } from '../utils';
 
 type PresetId = '7d' | '30d' | 'this_month' | 'last_month' | 'custom';
 
@@ -53,7 +52,6 @@ const JEWELLERY_OPTIONS = [
   { value: 'platinum', label: 'Platinum' },
   { value: 'stone', label: 'Stones' },
 ] as const;
-const EMPTY_METAL_RATES: AnalyticsMetalRate[] = [];
 
 const CHART_THEME = {
   light: {
@@ -93,8 +91,8 @@ const createNivoTheme = (theme: ChartTheme) => ({
   background: 'transparent',
   text: {
     fill: theme.label,
-    fontSize: 10,
-    fontWeight: 700,
+    fontSize: ANALYTICS_CHART_TYPOGRAPHY.supportingSize,
+    fontWeight: ANALYTICS_CHART_TYPOGRAPHY.regularWeight,
   },
   axis: {
     domain: {
@@ -104,8 +102,8 @@ const createNivoTheme = (theme: ChartTheme) => ({
       line: { stroke: 'transparent' },
       text: {
         fill: theme.label,
-        fontSize: 10,
-        fontWeight: 700,
+        fontSize: ANALYTICS_CHART_TYPOGRAPHY.supportingSize,
+        fontWeight: ANALYTICS_CHART_TYPOGRAPHY.regularWeight,
       },
     },
   },
@@ -122,8 +120,8 @@ const createNivoTheme = (theme: ChartTheme) => ({
       border: `1px solid ${theme.tooltipBorder}`,
       borderRadius: '.45rem',
       boxShadow: 'none',
-      fontSize: '.7rem',
-      fontWeight: 700,
+      fontSize: '.75rem',
+      fontWeight: ANALYTICS_CHART_TYPOGRAPHY.regularWeight,
       padding: '.6rem .7rem',
     },
   },
@@ -350,27 +348,6 @@ export const Analytics: React.FC = () => {
   const selectedJewelleryLabel = JEWELLERY_OPTIONS.find(
     ({ value }) => value === selectedJewellery,
   )?.label ?? 'All inventory';
-  const analyticsMetalRates = useMemo(() => {
-    const responseRates = data?.metal_rates ?? EMPTY_METAL_RATES;
-    if (responseRates.length > 0) {
-      return selectedJewellery === 'all'
-        ? responseRates
-        : responseRates.filter(({ metal }) => metal.toLowerCase() === selectedJewellery);
-    }
-    if (
-      data
-      && data.silver_rate_10g > 0
-      && (selectedJewellery === 'all' || selectedJewellery === 'silver')
-    ) {
-      return [{
-        metal: 'silver',
-        rate_per_10g: data.silver_rate_10g,
-        change_percentage: data.silver_rate_change_percentage,
-      }];
-    }
-    return EMPTY_METAL_RATES;
-  }, [data, selectedJewellery]);
-  const activeMetalRate = useRotatingMetalRate(analyticsMetalRates);
   const useMetalBreakdownColors = selectedJewellery === 'all';
   const breakdownColorByLabel = useMemo(() => createBreakdownColorMap(
     categoryChartData.map(({ id }) => id),
@@ -557,16 +534,6 @@ export const Analytics: React.FC = () => {
               icon={<Package className="analytics-kpi__svg" />}
             />
             <AnalyticsKpi
-              label={activeMetalRate
-                ? `${formatMetalName(activeMetalRate.metal)} rate (per 10g)`
-                : 'Metal rate (per 10g)'}
-              value={activeMetalRate ? formatCurrency(activeMetalRate.rate_per_10g) : 'N/A'}
-              change={activeMetalRate?.change_percentage}
-              context={selectedJewellery === 'all' ? 'No rates configured' : 'Rate not set'}
-              tone="green"
-              icon={<Coins className="analytics-kpi__svg" />}
-            />
-            <AnalyticsKpi
               label="Stock value"
               value={formatWholeCurrency(data.total_stock_value)}
               change={data.total_stock_value_change_percentage}
@@ -676,7 +643,7 @@ export const Analytics: React.FC = () => {
           </div>
 
           <div className="analytics-grid analytics-grid--supporting">
-            <article className="analytics-panel analytics-panel--supporting">
+            <article className="analytics-panel analytics-panel--supporting analytics-panel--top-items">
               <PanelHeader eyebrow="Merchandising" title="Top items by sales value" icon={<TrendingUp className="analytics-panel__icon" />} />
               <TopSellingItems
                 items={data.top_selling_items}

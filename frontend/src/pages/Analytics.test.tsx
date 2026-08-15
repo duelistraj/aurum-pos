@@ -136,6 +136,8 @@ describe('Analytics', () => {
     expect(screen.getByText('12.5 gram sold')).toBeInTheDocument();
     expect(screen.getByText('Inventory summary')).toBeInTheDocument();
     expect(screen.getByText('Sales trend')).toBeInTheDocument();
+    expect(screen.queryByText(/rate \(per 10g\)/i)).not.toBeInTheDocument();
+    expect(document.querySelectorAll('.analytics-kpi')).toHaveLength(4);
     expect(screen.getByTestId('nivo-line-chart')).toBeInTheDocument();
     expect(screen.getAllByTestId('nivo-pie-chart')).toHaveLength(2);
 
@@ -307,19 +309,4 @@ describe('Analytics', () => {
     expect(ankletColor).not.toBe(jewelleryColor);
   });
 
-  it('shows N/A when the specifically selected metal has no configured rate', async () => {
-    vi.mocked(apiClient.getDashboardAnalytics).mockResolvedValue({
-      ...analyticsData,
-      metal_rates: [{ metal: 'gold', rate_per_10g: 72_000, change_percentage: 2.1 }],
-    });
-    const user = userEvent.setup();
-    renderAnalytics();
-
-    await screen.findByText('Top items by sales value');
-    await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
-    await user.click(screen.getByRole('option', { name: 'Platinum' }));
-
-    expect(await screen.findByText('N/A')).toBeInTheDocument();
-    expect(screen.getByText('Rate not set')).toBeInTheDocument();
-  });
 });

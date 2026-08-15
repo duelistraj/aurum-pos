@@ -14,6 +14,7 @@ export const queryKeys = {
   metalRates: (shopId: string) => ['shops', shopId, 'metal-rates'] as const,
   availableMetals: (shopId: string) => ['shops', shopId, 'metal-rates', 'available'] as const,
   history: (shopId: string, filters: object) => ['shops', shopId, 'change-log', filters] as const,
+  auditActors: (shopId: string) => ['shops', shopId, 'change-log', 'actors'] as const,
   cashierSoldHistory: (shopId: string, filters: object) =>
     ['shops', shopId, 'change-log', 'sold', filters] as const,
   invoices: (shopId: string, filters: object) => ['shops', shopId, 'invoices', filters] as const,

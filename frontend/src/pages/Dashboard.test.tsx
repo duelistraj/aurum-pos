@@ -85,12 +85,33 @@ describe('Dashboard', () => {
     expect(await screen.findByText('₹3,200.00')).toBeInTheDocument();
     expect(screen.getByText('Gold rate')).toBeInTheDocument();
     expect(screen.getByText('₹72,000.00')).toBeInTheDocument();
+    expect(screen.queryByText('Catalog value')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(4);
     expect(screen.getByText(/\w+, \d{1,2} \w+ \d{4}/)).toBeInTheDocument();
     expect(await screen.findByText('Sale created: INV-1001')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute(
       'href',
       '/transactions',
     );
+    expect(screen.queryByRole('link', { name: 'View activity' })).not.toBeInTheDocument();
+  });
+
+  it('limits recent activity to three entries even if an older API returns more', async () => {
+    vi.mocked(apiClient.getDashboardSummary).mockResolvedValue({
+      ...summary,
+      recent_activity: Array.from({ length: 4 }, (_, index) => ({
+        id: `activity-${index + 1}`,
+        entity: 'item',
+        action: 'create',
+        payload: { sku: `ITEM-${index + 1}` },
+        created_at: `2026-07-24T17:3${index}:00.000Z`,
+      })),
+    });
+    renderDashboard();
+
+    expect(await screen.findByText('New item added: ITEM-1')).toBeInTheDocument();
+    expect(screen.getByText('New item added: ITEM-3')).toBeInTheDocument();
+    expect(screen.queryByText('New item added: ITEM-4')).not.toBeInTheDocument();
   });
 
   it('shows an actionable error when the summary request fails', async () => {

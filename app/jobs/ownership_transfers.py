@@ -4,7 +4,9 @@ from uuid import UUID
 
 from sqlalchemy import or_, select, text
 
+from app.core.changelog.service import AuditActor, log_change
 from app.core.database import AsyncSessionLocal
+from app.modules.auth.models import User
 from app.modules.billing.google_play import GooglePlayClient
 from app.modules.billing.service import decrypt_purchase_token
 from app.modules.shops.models import (
@@ -111,6 +113,9 @@ async def _complete_transfer(transfer_id: UUID) -> None:
             transfer.last_error = "Target already owns another organization"
             return
 
+        target_user = await session.get(User, transfer.target_user_id)
+        target_name = target_user.full_name if target_user is not None else "Unknown user"
+
         shops = list(
             await session.scalars(
                 select(Shop).where(Shop.organization_id == organization.id).with_for_update()
@@ -146,6 +151,23 @@ async def _complete_transfer(transfer_id: UUID) -> None:
         transfer.status = "completed"
         transfer.completed_at = datetime.now(UTC)
         transfer.last_error = None
+        for shop in shops:
+            await session.execute(
+                text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+                {"shop_id": str(shop.id)},
+            )
+            await log_change(
+                session,
+                shop_id=shop.id,
+                entity="ownership_transfer",
+                entity_id=transfer.id,
+                action="update",
+                event_type="team.ownership_transfer_completed",
+                subject_label=target_name,
+                actor=AuditActor.system(),
+                payload={"target_name": target_name},
+            )
+            await session.flush()
 
 
 async def _retry_or_fail(transfer_id: UUID, error: Exception) -> None:

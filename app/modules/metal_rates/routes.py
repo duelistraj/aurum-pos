@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.changelog.service import AuditActor
 from app.core.database import get_db
 from app.modules.auth.dependencies import (
     RequireManager,
@@ -43,6 +44,15 @@ async def create_rate(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await add_metal_rate(db, data, shop_id=context.shop.id)
+        return await add_metal_rate(
+            db,
+            data,
+            shop_id=context.shop.id,
+            actor=AuditActor.user(
+                user_id=context.user.id,
+                name=context.user.full_name,
+                role=context.membership.role,
+            ),
+        )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

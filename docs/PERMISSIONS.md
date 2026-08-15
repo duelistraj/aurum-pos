@@ -13,8 +13,8 @@ The role hierarchy is `Owner > Admin > Manager > Cashier`.
 | Scan items and create sales | Yes | Yes | Yes | Yes |
 | View, download, and print invoices | Yes | Yes | Yes | Yes |
 | Send invoices through WhatsApp | Yes | Yes | Yes | Yes |
-| View sold-item activity across all dates | Yes | Yes | Yes | Yes |
-| View activity history | Yes | Yes | Yes | No |
+| View today's sold-item transactions | Yes | Yes | Yes | Yes |
+| View the shop audit log | Yes | Yes | Yes | No |
 | Add inventory items and stones | Yes | Yes | Yes | No |
 | Edit or delete in-stock items | Yes | Yes | Yes | No |
 | Download inventory labels | Yes | Yes | Yes | No |
@@ -39,9 +39,10 @@ The role hierarchy is `Owner > Admin > Manager > Cashier`.
   Read-only access blocks changes regardless of role.
 - Every role can manage its own account, switch between assigned shops, and change the app theme.
 - Cashiers see all invoices for the selected shop, including historical customer and amount details.
-- Cashiers can view sold-item activity for the selected shop across all dates, but cannot access item creation, edits, deletions, or other audit events.
+- Cashiers can view sold-item transactions for the selected shop only during the current `Asia/Kolkata` calendar day, but cannot access management audit events.
 - Cashier inventory lookup returns only item identity, classification, status, tax, physical description, and the current calculated selling-price state.
   It does not return quantity balances, stock value, pricing inputs, notes, internal IDs, or aggregate inventory data.
 - Cashier analytics is always restricted by the server to the current `Asia/Kolkata` calendar day.
-- Cashier Dashboard shows today's sales and invoice count alongside current metal rates, while Recent Activity shows the latest sold-item records regardless of date.
+- Cashier Dashboard shows today's sales and invoice count alongside current metal rates, while Recent Activity shows the latest sold-item records from the same day.
+- Owner, Admin, and Manager audit access includes normalized inventory, rate, sale, shop-settings, team, and ownership events with actor attribution for new records.
 - Cashiers can read current metal rates but cannot access subscription usage or plan controls.

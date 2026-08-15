@@ -1,5 +1,11 @@
 export type AnalyticsColorMode = 'light' | 'dark';
 
+export const ANALYTICS_CHART_TYPOGRAPHY = {
+  supportingSize: 12,
+  regularWeight: 600,
+  strongWeight: 700,
+} as const;
+
 const METAL_COLOR_BY_MODE: Record<AnalyticsColorMode, Record<string, string>> = {
   light: {
     gold: '#D99A24',

@@ -88,6 +88,32 @@ describe('shared UI primitives', () => {
     expect(trigger).toHaveFocus();
   });
 
+  it('supports an aria-only label and omits the placeholder option', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <ListboxSelect
+        id="member-role"
+        ariaLabel="Role for Store Manager"
+        value="MANAGER"
+        placeholder="Select an option"
+        includePlaceholderOption={false}
+        options={[
+          { value: 'MANAGER', label: 'MANAGER' },
+          { value: 'CASHIER', label: 'CASHIER' },
+        ]}
+        onValueChange={onValueChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Role for Store Manager' }));
+    const listbox = screen.getByRole('listbox', { name: 'Role for Store Manager' });
+    expect(within(listbox).queryByRole('option', { name: 'Select an option' }))
+      .not.toBeInTheDocument();
+    await user.click(within(listbox).getByRole('option', { name: 'CASHIER' }));
+    expect(onValueChange).toHaveBeenCalledWith('CASHIER');
+  });
+
   it('renders a loading status with the requested size', () => {
     render(<Loader size="sm" />);
 

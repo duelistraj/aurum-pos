@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,48 +12,40 @@ from app.modules.auth.dependencies import (
     get_shop_context,
 )
 from app.modules.changelog.schemas import (
-    ChangeLogEntry,
-    ChangeLogPage,
-    SoldChangeLogPage,
+    AuditActorOption,
+    AuditLogPage,
+    SoldTransactionPage,
 )
-from app.modules.changelog.service import get_change_log_history, get_sold_change_log_history
+from app.modules.changelog.service import (
+    get_audit_actor_options,
+    get_audit_log_history,
+    get_sold_transaction_history,
+)
 
 router = APIRouter(prefix="/change-log", tags=["Change Log"])
 
 
 @router.get(
     "/sold",
-    response_model=SoldChangeLogPage,
+    response_model=SoldTransactionPage,
     dependencies=[RequireCashier],
 )
-async def sold_change_log_history(
-    from_date: datetime | None = Query(
-        None,
-        alias="from_date",
-        description="Filter sold entries created on or after this timestamp.",
-    ),
-    to_date: datetime | None = Query(
-        None,
-        alias="to_date",
-        description="Filter sold entries created on or before this timestamp.",
-    ),
-    barcode: str | None = Query(
+async def sold_transaction_history(
+    search: str | None = Query(
         None,
         max_length=100,
-        description="Filter sold entries by barcode prefix.",
+        description="Filter today's sold items by item, SKU, barcode, or invoice number.",
     ),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=100),
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
-) -> SoldChangeLogPage:
-    return SoldChangeLogPage.model_validate(
-        await get_sold_change_log_history(
+) -> SoldTransactionPage:
+    return SoldTransactionPage.model_validate(
+        await get_sold_transaction_history(
             db,
             shop_id=context.shop.id,
-            from_date=from_date,
-            to_date=to_date,
-            barcode=barcode,
+            search=search,
             page=page,
             limit=limit,
         )
@@ -60,52 +53,57 @@ async def sold_change_log_history(
 
 
 @router.get(
-    "/history",
-    response_model=ChangeLogPage | list[ChangeLogEntry],
+    "/actors",
+    response_model=list[AuditActorOption],
     dependencies=[RequireManager],
 )
-async def change_log_history(
-    from_date: datetime | None = Query(
-        None,
-        alias="from_date",
-        description="Filter entries created on or after this timestamp.",
-    ),
-    to_date: datetime | None = Query(
-        None,
-        alias="to_date",
-        description="Filter entries created on or before this timestamp.",
-    ),
-    barcode: str | None = Query(
-        None,
-        max_length=100,
-        description="Filter by barcode value found in the payload.",
-    ),
-    invoice_no: str | None = Query(
-        None,
-        max_length=50,
-        description="Filter by invoice number found in the payload.",
-    ),
-    action: str | None = Query(
-        None,
-        max_length=20,
-        description="Filter by action type.",
-    ),
-    page: int | None = Query(None, ge=1),
-    limit: int | None = Query(None, ge=1, le=100),
+async def audit_actor_options(
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
-):
-    result = await get_change_log_history(
-        db,
-        shop_id=context.shop.id,
-        from_date=from_date,
-        to_date=to_date,
-        barcode=barcode,
-        invoice_no=invoice_no,
-        action=action,
-        page=page or 1,
-        limit=limit or 50,
+) -> list[AuditActorOption]:
+    return [
+        AuditActorOption.model_validate(actor)
+        for actor in await get_audit_actor_options(db, shop_id=context.shop.id)
+    ]
+
+
+@router.get(
+    "/history",
+    response_model=AuditLogPage,
+    dependencies=[RequireManager],
+)
+async def audit_log_history(
+    search: str | None = Query(
+        None,
+        max_length=100,
+        description="Filter by record label, barcode, SKU, or invoice number.",
+    ),
+    event_type: str | None = Query(
+        None,
+        max_length=60,
+        description=(
+            "Filter by an exact event type, or use team.ownership_transfer "
+            "for requested and completed ownership transfers."
+        ),
+    ),
+    actor_user_id: UUID | None = Query(None),
+    from_date: datetime | None = Query(None),
+    to_date: datetime | None = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> AuditLogPage:
+    return AuditLogPage.model_validate(
+        await get_audit_log_history(
+            db,
+            shop_id=context.shop.id,
+            search=search,
+            event_type=event_type,
+            actor_user_id=actor_user_id,
+            from_date=from_date,
+            to_date=to_date,
+            page=page,
+            limit=limit,
+        )
     )
-    if page is None and limit is None:
-        return result["entries"]
-    return result

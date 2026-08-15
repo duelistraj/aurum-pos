@@ -96,6 +96,24 @@ def test_unique_item_fixed_rate_receives_shop_tax() -> None:
     assert pricing["final_price"] == Decimal("1030.00")
 
 
+def test_item_level_fixed_rate_receives_three_percent_gst() -> None:
+    pricing = lock_price_at_sale(
+        metal="gold",
+        category="ring",
+        pricing_method="fixed_rate",
+        purity=91.6,
+        net_weight=0,
+        rate_per_gram=0,
+        making_charge=0,
+        fixed_rate=1000,
+    )
+
+    assert pricing["subtotal"] == Decimal("1000.00")
+    assert pricing["gst_rate_percent"] == Decimal("3.00")
+    assert pricing["gst_amount"] == Decimal("30.00")
+    assert pricing["final_price"] == Decimal("1030.00")
+
+
 def test_unique_item_payload_normalizes_legacy_making_charge_to_fixed_rate() -> None:
     item = ItemCreate(
         sku="UNIQUE-1",

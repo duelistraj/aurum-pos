@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.changelog.service import log_change
+from app.core.changelog.service import AuditActor, log_change
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.modules.items.models import Item
@@ -160,6 +160,7 @@ async def _execute_create_sale(
     data: SaleCreate,
     *,
     shop_id: UUID,
+    actor: AuditActor,
 ) -> Sale:
     """Internal helper to execute sale creation operations within an active transaction"""
     # Fetch items and lock them
@@ -398,11 +399,16 @@ async def _execute_create_sale(
             action="sold",
             payload={
                 "barcode": item.barcode,
+                "sku": item.sku,
+                "item_name": item.name,
                 "invoice_no": sale.invoice_no,
                 "quantity": si.quantity,
                 "weight_grams": float(si.sold_weight) if si.sold_weight is not None else None,
                 "pricing": si.price_breakdown,
             },
+            actor=actor,
+            subject_label=item.name,
+            reference=item.barcode,
         )
 
     # Log sale summary
@@ -417,14 +423,23 @@ async def _execute_create_sale(
             "total": float(sale.total_amount),
             "state_code": sale.customer_state_code,
         },
+        actor=actor,
+        subject_label=f"Invoice {sale.invoice_no}",
+        reference=sale.invoice_no,
     )
 
     return sale
 
 
-async def create_sale(db: AsyncSession, data: SaleCreate, *, shop_id: UUID) -> Sale:
+async def create_sale(
+    db: AsyncSession,
+    data: SaleCreate,
+    *,
+    shop_id: UUID,
+    actor: AuditActor,
+) -> Sale:
     """Create a sale inside the request-scoped transaction."""
-    sale = await _execute_create_sale(db, data, shop_id=shop_id)
+    sale = await _execute_create_sale(db, data, shop_id=shop_id, actor=actor)
     await db.flush()
     await db.refresh(sale)
     return sale

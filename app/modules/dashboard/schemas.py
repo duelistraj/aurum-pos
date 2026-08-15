@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.modules.changelog.schemas import SoldChangeLogEntry
+from app.modules.changelog.schemas import SoldTransactionEntry
 
 
 class CashierMetalRate(BaseModel):
@@ -13,7 +13,8 @@ class CashierMetalRate(BaseModel):
 class CashierDashboardSummary(BaseModel):
     today_sales: float
     invoice_count: int
-    recent_sold_activity: list[SoldChangeLogEntry] = Field(max_length=4)
+    units_sold: int
+    recent_sold_activity: list[SoldTransactionEntry] = Field(max_length=3)
     metal_rates: list[CashierMetalRate] = Field(min_length=3, max_length=3)
 
 

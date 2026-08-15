@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token as google_id_token
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.changelog.service import AuditActor, log_change
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.auth.constants import (
@@ -120,6 +121,26 @@ async def _accept_invitation(db: AsyncSession, *, token: str, user: User) -> Sho
         )
         db.add(existing)
     invitation.accepted_at = datetime.now(UTC)
+    await db.flush()
+    await db.execute(
+        text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+        {"shop_id": str(invitation.shop_id)},
+    )
+    await log_change(
+        db,
+        shop_id=invitation.shop_id,
+        entity="membership",
+        entity_id=existing.id,
+        action="create",
+        event_type="team.invitation_accepted",
+        subject_label=user.full_name,
+        actor=AuditActor.user(
+            user_id=user.id,
+            name=user.full_name,
+            role=existing.role,
+        ),
+        payload={"role": existing.role},
+    )
     return existing
 
 

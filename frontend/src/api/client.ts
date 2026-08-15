@@ -3,11 +3,11 @@ import { Capacitor } from '@capacitor/core';
 import { PLAY_PRODUCT_ID } from '../constants/billing';
 import {
   AnalyticsDashboardResponse,
+  AuditActorOption,
+  AuditLogPage,
   CashierAnalyticsResponse,
   CashierDashboardSummary,
   CashierItemLookup,
-  ChangeLogEntry,
-  ChangeLogPage,
   DashboardSummary,
   InvoiceDownload,
   InvoicePage,
@@ -16,6 +16,7 @@ import {
   ItemPOSWithPrice,
   MetalRate,
   Sale,
+  SoldTransactionPage,
   WhatsAppCapability,
   WhatsAppDelivery,
 } from '../types';
@@ -760,38 +761,31 @@ export const apiClient = {
   },
 
   async getChangeLogHistory(params: {
-    barcode?: string;
-    invoice_no?: string;
-    action?: string;
+    search?: string;
+    event_type?: string;
+    actor_user_id?: string;
     from_date?: string;
     to_date?: string;
     page?: number;
     limit?: number;
   }) {
-    const { data } = await client.get<ChangeLogPage | ChangeLogEntry[]>('/change-log/history', {
+    const { data } = await client.get<AuditLogPage>('/change-log/history', {
       params,
     });
-    if (Array.isArray(data)) {
-      const limit = params.limit ?? 50;
-      return {
-        entries: data,
-        total: data.length,
-        page: params.page ?? 1,
-        limit,
-        pages: data.length > 0 ? Math.ceil(data.length / limit) : 0,
-      };
-    }
+    return data;
+  },
+
+  async getAuditActorOptions() {
+    const { data } = await client.get<AuditActorOption[]>('/change-log/actors');
     return data;
   },
 
   async getCashierSoldHistory(params: {
-    barcode?: string;
-    from_date?: string;
-    to_date?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
-    const { data } = await client.get<ChangeLogPage>('/change-log/sold', { params });
+    const { data } = await client.get<SoldTransactionPage>('/change-log/sold', { params });
     return data;
   },
 

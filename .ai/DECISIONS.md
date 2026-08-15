@@ -9,17 +9,34 @@ Decision: Cashiers retain the full primary navigation but receive role-specific 
 Cashier Inventory supports only exact 8-digit barcode lookup and exposes a narrow item-detail response without stock balances, valuation inputs, notes, internal IDs, or inventory aggregates.
 Cashier Dashboard shows today's sales, today's invoice count, Gold, Silver, and Platinum rates per 10 grams, and the latest sold-item activity.
 Cashier Analytics is server-locked to the current `Asia/Kolkata` day and reports sales-only KPIs and breakdowns.
-Cashiers retain access to every selected-shop invoice, all-date sold-item activity, and read-only metal rates, while all other activity history, management reporting, inventory management, and subscription usage remain manager-only.
+Cashiers retain access to every selected-shop invoice, current-day sold-item transactions, and read-only metal rates, while the management audit log, management reporting, inventory management, and subscription usage remain manager-only.
 Rationale: The user defined the Cashier as a checkout and customer-service role that needs barcode verification, invoicing, and daily sales context without catalog valuation or administrative visibility.
 Consequences: The API enforces the same boundary independently of the client, and role-specific React components do not mount management data queries for Cashiers.
 
 Evidence:
 - `app/modules/items/routes.py::cashier_item_lookup`
 - `app/modules/dashboard/routes.py::cashier_dashboard_analytics`
-- `app/modules/changelog/routes.py::sold_change_log_history`
+- `app/modules/changelog/routes.py::sold_transaction_history`
 - `frontend/src/pages/CashierDashboard.tsx::CashierDashboard`
 - `frontend/src/pages/CashierInventory.tsx::CashierInventory`
 - `frontend/src/pages/CashierAnalytics.tsx::CashierAnalytics`
+
+### Present accountable shop changes as an audit table
+
+Recorded: 2026-08-15
+Status: accepted
+Basis: user-confirmed
+Decision: Transactions keeps its existing Invoices tab and gives manager-level roles a responsive Audit Log table while Cashiers receive a separate current-day Sold Items table.
+The audit log records core inventory, metal-rate, sale, shop-settings, invitation, membership, and ownership mutations with actor name and role snapshots.
+One completed sale appears as one invoice-level audit row with item details, while existing historical actors display as Unknown and background events display as System.
+Read-only activity such as page views, downloads, printing, exports, and sign-ins is not added to the general audit log.
+Rationale: The previous expandable card feed was difficult to scan and did not answer who performed a change.
+Consequences: Audit writes remain atomic with their business transactions, Cashiers cannot mount or call management history, and the general audit payload excludes unnecessary sensitive values.
+
+Evidence:
+- `app/core/changelog/service.py::log_change`
+- `app/modules/changelog/service.py::get_audit_log_history`
+- `frontend/src/pages/History.tsx::AuditLogTable`
 
 ### Raise the hosted Free inventory limit to 500
 
@@ -101,7 +118,7 @@ Recorded: 2026-07-28
 Status: accepted
 Basis: user-confirmed
 Decision: Build official signed Android bundles on standard public-repository runners and upload them directly to the Google Play Internal Testing track without publishing the signed AAB as a GitHub Actions artifact.
-Promote the same Play release from Internal Testing to Closed Testing and then Production without rebuilding it.
+Automatically promote the same version code to the Closed Testing `alpha` track, then promote that tested Play release to Production without rebuilding it.
 Rationale: The user wants to retain free public-repository build capacity while preventing official signed AABs from being distributed through GitHub.
 Consequences: The release workflow uses a dedicated testing-track Play service account, removes the temporary keystore after signing, uploads only non-secret source and checksum provenance, and never accepts a production track as an input.
 A code change always creates a new version code and restarts testing from the Internal Testing track.

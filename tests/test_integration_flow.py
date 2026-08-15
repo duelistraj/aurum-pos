@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import selectinload
 
+from app.core.changelog.models import ChangeLog
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.main import app
@@ -414,6 +415,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert cashier_dashboard.status_code == 200, cashier_dashboard.text
             assert cashier_dashboard.json()["today_sales"] == 0
             assert cashier_dashboard.json()["invoice_count"] == 0
+            assert cashier_dashboard.json()["units_sold"] == 0
             assert cashier_dashboard.json()["recent_sold_activity"] == []
             assert cashier_dashboard.json()["metal_rates"] == [
                 {"metal": "gold", "rate_per_10g": 0.0},
@@ -572,12 +574,18 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 "limit": 50,
                 "pages": 0,
             }
-            legacy_history = await client.get(
+            default_history = await client.get(
                 "/api/v1/change-log/history",
                 headers=second_shop_headers,
             )
-            assert legacy_history.status_code == 200
-            assert legacy_history.json() == []
+            assert default_history.status_code == 200
+            assert default_history.json() == {
+                "entries": [],
+                "total": 0,
+                "page": 1,
+                "limit": 25,
+                "pages": 0,
+            }
 
             wrong_shop_headers = {**headers, "X-Shop-ID": str(uuid4())}
             hidden = await client.get(f"/api/v1/items/{item_id}", headers=wrong_shop_headers)
@@ -627,25 +635,106 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             )
             assert sold_cashier_lookup.status_code == 200, sold_cashier_lookup.text
             assert sold_cashier_lookup.json()["status"] == "sold"
+            async with AsyncSessionLocal.begin() as session:
+                await session.execute(
+                    text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
+                    {"shop_id": str(shop_id)},
+                )
+                session.add(
+                    ChangeLog(
+                        shop_id=shop_id,
+                        entity="item",
+                        entity_id=item_id,
+                        action="sold",
+                        event_type="sales.item_sold",
+                        subject_label="Integration Ring",
+                        reference=barcode,
+                        actor_kind="user",
+                        actor_user_id=user_id,
+                        actor_name="Integration Owner",
+                        actor_role="OWNER",
+                        payload={
+                            "barcode": barcode,
+                            "invoice_no": "TEST-OLD",
+                            "quantity": 1,
+                            "weight_grams": None,
+                            "pricing": {"total_price": confirmed_total},
+                        },
+                        barcode=barcode,
+                        invoice_no="TEST-OLD",
+                        created_at=datetime.now(UTC) - timedelta(days=2),
+                    )
+                )
             cashier_sold_history = await client.get(
                 "/api/v1/change-log/sold",
                 headers=second_primary_headers,
-                params={"page": 1, "limit": 50, "action": "create"},
+                params={"page": 1, "limit": 25, "search": barcode},
             )
             assert cashier_sold_history.status_code == 200, cashier_sold_history.text
             assert cashier_sold_history.json()["total"] == 1
             sold_entry = cashier_sold_history.json()["entries"][0]
-            assert sold_entry["entity"] == "item"
-            assert sold_entry["action"] == "sold"
-            assert set(sold_entry["payload"]) == {
+            assert set(sold_entry) == {
+                "id",
+                "item_id",
+                "item_name",
+                "sku",
                 "barcode",
                 "invoice_no",
                 "quantity",
                 "weight_grams",
-                "pricing",
+                "amount",
+                "created_at",
             }
-            assert sold_entry["payload"]["barcode"] == barcode
-            assert sold_entry["payload"]["invoice_no"] == sale.json()["invoice_no"]
+            assert sold_entry["item_name"] == "Integration Ring"
+            assert sold_entry["barcode"] == barcode
+            assert sold_entry["invoice_no"] == sale.json()["invoice_no"]
+            assert sold_entry["amount"] == confirmed_total
+            cashier_sku_search = await client.get(
+                "/api/v1/change-log/sold",
+                headers=second_primary_headers,
+                params={"search": f"SKU-{suffix}"},
+            )
+            assert cashier_sku_search.status_code == 200, cashier_sku_search.text
+            assert cashier_sku_search.json()["total"] == 1
+
+            audit_history = await client.get(
+                "/api/v1/change-log/history",
+                headers=headers,
+                params={"event_type": "sales.sale_completed", "page": 1, "limit": 25},
+            )
+            assert audit_history.status_code == 200, audit_history.text
+            assert audit_history.json()["total"] == 1
+            sale_audit = audit_history.json()["entries"][0]
+            assert sale_audit["event_type"] == "sales.sale_completed"
+            assert sale_audit["subject"]["reference"] == sale.json()["invoice_no"]
+            assert sale_audit["actor"] == {
+                "kind": "user",
+                "user_id": str(user_id),
+                "name": "Integration Owner",
+                "role": "OWNER",
+            }
+            assert len(sale_audit["details"]["sale_items"]) == 1
+            assert sale_audit["details"]["sale_items"][0]["barcode"] == barcode
+            audit_sku_search = await client.get(
+                "/api/v1/change-log/history",
+                headers=headers,
+                params={"search": f"SKU-{suffix}"},
+            )
+            assert audit_sku_search.status_code == 200, audit_sku_search.text
+            assert any(
+                entry["event_type"] == "sales.sale_completed"
+                for entry in audit_sku_search.json()["entries"]
+            )
+            audit_actors = await client.get(
+                "/api/v1/change-log/actors",
+                headers=headers,
+            )
+            assert audit_actors.status_code == 200, audit_actors.text
+            assert {
+                "user_id": str(user_id),
+                "name": "Integration Owner",
+                "role": "OWNER",
+            } in audit_actors.json()
             cashier_sales_dashboard = await client.get(
                 "/api/v1/dashboard/cashier/summary",
                 headers=second_primary_headers,
@@ -653,6 +742,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert cashier_sales_dashboard.status_code == 200, cashier_sales_dashboard.text
             assert cashier_sales_dashboard.json()["today_sales"] == confirmed_total
             assert cashier_sales_dashboard.json()["invoice_count"] == 1
+            assert cashier_sales_dashboard.json()["units_sold"] == 1
             assert cashier_sales_dashboard.json()["recent_sold_activity"] == [sold_entry]
             cashier_sales_analytics = await client.get(
                 "/api/v1/dashboard/cashier/analytics",
@@ -966,6 +1056,12 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert weighted_depleted.json()["net_weight"] == 55
             assert weighted_depleted.json()["quantity"] == 0
             assert weighted_depleted.json()["status"] == "sold"
+            weighted_sales_dashboard = await client.get(
+                "/api/v1/dashboard/cashier/summary",
+                headers=second_primary_headers,
+            )
+            assert weighted_sales_dashboard.status_code == 200
+            assert weighted_sales_dashboard.json()["units_sold"] == 4
             weighted_sales_analytics = await client.get(
                 "/api/v1/dashboard/cashier/analytics",
                 headers=second_primary_headers,

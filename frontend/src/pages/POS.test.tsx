@@ -282,4 +282,34 @@ describe('POS camera scanning', () => {
     )).toBeInTheDocument();
     expect(screen.queryByText(/\+ Making:/)).not.toBeInTheDocument();
   });
+
+  it('includes three percent GST in an item-level fixed price', async () => {
+    vi.mocked(apiClient.getItemForPOS).mockResolvedValue({
+      ...scannedItem,
+      id: 'fixed-rate-1',
+      barcode: '55556666',
+      name: 'Fixed Price Necklace',
+      pricing_method: 'fixed_rate',
+      pricing: {
+        metal_value: 0,
+        making_charge: 0,
+        fixed_rate: 1000,
+        suggested_price: 1000,
+        subtotal: 1000,
+        gst_rate_percent: 3,
+        gst_amount: 30,
+        final_price: 1030,
+      },
+    });
+    const user = userEvent.setup();
+    renderPOS();
+
+    await user.type(screen.getByPlaceholderText('Scan or type barcode here...'), '55556666');
+    await user.click(screen.getByRole('button', { name: 'Add barcode to cart' }));
+
+    expect(await screen.findByText('Fixed Price Necklace')).toBeInTheDocument();
+    expect(screen.getByText('GST (3%):')).toBeInTheDocument();
+    expect(screen.getByText('₹30.00')).toBeInTheDocument();
+    expect(screen.getByText('₹1030.00')).toBeInTheDocument();
+  });
 });

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.changelog.service import AuditActor
 from app.core.database import get_db
 from app.modules.auth.dependencies import (
     RequireWritableShop,
@@ -65,7 +66,16 @@ async def create(
         if sale is None:
             raise HTTPException(status_code=409, detail="Idempotent sale result is unavailable")
     else:
-        sale = await create_sale(db, data, shop_id=context.shop.id)
+        sale = await create_sale(
+            db,
+            data,
+            shop_id=context.shop.id,
+            actor=AuditActor.user(
+                user_id=context.user.id,
+                name=context.user.full_name,
+                role=context.membership.role,
+            ),
+        )
         db.add(
             SaleIdempotency(
                 shop_id=context.shop.id,

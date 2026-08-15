@@ -53,6 +53,7 @@ export const MetalRates: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.cashierDashboard(shopId) }),
       queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'analytics'] }),
+      queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'change-log'] }),
     ]),
   });
   const rates = ratesQuery.data ?? [];
@@ -343,6 +344,7 @@ export const MetalRates: React.FC = () => {
             </div>
 
             <Input
+              id="metal-rate-per-gram"
               label="Rate per Gram (₹) *"
               type="number"
               inputMode="decimal"

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.changelog.service import AuditActor
 from app.core.database import get_db
 from app.modules.auth.dependencies import (
     RequireManager,
@@ -54,6 +55,14 @@ router = APIRouter(prefix="/items", tags=["Items"])
 LABEL_EXPORT_LIMITER = anyio.CapacityLimiter(2)
 
 
+def _audit_actor(context: ShopContext) -> AuditActor:
+    return AuditActor.user(
+        user_id=context.user.id,
+        name=context.user.full_name,
+        role=context.membership.role,
+    )
+
+
 @router.post(
     "/",
     response_model=ItemOut,
@@ -65,7 +74,12 @@ async def create(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await create_item(db, data, shop_id=context.shop.id)
+        return await create_item(
+            db,
+            data,
+            shop_id=context.shop.id,
+            actor=_audit_actor(context),
+        )
     except IntegrityError as exc:
         if getattr(exc.orig, "constraint_name", None) == "uq_items_shop_barcode":
             raise HTTPException(
@@ -349,7 +363,12 @@ async def delete_batch(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     try:
-        await delete_items(db, data.item_ids, shop_id=context.shop.id)
+        await delete_items(
+            db,
+            data.item_ids,
+            shop_id=context.shop.id,
+            actor=_audit_actor(context),
+        )
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "do not exist" in message else 400
@@ -380,7 +399,13 @@ async def update(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await update_item(db, item_id, data, shop_id=context.shop.id)
+        return await update_item(
+            db,
+            item_id,
+            data,
+            shop_id=context.shop.id,
+            actor=_audit_actor(context),
+        )
     except IntegrityError as exc:
         if getattr(exc.orig, "constraint_name", None) == "uq_items_shop_barcode":
             raise HTTPException(
@@ -405,7 +430,12 @@ async def delete(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     try:
-        await delete_item(db, item_id, shop_id=context.shop.id)
+        await delete_item(
+            db,
+            item_id,
+            shop_id=context.shop.id,
+            actor=_audit_actor(context),
+        )
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "does not exist" in message else 400

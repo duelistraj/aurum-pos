@@ -21,6 +21,7 @@ import { queryKeys } from '../api/queryKeys';
 import { useConfig } from '../context/ConfigContext';
 import { useShop } from '../context/ShopContext';
 import {
+  ANALYTICS_CHART_TYPOGRAPHY,
   createBreakdownColorMap,
   formatCompactCurrency,
   getChartColor,
@@ -75,12 +76,20 @@ export const CashierAnalytics: React.FC = () => {
   const salesPointBorder = isDarkMode ? '#1A1D20' : '#FFFEFA';
   const chartTheme = {
     background: 'transparent',
-    text: { fill: chartText, fontSize: 10, fontWeight: 700 },
+    text: {
+      fill: chartText,
+      fontSize: ANALYTICS_CHART_TYPOGRAPHY.supportingSize,
+      fontWeight: ANALYTICS_CHART_TYPOGRAPHY.regularWeight,
+    },
     axis: {
       domain: { line: { stroke: 'transparent' } },
       ticks: {
         line: { stroke: 'transparent' },
-        text: { fill: chartText, fontSize: 10, fontWeight: 700 },
+        text: {
+          fill: chartText,
+          fontSize: ANALYTICS_CHART_TYPOGRAPHY.supportingSize,
+          fontWeight: ANALYTICS_CHART_TYPOGRAPHY.regularWeight,
+        },
       },
     },
     grid: { line: { stroke: chartGrid, strokeWidth: 1 } },
@@ -91,7 +100,7 @@ export const CashierAnalytics: React.FC = () => {
         border: `1px solid ${isDarkMode ? '#E1D6C4' : '#2D3942'}`,
         borderRadius: '.45rem',
         fontSize: '.75rem',
-        fontWeight: 700,
+        fontWeight: ANALYTICS_CHART_TYPOGRAPHY.regularWeight,
       },
     },
   };

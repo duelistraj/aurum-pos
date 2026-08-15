@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.changelog.service import AuditActor, log_change
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.auth.dependencies import (
@@ -46,6 +47,21 @@ from app.modules.subscriptions.service import (
 
 router = APIRouter(prefix="/shops", tags=["Shops"])
 organizations_router = APIRouter(prefix="/organizations", tags=["Organizations"])
+
+
+def _audit_actor(context: ShopContext) -> AuditActor:
+    return AuditActor.user(
+        user_id=context.user.id,
+        name=context.user.full_name,
+        role=context.membership.role,
+    )
+
+
+def _masked_email(email: str) -> str:
+    local, separator, domain = email.partition("@")
+    if not separator:
+        return "Hidden recipient"
+    return f"{local[:1]}***@{domain}"
 
 
 async def _shop_response(
@@ -142,8 +158,25 @@ async def update_shop(
 ):
     if str(shop_id) != str(context.shop.id):
         raise HTTPException(status_code=404, detail="Shop not found")
+    changes = {}
     for field, value in data.model_dump(exclude_unset=True).items():
+        before = getattr(context.shop, field)
+        if before != value:
+            changes[field] = {"before": before, "after": value}
         setattr(context.shop, field, value)
+    if changes:
+        await log_change(
+            db,
+            shop_id=context.shop.id,
+            entity="shop",
+            entity_id=context.shop.id,
+            action="update",
+            event_type="shop.settings_updated",
+            subject_label=context.shop.name,
+            reference=context.shop.slug,
+            actor=_audit_actor(context),
+            payload={"changes": changes},
+        )
     await db.flush()
     return await _shop_response(
         db,
@@ -225,7 +258,9 @@ async def update_member(
                 status_code=403,
                 detail="Only owners can manage administrator memberships",
             )
-    if data.role is not None:
+    changes = {}
+    if data.role is not None and data.role != membership.role:
+        changes["role"] = {"before": membership.role, "after": data.role}
         membership.role = data.role
     if data.is_active is not None:
         if data.is_active and not membership.is_active:
@@ -234,7 +269,24 @@ async def update_member(
                 context.organization.id,
                 candidate_email=user.email,
             )
-        membership.is_active = data.is_active
+        if data.is_active != membership.is_active:
+            changes["status"] = {
+                "before": "Active" if membership.is_active else "Inactive",
+                "after": "Active" if data.is_active else "Inactive",
+            }
+            membership.is_active = data.is_active
+    if changes:
+        await log_change(
+            db,
+            shop_id=context.shop.id,
+            entity="membership",
+            entity_id=membership.id,
+            action="update",
+            event_type="team.member_updated",
+            subject_label=user.full_name,
+            actor=_audit_actor(context),
+            payload={"changes": changes},
+        )
     await db.flush()
     return MembershipResponse(
         id=membership.id,
@@ -358,6 +410,17 @@ async def _request_ownership_transfer(
     )
     db.add(transfer)
     await db.flush()
+    await log_change(
+        db,
+        shop_id=context.shop.id,
+        entity="ownership_transfer",
+        entity_id=transfer.id,
+        action="create",
+        event_type="team.ownership_transfer_requested",
+        subject_label=target_user.full_name,
+        actor=_audit_actor(context),
+        payload={"target_name": target_user.full_name},
+    )
     return OwnershipTransferResponse(
         id=transfer.id,
         organization_id=transfer.organization_id,
@@ -433,6 +496,18 @@ async def invite(
         email=data.email,
         role=data.role,
         inviter=context.user,
+    )
+    masked_email = _masked_email(invitation.email)
+    await log_change(
+        db,
+        shop_id=context.shop.id,
+        entity="invitation",
+        entity_id=invitation.id,
+        action="create",
+        event_type="team.invitation_issued",
+        subject_label=masked_email,
+        actor=_audit_actor(context),
+        payload={"recipient": masked_email, "role": invitation.role},
     )
     return InvitationResponse(
         id=invitation.id,

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Check, ChevronDown, FileText, Users } from 'lucide-react';
+import { FileText, Users } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
-import { Alert, Button, Card, Modal } from '../components/UI';
+import { Alert, Button, Card, ListboxSelect, Modal } from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import { InvoiceSettings } from './Invoices';
 
@@ -49,13 +49,10 @@ const StaffManagement: React.FC = () => {
   const [teamEntitlement, setTeamEntitlement] =
     React.useState<TeamEntitlement | null>(null);
   const [ownershipTarget, setOwnershipTarget] = React.useState<StaffMember | null>(null);
-  const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
-  const roleDropdownRef = React.useRef<HTMLDivElement>(null);
-  const roleTriggerRef = React.useRef<HTMLButtonElement>(null);
-  const roleOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const allowedRoles = activeMembership?.role === 'OWNER'
     ? OWNER_INVITE_ROLES
     : ADMIN_INVITE_ROLES;
+  const allowedRoleOptions = allowedRoles.map((value) => ({ value, label: value }));
 
   const loadManagementData = React.useCallback(async () => {
     if (!activeMembership) return;
@@ -74,60 +71,6 @@ const StaffManagement: React.FC = () => {
       setError(caught instanceof Error ? caught.message : 'Unable to load shop settings');
     });
   }, [loadManagementData]);
-
-  React.useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!roleDropdownRef.current?.contains(event.target as Node)) setRoleMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !roleMenuOpen) return;
-      setRoleMenuOpen(false);
-      roleTriggerRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [roleMenuOpen]);
-
-  const focusRoleOption = (index: number) => {
-    const wrappedIndex = (index + allowedRoles.length) % allowedRoles.length;
-    roleOptionRefs.current[wrappedIndex]?.focus();
-  };
-
-  const openRoleMenu = (focusIndex?: number) => {
-    setRoleMenuOpen(true);
-    if (focusIndex !== undefined) {
-      window.requestAnimationFrame(() => focusRoleOption(focusIndex));
-    }
-  };
-
-  const handleRoleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    openRoleMenu(event.key === 'ArrowDown' ? 0 : allowedRoles.length - 1);
-  };
-
-  const handleRoleOptionKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-    index: number,
-  ) => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      focusRoleOption(index + (event.key === 'ArrowDown' ? 1 : -1));
-    } else if (event.key === 'Home' || event.key === 'End') {
-      event.preventDefault();
-      focusRoleOption(event.key === 'Home' ? 0 : allowedRoles.length - 1);
-    }
-  };
-
-  const chooseRole = (selectedRole: StaffRole) => {
-    setRole(selectedRole);
-    setRoleMenuOpen(false);
-    roleTriggerRef.current?.focus();
-  };
 
   if (!activeMembership || !['OWNER', 'ADMIN'].includes(activeMembership.role)) {
     return <Alert type="error" message="Your role cannot invite staff." />;
@@ -245,28 +188,25 @@ const StaffManagement: React.FC = () => {
                 <p className="font-semibold">{member.full_name}</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{member.email}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="staff-member-actions">
                 {member.role === 'OWNER' ? (
                   <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
                     OWNER
                   </span>
                 ) : (
                   <>
-                    <select
-                      aria-label={`Role for ${member.full_name}`}
+                    <ListboxSelect
+                      id={`staff-member-role-${member.id}`}
+                      ariaLabel={`Role for ${member.full_name}`}
                       value={member.role}
+                      options={allowedRoleOptions}
+                      includePlaceholderOption={false}
                       disabled={busy || (activeMembership.role !== 'OWNER' && member.role === 'ADMIN')}
-                      onChange={(event) => void updateMember(member, {
-                        role: event.target.value as StaffRole,
+                      onValueChange={(nextRole) => void updateMember(member, {
+                        role: nextRole as StaffRole,
                       })}
-                      className="rounded-app-control border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-                    >
-                      {(activeMembership.role === 'OWNER'
-                        ? OWNER_INVITE_ROLES
-                        : ADMIN_INVITE_ROLES).map((value) => (
-                        <option key={value} value={value}>{value}</option>
-                      ))}
-                    </select>
+                      className="staff-member-role"
+                    />
                     <Button
                       type="button"
                       variant={member.is_active ? 'secondary' : 'primary'}
@@ -282,6 +222,7 @@ const StaffManagement: React.FC = () => {
                         type="button"
                         variant="secondary"
                         disabled={busy}
+                        className="staff-make-owner"
                         onClick={() => setOwnershipTarget(member)}
                       >
                         Make owner
@@ -343,65 +284,15 @@ const StaffManagement: React.FC = () => {
               className="mt-1 w-full rounded-app-control border border-slate-300 bg-white p-3 text-slate-900 placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
             />
           </label>
-          <div ref={roleDropdownRef} className="relative">
-            <span
-              id="staff-role-label"
-              className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-            >
-              Role
-            </span>
-            <button
-              ref={roleTriggerRef}
-              type="button"
-              aria-labelledby="staff-role-label staff-role-value"
-              aria-haspopup="listbox"
-              aria-expanded={roleMenuOpen}
-              onClick={() => setRoleMenuOpen((current) => !current)}
-              onKeyDown={handleRoleTriggerKeyDown}
-              disabled={busy || teamEntitlement?.can_invite_member === false}
-              className={`mt-1 flex w-full items-center justify-between gap-3 rounded-app-control border bg-white p-3 text-left text-slate-900 transition-all dark:bg-slate-950 dark:text-slate-100 ${
-                roleMenuOpen
-                  ? 'border-amber-500 ring-2 ring-amber-500/25'
-                  : 'border-slate-300 hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-600'
-              }`}
-            >
-              <span id="staff-role-value" className="font-medium">{role}</span>
-              <ChevronDown
-                className={`h-4 w-4 flex-shrink-0 text-slate-400 transition-transform ${roleMenuOpen ? 'rotate-180' : ''}`}
-              />
-            </button>
-            {roleMenuOpen ? (
-              <div
-                role="listbox"
-                aria-labelledby="staff-role-label"
-                className="absolute left-0 right-0 top-full z-30 mt-2 space-y-1 rounded-app-surface border border-slate-200 bg-white p-2 shadow-xl animate-fade-in dark:border-slate-800 dark:bg-slate-900"
-              >
-                {allowedRoles.map((value, index) => {
-                  const selected = value === role;
-                  return (
-                    <button
-                      key={value}
-                      ref={(node) => { roleOptionRefs.current[index] = node; }}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      tabIndex={selected ? 0 : -1}
-                      onClick={() => chooseRole(value)}
-                      onKeyDown={(event) => handleRoleOptionKeyDown(event, index)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-app-control px-3 py-2.5 text-left text-sm transition-colors ${
-                        selected
-                          ? 'bg-amber-50 font-bold text-slate-900 dark:bg-amber-500/10 dark:text-white'
-                          : 'font-semibold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <span>{value}</span>
-                      {selected ? <Check className="h-4 w-4 flex-shrink-0 text-amber-500" /> : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
+          <ListboxSelect
+            id="staff-invite-role"
+            label="Role"
+            value={role}
+            options={allowedRoleOptions}
+            includePlaceholderOption={false}
+            disabled={busy || teamEntitlement?.can_invite_member === false}
+            onValueChange={(nextRole) => setRole(nextRole as StaffRole)}
+          />
           {teamEntitlement?.can_invite_member === false ? (
             <Alert
               type="warning"

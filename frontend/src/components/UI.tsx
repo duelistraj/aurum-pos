@@ -255,6 +255,8 @@ interface ListboxSelectProps {
   onValueChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  ariaLabel?: string;
+  includePlaceholderOption?: boolean;
 }
 
 export const ListboxSelect: React.FC<ListboxSelectProps> = ({
@@ -267,12 +269,16 @@ export const ListboxSelect: React.FC<ListboxSelectProps> = ({
   onValueChange,
   disabled = false,
   className = '',
+  ariaLabel,
+  includePlaceholderOption = true,
 }) => {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
-  const allOptions = [{ value: '', label: placeholder }, ...options];
+  const allOptions = includePlaceholderOption
+    ? [{ value: '', label: placeholder }, ...options]
+    : options;
   const selectedIndex = Math.max(0, allOptions.findIndex((option) => option.value === value));
   const selectedLabel = allOptions[selectedIndex]?.label ?? placeholder;
   const labelId = `${id}-label`;
@@ -342,7 +348,8 @@ export const ListboxSelect: React.FC<ListboxSelectProps> = ({
         ref={triggerRef}
         id={id}
         type="button"
-        aria-labelledby={label ? `${labelId} ${valueId}` : valueId}
+        aria-label={!label ? ariaLabel : undefined}
+        aria-labelledby={label ? `${labelId} ${valueId}` : ariaLabel ? undefined : valueId}
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
@@ -359,6 +366,7 @@ export const ListboxSelect: React.FC<ListboxSelectProps> = ({
       {open ? (
         <div
           role="listbox"
+          aria-label={!label ? ariaLabel : undefined}
           aria-labelledby={label ? labelId : undefined}
           className="ui-listbox__menu animate-fade-in"
         >

@@ -11,13 +11,12 @@ import {
   ShoppingBag, 
   Tag, 
   Search, 
-  ChevronLeft, 
-  ChevronRight, 
   Check,
   IndianRupee,
   LayoutGrid,
 } from 'lucide-react';
 import { Card, Button, Input, Alert, Modal, Loader } from '../components/UI';
+import { TablePagination } from '../components/TablePagination';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { Item } from '../types';
@@ -307,6 +306,7 @@ export const Items: React.FC = () => {
 
   // Modal and Mode States
   const [showModal, setShowModal] = React.useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [selectedItems, setSelectedItems] = React.useState<Set<string>>(new Set());
   const [expandedItemId, setExpandedItemId] = React.useState<string | null>(null);
@@ -317,7 +317,6 @@ export const Items: React.FC = () => {
   const [showCategoryDropdown, setShowCategoryDropdown] = React.useState(false);
   const [showMetalDropdown, setShowMetalDropdown] = React.useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = React.useState(false);
-  const [showRowsPerPageDropdown, setShowRowsPerPageDropdown] = React.useState(false);
   const [categorySearch, setCategorySearch] = React.useState('');
   
   const [showFormCategoryDropdown, setShowFormCategoryDropdown] = React.useState(false);
@@ -327,11 +326,11 @@ export const Items: React.FC = () => {
   const categoryDropdownRef = React.useRef<HTMLDivElement>(null);
   const metalDropdownRef = React.useRef<HTMLDivElement>(null);
   const statusDropdownRef = React.useRef<HTMLDivElement>(null);
-  const rowsPerPageDropdownRef = React.useRef<HTMLDivElement>(null);
   const formCategoryDropdownRef = React.useRef<HTMLDivElement>(null);
   const formMetalDropdownRef = React.useRef<HTMLDivElement>(null);
   const formPurityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [showDownloadDropdown, setShowDownloadDropdown] = React.useState(false);
+  const [pressingRowId, setPressingRowId] = React.useState<string | null>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const longPressRef = React.useRef<{
     itemId: string;
@@ -449,9 +448,6 @@ export const Items: React.FC = () => {
       }
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(target)) {
         setShowStatusDropdown(false);
-      }
-      if (rowsPerPageDropdownRef.current && !rowsPerPageDropdownRef.current.contains(target)) {
-        setShowRowsPerPageDropdown(false);
       }
       if (formCategoryDropdownRef.current && !formCategoryDropdownRef.current.contains(target)) {
         setShowFormCategoryDropdown(false);
@@ -839,16 +835,11 @@ export const Items: React.FC = () => {
 
   const handleDeleteSelectedItems = async () => {
     if (!canManage || selectedItems.size === 0) return;
-    const selectedCount = selectedItems.size;
-    const shouldDelete = window.confirm(
-      `Delete ${selectedCount} selected ${selectedCount === 1 ? 'item' : 'items'}? This action cannot be undone.`
-    );
-    if (!shouldDelete) return;
-
     setLoading(true);
     try {
       await apiClient.deleteItems(Array.from(selectedItems));
       setSelectedItems(new Set());
+      setShowDeleteConfirmation(false);
       setShowDownloadDropdown(false);
       await Promise.all([
         refreshItems(),
@@ -858,6 +849,7 @@ export const Items: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'change-log'] }),
       ]);
     } catch (err) {
+      setShowDeleteConfirmation(false);
       setError(
         err instanceof Error ? err.message : 'Failed to delete item'
       );
@@ -919,6 +911,7 @@ export const Items: React.FC = () => {
   const cancelLongPress = React.useCallback(() => {
     if (longPressRef.current) window.clearTimeout(longPressRef.current.timer);
     longPressRef.current = null;
+    setPressingRowId(null);
   }, []);
 
   React.useEffect(() => cancelLongPress, [cancelLongPress]);
@@ -934,9 +927,11 @@ export const Items: React.FC = () => {
     ) return;
     if ((event.target as HTMLElement).closest('button, input, a')) return;
     cancelLongPress();
+    setPressingRowId(item.id);
     const timer = window.setTimeout(() => {
       suppressRowClickRef.current = item.id;
       longPressRef.current = null;
+      setPressingRowId(null);
       openEditItem(item);
     }, LONG_PRESS_DURATION_MS);
     longPressRef.current = {
@@ -977,27 +972,6 @@ export const Items: React.FC = () => {
     if (window.matchMedia?.('(min-width: 640px)').matches) return;
     if ((event.target as HTMLElement).closest('button, input, a')) return;
     toggleExpandedItem(itemId);
-  };
-
-  // Generate pagination page numbers
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = [];
-    const maxVisible = 5;
-    
-    if (totalPages <= maxVisible) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      if (currentPage <= 3) {
-        pages.push(1, 2, 3, '...', totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages);
-      } else {
-        pages.push(1, '...', currentPage, '...', totalPages);
-      }
-    }
-    return pages;
   };
 
   const purityOptions = getPurityOptions(formData.metal, availableMetals);
@@ -1088,7 +1062,7 @@ export const Items: React.FC = () => {
                   aria-label="Delete selected items"
                   title="Delete selected items"
                   className="inventory-page__icon-action"
-                  onClick={() => void handleDeleteSelectedItems()}
+                  onClick={() => setShowDeleteConfirmation(true)}
                 >
                   <Trash2 className="h-6 w-6" />
                 </Button>
@@ -1125,8 +1099,8 @@ export const Items: React.FC = () => {
         )}
 
         {/* Search Bar and Dropdown Filters */}
-        <div className="inventory-page__filter-row flex flex-col md:flex-row gap-4 mb-6 items-stretch animate-slide-up">
-          <div className="relative flex-1">
+        <div className="inventory-page__filter-layout mb-6 animate-slide-up">
+          <div className="inventory-page__filter-search relative">
             <span className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
               <Search className="h-5 w-5 text-slate-400" />
             </span>
@@ -1138,9 +1112,11 @@ export const Items: React.FC = () => {
               className="inventory-focus-control w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-app-control focus:outline-none transition-all duration-200 shadow-xs placeholder-slate-400 font-medium"
             />
           </div>
+
+          <div className="inventory-page__filter-controls">
           
           {/* Metal Custom Selector */}
-          <div className="relative w-full md:w-48" ref={metalDropdownRef}>
+          <div className="inventory-page__filter-control inventory-page__filter-control--metal relative" ref={metalDropdownRef}>
             <div
               onClick={() => {
                 setShowMetalDropdown(!showMetalDropdown);
@@ -1159,7 +1135,7 @@ export const Items: React.FC = () => {
             </div>
 
             {showMetalDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+              <div className="inventory-page__filter-menu absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
                 {METAL_FILTER_OPTIONS.map((opt) => {
                   const isSelected = opt.value === selectedMetal;
                   const Icon = opt.icon;
@@ -1192,7 +1168,7 @@ export const Items: React.FC = () => {
           </div>
 
           {/* Category Custom Selector */}
-          <div className="relative w-full md:w-56" ref={categoryDropdownRef}>
+          <div className="inventory-page__filter-control inventory-page__filter-control--category relative" ref={categoryDropdownRef}>
             <div 
               onClick={() => {
                 setShowCategoryDropdown(!showCategoryDropdown);
@@ -1210,7 +1186,7 @@ export const Items: React.FC = () => {
             </div>
 
             {showCategoryDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-80 overflow-y-auto animate-fade-in">
+              <div className="inventory-page__filter-menu inventory-page__filter-menu--category absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-80 overflow-y-auto animate-fade-in">
                 <div className="relative p-1">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   <input
@@ -1257,7 +1233,7 @@ export const Items: React.FC = () => {
           </div>
 
           {/* Status Custom Selector */}
-          <div className="relative w-full md:w-56" ref={statusDropdownRef}>
+          <div className="inventory-page__filter-control inventory-page__filter-control--status relative" ref={statusDropdownRef}>
             <div 
               onClick={() => {
                 setShowStatusDropdown(!showStatusDropdown);
@@ -1275,7 +1251,7 @@ export const Items: React.FC = () => {
             </div>
 
             {showStatusDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
+              <div className="inventory-page__filter-menu absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
                 {statusOptions.map((opt) => {
                   const isSelected = opt.value === selectedStatus;
                   const Icon = opt.icon;
@@ -1305,6 +1281,7 @@ export const Items: React.FC = () => {
                 })}
               </div>
             )}
+          </div>
           </div>
         </div>
 
@@ -1414,7 +1391,7 @@ export const Items: React.FC = () => {
                               selectedItems.has(item.id)
                                 ? 'inventory-row--selected'
                                 : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
-                            }`}
+                            } ${pressingRowId === item.id ? 'inventory-table__row--pressing' : ''}`}
                           >
                             <td className={`px-1 py-3 sm:px-5 sm:py-5 ${
                               canManage ? 'table-cell' : 'hidden'
@@ -1604,113 +1581,77 @@ export const Items: React.FC = () => {
 
         {/* Footer / Pagination controls */}
         {(!itemsLoading || items.length > 0) && (
-          <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4 text-slate-500 dark:text-slate-400 text-sm">
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            rowsPerPage={rowsPerPage}
+            itemLabel="items"
+            loading={itemsLoading}
+            onPageChange={(nextPage) => {
+              setCurrentPage(nextPage);
+              setExpandedItemId(null);
+            }}
+            onRowsPerPageChange={(rows) => {
+              setRowsPerPage(rows);
+              setCurrentPage(1);
+              setExpandedItemId(null);
+            }}
+          />
+        )}
+
+        <Modal
+          isOpen={showDeleteConfirmation && selectedItems.size > 0}
+          title={selectedItems.size === 1 ? 'Delete item' : 'Delete items'}
+          className="inventory-delete-dialog"
+          onClose={() => {
+            if (!loading) setShowDeleteConfirmation(false);
+          }}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                disabled={loading}
+                onClick={() => setShowDeleteConfirmation(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                isLoading={loading}
+                onClick={() => void handleDeleteSelectedItems()}
+              >
+                <Trash2 className="h-5 w-5" />
+                <span>
+                  Delete {selectedItems.size === 1 ? 'item' : `${selectedItems.size} items`}
+                </span>
+              </Button>
+            </>
+          }
+        >
+          <div className="inventory-delete-confirmation">
+            <span className="inventory-delete-confirmation__icon" aria-hidden="true">
+              <Trash2 />
+            </span>
             <div>
-              Showing <span className="font-semibold text-slate-800 dark:text-slate-200">{totalItems > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0}</span> to{' '}
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {Math.min(currentPage * rowsPerPage, totalItems)}
-              </span>{' '}
-              of <span className="font-semibold text-slate-800 dark:text-slate-200">{totalItems}</span> items
-            </div>
-
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => {
-                    setCurrentPage((prev) => Math.max(prev - 1, 1));
-                    setExpandedItemId(null);
-                  }}
-                  disabled={itemsLoading || currentPage === 1}
-                  className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
-                >
-                  <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                </button>
-
-                {getPageNumbers().map((pageNum, idx) => {
-                  if (pageNum === '...') {
-                    return (
-                      <span key={`dots-${idx}`} className="px-1.5 text-slate-400 font-bold">
-                        ...
-                      </span>
-                    );
-                  }
-                  const isActive = pageNum === currentPage;
-                  return (
-                    <button
-                      key={`page-${pageNum}`}
-                      disabled={itemsLoading}
-                      onClick={() => {
-                        setCurrentPage(pageNum as number);
-                        setExpandedItemId(null);
-                      }}
-                      className={`w-10 h-10 font-bold rounded-app-control flex items-center justify-center transition-all ${
-                        isActive
-                          ? 'border-2 border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
-                          : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-
-                <button
-                  onClick={() => {
-                    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
-                    setExpandedItemId(null);
-                  }}
-                  disabled={itemsLoading || currentPage === totalPages}
-                  className="w-10 h-10 flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-app-control disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
-                >
-                  <ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                </button>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2">
-              <span>Rows per page</span>
-              <div className="inventory-page__rows-dropdown relative" ref={rowsPerPageDropdownRef}>
-                <button
-                  type="button"
-                  aria-haspopup="listbox"
-                  aria-expanded={showRowsPerPageDropdown}
-                  onClick={() => setShowRowsPerPageDropdown((open) => !open)}
-                  className="inventory-page__rows-trigger"
-                >
-                  <span>{rowsPerPage}</span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${showRowsPerPageDropdown ? 'rotate-180' : ''}`} />
-                </button>
-                {showRowsPerPageDropdown && (
-                  <div className="inventory-page__rows-menu" role="listbox" aria-label="Rows per page">
-                    {[10, 20, 50, 100].map((option) => (
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={rowsPerPage === option}
-                        key={option}
-                        onClick={() => {
-                          setRowsPerPage(option);
-                          setCurrentPage(1);
-                          setExpandedItemId(null);
-                          setShowRowsPerPageDropdown(false);
-                        }}
-                        className={`inventory-page__rows-option ${rowsPerPage === option ? 'is-selected' : ''}`}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <p className="inventory-delete-confirmation__message">
+                {selectedItems.size === 1
+                  ? 'Delete the selected item from inventory?'
+                  : `Delete ${selectedItems.size} selected items from inventory?`}
+              </p>
+              <p className="inventory-delete-confirmation__warning">
+                This action cannot be undone.
+              </p>
             </div>
           </div>
-        )}
+        </Modal>
 
         {/* Add/Edit Item Modal */}
         <Modal
           isOpen={showModal}
           title={editingItem ? 'Edit Item' : 'Add New Item'}
           size="lg"
+          className={editingItem ? 'inventory-edit-modal' : ''}
           onClose={closeModal}
           footer={
             <>
