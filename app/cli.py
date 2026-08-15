@@ -37,7 +37,7 @@ TENANT_TABLES = (
 )
 CLI_MAPPER_TYPES = (Item, SaleItem)
 OWNER_PASSWORD_ENV = "AURUM_BOOTSTRAP_OWNER_PASSWORD"
-ITEM_FIELDS = (
+LEGACY_ITEM_FIELDS = (
     "id",
     "sku",
     "barcode",
@@ -53,6 +53,15 @@ ITEM_FIELDS = (
     "notes",
     "created_at",
     "updated_at",
+)
+ITEM_FIELDS = (
+    *LEGACY_ITEM_FIELDS,
+    "item_type",
+    "pricing_method",
+    "stock_mode",
+    "stock_weight",
+    "ratti",
+    "rate_per_ratti",
 )
 
 configure_mappers()
@@ -205,7 +214,7 @@ async def import_items(args: argparse.Namespace) -> None:
             raise ValueError("Target shop already contains items")
         imported_items: list[Item] = []
         for row in items:
-            missing = set(ITEM_FIELDS) - set(row)
+            missing = set(LEGACY_ITEM_FIELDS) - set(row)
             if missing:
                 raise ValueError(f"Missing item fields: {sorted(missing)}")
             unknown = set(row) - set(ITEM_FIELDS)
@@ -219,7 +228,7 @@ async def import_items(args: argparse.Namespace) -> None:
             if status not in {"in_stock", "sold", "reserved", "archived"}:
                 raise ValueError(f"Unsupported item status: {status}")
             validated = ItemBase.model_validate(
-                {field: values[field] for field in ItemBase.model_fields}
+                {field: row[field] for field in ItemBase.model_fields if field in row}
             )
             values.update(validated.model_dump())
             imported_items.append(Item(shop_id=shop.id, **values))
@@ -233,11 +242,17 @@ async def import_items(args: argparse.Namespace) -> None:
                     event_type="baseline",
                     sku=item.sku,
                     category=item.category,
+                    item_type=item.item_type,
+                    pricing_method=item.pricing_method,
+                    stock_mode=item.stock_mode,
                     metal=item.metal,
                     purity=item.purity,
                     net_weight=item.net_weight,
                     making_charge=item.making_charge,
                     fixed_rate=item.fixed_rate,
+                    stock_weight=item.stock_weight,
+                    ratti=item.ratti,
+                    rate_per_ratti=item.rate_per_ratti,
                     quantity=item.quantity,
                     status=item.status,
                     effective_from=item.created_at,

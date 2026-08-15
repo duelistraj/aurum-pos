@@ -7,8 +7,8 @@ from sqlalchemy import Date, and_, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.changelog.models import ChangeLog
+from app.modules.items.catalog import format_category_name
 from app.modules.items.models import Item, ItemHistory
-from app.modules.items.pricing import FIXED_MAKING_CATEGORIES
 from app.modules.metal_rates.models import MetalRateHistory
 from app.modules.sales.models import Sale, SaleItem
 from app.modules.shops.models import Shop
@@ -71,11 +71,17 @@ async def _inventory_metrics(
             select(
                 Item.id.label("item_id"),
                 Item.category,
+                Item.item_type,
+                Item.pricing_method,
+                Item.stock_mode,
                 Item.metal,
                 Item.purity,
                 Item.net_weight,
                 Item.making_charge,
                 Item.fixed_rate,
+                Item.stock_weight,
+                Item.ratti,
+                Item.rate_per_ratti,
                 Item.quantity,
             )
             .where(
@@ -89,11 +95,17 @@ async def _inventory_metrics(
             select(
                 ItemHistory.item_id,
                 ItemHistory.category,
+                ItemHistory.item_type,
+                ItemHistory.pricing_method,
+                ItemHistory.stock_mode,
                 ItemHistory.metal,
                 ItemHistory.purity,
                 ItemHistory.net_weight,
                 ItemHistory.making_charge,
                 ItemHistory.fixed_rate,
+                ItemHistory.stock_weight,
+                ItemHistory.ratti,
+                ItemHistory.rate_per_ratti,
                 ItemHistory.quantity,
             )
             .where(
@@ -122,16 +134,24 @@ async def _inventory_metrics(
         (normalized_metal == "silver", base_rate),
         else_=base_rate * inventory_at.c.purity / HUNDRED,
     )
-    metal_value = inventory_at.c.net_weight * effective_rate
+    pricing_weight = case(
+        (inventory_at.c.stock_mode == "weight", inventory_at.c.stock_weight),
+        else_=inventory_at.c.net_weight,
+    )
+    metal_value = pricing_weight * effective_rate
     making_value = case(
         (
-            func.lower(inventory_at.c.category).in_(FIXED_MAKING_CATEGORIES),
+            inventory_at.c.pricing_method == "fixed_making_charge",
             inventory_at.c.making_charge,
         ),
-        else_=inventory_at.c.making_charge * inventory_at.c.net_weight,
+        else_=inventory_at.c.making_charge * pricing_weight,
     )
     suggested_value = case(
-        (func.lower(inventory_at.c.category) == "unique", inventory_at.c.fixed_rate),
+        (
+            inventory_at.c.item_type == "stone",
+            inventory_at.c.ratti * inventory_at.c.rate_per_ratti,
+        ),
+        (inventory_at.c.pricing_method == "fixed_rate", inventory_at.c.fixed_rate),
         else_=metal_value + making_value,
     )
     positive_quantity = case(
@@ -139,8 +159,24 @@ async def _inventory_metrics(
         else_=0,
     )
     sold_metal = func.lower(func.coalesce(SaleItem.item_metal, Item.metal))
+    sold_stock_mode = func.coalesce(SaleItem.item_stock_mode, Item.stock_mode)
     sold_statement = (
-        select(func.coalesce(func.sum(SaleItem.quantity), 0))
+        select(
+            func.coalesce(
+                func.sum(case((sold_stock_mode != "weight", SaleItem.quantity), else_=0)),
+                0,
+            )
+            + func.count(
+                func.distinct(
+                    case(
+                        (
+                            (sold_stock_mode == "weight") & (Item.status == "sold"),
+                            SaleItem.item_id,
+                        )
+                    )
+                )
+            )
+        )
         .select_from(SaleItem)
         .join(
             Sale,
@@ -165,8 +201,24 @@ async def _inventory_metrics(
         sold_statement = sold_statement.where(sold_metal == metal)
     statement = select(
         func.coalesce(func.sum(positive_quantity), 0),
-        func.coalesce(func.sum(positive_quantity * metal_value), 0),
-        func.coalesce(func.sum(positive_quantity * suggested_value), 0),
+        func.coalesce(
+            func.sum(
+                case(
+                    (inventory_at.c.stock_mode == "weight", metal_value),
+                    else_=positive_quantity * metal_value,
+                )
+            ),
+            0,
+        ),
+        func.coalesce(
+            func.sum(
+                case(
+                    (inventory_at.c.stock_mode == "weight", suggested_value),
+                    else_=positive_quantity * suggested_value,
+                )
+            ),
+            0,
+        ),
         sold_statement.scalar_subquery(),
     ).select_from(inventory_at)
     if metal != "all":
@@ -484,12 +536,12 @@ async def get_dashboard_analytics(
     )
     if normalized_metal == "all":
         categories = {
-            f"{name.capitalize()} Jewellery": value
+            ("Stones" if name == "stone" else f"{name.capitalize()} Jewellery"): value
             for name, value in raw_categories.items()
-            if name in {"gold", "silver", "platinum"}
+            if name in {"gold", "silver", "platinum", "stone"}
         }
     else:
-        categories = {name.capitalize(): value for name, value in raw_categories.items()}
+        categories = {format_category_name(name): value for name, value in raw_categories.items()}
     category_total = sum(categories.values(), start=Decimal(0))
     sales_by_category: list[dict[str, str | float]] = [
         {

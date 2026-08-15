@@ -44,6 +44,9 @@ class WhatsAppInvoiceDelivery(Base):
             postgresql_where=text("status IN ('pending', 'processing')"),
         ),
         Index("ix_whatsapp_deliveries_shop_sale", "shop_id", "sale_id"),
+        Index("ix_whatsapp_deliveries_organization_id", "organization_id"),
+        Index("ix_whatsapp_deliveries_shop_id", "shop_id"),
+        Index("ix_whatsapp_deliveries_recipient_hmac", "recipient_hmac"),
         Index(
             "uq_whatsapp_deliveries_meta_message",
             "meta_message_id",
@@ -57,18 +60,16 @@ class WhatsAppInvoiceDelivery(Base):
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     shop_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("shops.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         server_default=text("NULLIF(current_setting('app.current_shop_id', true), '')::uuid"),
     )
     sale_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     recipient_e164: Mapped[str] = mapped_column(String(16), nullable=False)
-    recipient_hmac: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    recipient_hmac: Mapped[str] = mapped_column(String(64), nullable=False)
     source: Mapped[str] = mapped_column(String(30), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
     consent_confirmed_by_user_id: Mapped[uuid.UUID] = mapped_column(

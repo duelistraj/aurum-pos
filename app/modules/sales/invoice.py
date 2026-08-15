@@ -47,6 +47,7 @@ class InvoiceLine:
     metal_value: Decimal
     making_charge: Decimal
     gst_amount: Decimal
+    gst_rate_percent: Decimal
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class InvoiceTotals:
     making_charge: Decimal
     gst_amount: Decimal
     grand_total: Decimal
+    tax_groups: dict[Decimal, Decimal]
 
 
 def _decimal(value: object) -> Decimal:
@@ -216,6 +218,7 @@ def _invoice_lines(
     total_metal_value = Decimal(0)
     total_making_charge = Decimal(0)
     total_gst = Decimal(0)
+    tax_groups: dict[Decimal, Decimal] = {}
 
     for sale_item in sale.items:
         pricing = sale_item.price_breakdown or {}
@@ -225,11 +228,17 @@ def _invoice_lines(
         item_sku = _snapshot_value(sale_item, "item_sku", "sku") or ""
         item_metal = pricing.get("metal") or _snapshot_value(sale_item, "item_metal", "metal") or ""
         item_purity = _snapshot_value(sale_item, "item_purity", "purity")
+        item_type = _snapshot_value(sale_item, "item_type", "item_type") or pricing.get(
+            "item_type", "jewellery"
+        )
         effective_purity = pricing.get("effective_purity", item_purity)
         is_unspecified_silver = str(item_metal).strip().lower() == "silver" and (
             item_purity is None or _decimal(item_purity) == 0
         )
-        purity = "" if is_unspecified_silver else _compact_decimal(effective_purity)
+        if item_type == "stone":
+            purity = _compact_decimal(_snapshot_value(sale_item, "item_ratti", "ratti"))
+        else:
+            purity = "" if is_unspecified_silver else _compact_decimal(effective_purity)
 
         unit_net_weight = _decimal(
             pricing.get(
@@ -242,6 +251,7 @@ def _invoice_lines(
         metal_value = (_decimal(pricing.get("metal_value")) * quantity_decimal) + fixed_rate
         making_charge = _decimal(pricing.get("making_charge")) * quantity_decimal
         gst_amount = _decimal(pricing.get("gst_amount")) * quantity_decimal
+        gst_rate = _decimal(pricing.get("gst_rate_percent"))
         description = Paragraph(escape(str(item_name)), styles["small"])
         _, description_height = description.wrap(91.0, ITEM_AREA_HEIGHT)
         row_height = max(STANDARD_ITEM_HEIGHT, description_height + 6.0)
@@ -249,14 +259,18 @@ def _invoice_lines(
         lines.append(
             InvoiceLine(
                 row=(
-                    str(item_metal)[:1].upper(),
+                    "S" if item_type == "stone" else str(item_metal)[:1].upper(),
                     str(item_sku),
                     description,
                     str(pricing.get("hsn") or ""),
                     purity,
-                    _weight(net_weight),
+                    "" if item_type == "stone" else _weight(net_weight),
                     quantity,
-                    _money(pricing.get("rate_per_gram")),
+                    _money(
+                        _snapshot_value(sale_item, "item_rate_per_ratti", "rate_per_ratti")
+                        if item_type == "stone"
+                        else pricing.get("rate_per_gram")
+                    ),
                     _money(metal_value),
                     _money(making_charge),
                     _money(sale_item.price),
@@ -267,6 +281,7 @@ def _invoice_lines(
                 metal_value=metal_value,
                 making_charge=making_charge,
                 gst_amount=gst_amount,
+                gst_rate_percent=gst_rate,
             )
         )
         total_net_weight += net_weight
@@ -274,6 +289,7 @@ def _invoice_lines(
         total_metal_value += metal_value
         total_making_charge += making_charge
         total_gst += gst_amount
+        tax_groups[gst_rate] = tax_groups.get(gst_rate, Decimal(0)) + gst_amount
 
     return lines, InvoiceTotals(
         net_weight=total_net_weight,
@@ -282,6 +298,7 @@ def _invoice_lines(
         making_charge=total_making_charge,
         gst_amount=total_gst,
         grand_total=_decimal(sale.total_amount),
+        tax_groups=tax_groups,
     )
 
 
@@ -400,10 +417,10 @@ def _table_headers(styles: dict[str, ParagraphStyle]) -> list[object]:
         "Tag No.",
         "Description",
         Paragraph("Hsn<br/>Code", centered),
-        "Purity",
+        Paragraph("Purity /<br/>Ratti", centered),
         Paragraph("Net Wt.<br/>(g)", centered),
         "Pcs.",
-        Paragraph("Rate<br/>(per g)", centered),
+        Paragraph("Rate<br/>(unit)", centered),
         "Value",
         Paragraph("Making<br/>Charges", centered),
         "Amount",
@@ -518,15 +535,28 @@ def _draw_summary(
     tax_total = totals.gst_amount.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
     sgst_amount = (tax_total / 2).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
     cgst_amount = tax_total - sgst_amount
-    tax_rate = _decimal(getattr(sale, "tax_rate_percent", 0))
-    half_tax_rate = tax_rate / 2
     total_before_tax = totals.grand_total - tax_total
+    tax_rows: list[list[str]] = []
+    if totals.tax_groups:
+        for tax_rate, group_tax in sorted(totals.tax_groups.items()):
+            group_sgst = (group_tax / 2).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+            tax_rows.extend(
+                [
+                    [f"SGST {_rate(tax_rate / 2)}%:", _money(group_sgst)],
+                    [f"CGST {_rate(tax_rate / 2)}%:", _money(group_tax - group_sgst)],
+                ]
+            )
+    else:
+        legacy_rate = _decimal(getattr(sale, "tax_rate_percent", 0)) / 2
+        tax_rows = [
+            [f"SGST {_rate(legacy_rate)}%:", _money(sgst_amount)],
+            [f"CGST {_rate(legacy_rate)}%:", _money(cgst_amount)],
+        ]
 
     summary = Table(
         [
             ["Total Amt. Before Tax:", _money(total_before_tax)],
-            [f"SGST {_rate(half_tax_rate)}%:", _money(sgst_amount)],
-            [f"CGST {_rate(half_tax_rate)}%:", _money(cgst_amount)],
+            *tax_rows,
             ["Total Amnt. With Tax:", _money(totals.grand_total)],
             ["ROUND OFF:", "0.00"],
             ["Receipt / Net Amt.:", f"₹ {_money(totals.grand_total)}"],

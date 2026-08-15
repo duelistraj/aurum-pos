@@ -175,17 +175,19 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   trailingAction?: React.ReactNode;
+  wrapperClassName?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
   label,
   error,
   trailingAction,
+  wrapperClassName = '',
   className = '',
   ...props
 }) => {
   return (
-    <div className="w-full">
+    <div className={`w-full ${wrapperClassName}`}>
       {label && (
         <label className="ui-field-label" htmlFor={props.id}>
           {label}

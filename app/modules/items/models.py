@@ -11,7 +11,6 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
-    Text,
     UniqueConstraint,
     literal_column,
     text,
@@ -31,7 +30,14 @@ class Item(Base):
         CheckConstraint("quantity >= 0", name="items_quantity_nonnegative"),
         CheckConstraint("purity >= 0 AND purity <= 100", name="items_purity_range"),
         CheckConstraint(
-            "net_weight >= 0 AND making_charge >= 0 AND fixed_rate >= 0",
+            "notes IS NULL OR char_length(notes) <= 50",
+            name="items_notes_length",
+        ),
+        CheckConstraint(
+            "net_weight >= 0 AND making_charge >= 0 AND fixed_rate >= 0 "
+            "AND (stock_weight IS NULL OR stock_weight >= 0) "
+            "AND (ratti IS NULL OR ratti >= 0) "
+            "AND (rate_per_ratti IS NULL OR rate_per_ratti >= 0)",
             name="items_nonnegative_money_weight",
         ),
         CheckConstraint(
@@ -39,9 +45,38 @@ class Item(Base):
             name="items_status_allowed",
         ),
         CheckConstraint(
-            "(category = 'unique' AND net_weight = 0 AND making_charge = 0) OR "
-            "(category <> 'unique' AND net_weight > 0 AND fixed_rate = 0)",
-            name="items_unique_weight_contract",
+            "item_type IN ('jewellery', 'stone') "
+            "AND pricing_method IN ('fixed_rate', 'fixed_making_charge', "
+            "'making_charge_per_gram', 'rate_per_ratti') "
+            "AND stock_mode IN ('quantity', 'weight')",
+            name="items_modes_allowed",
+        ),
+        CheckConstraint(
+            "(item_type = 'stone' AND metal = 'stone' "
+            "AND pricing_method = 'rate_per_ratti' AND stock_mode = 'quantity' "
+            "AND purity = 0 AND net_weight = 0 AND making_charge = 0 AND fixed_rate = 0 "
+            "AND stock_weight IS NULL AND ratti > 0 AND rate_per_ratti > 0) OR "
+            "(item_type = 'jewellery' AND metal <> 'stone' "
+            "AND pricing_method <> 'rate_per_ratti' "
+            "AND ratti IS NULL AND rate_per_ratti IS NULL)",
+            name="items_type_contract",
+        ),
+        CheckConstraint(
+            "(stock_mode = 'quantity' AND stock_weight IS NULL) OR "
+            "(stock_mode = 'weight' AND item_type = 'jewellery' "
+            "AND pricing_method <> 'fixed_rate' AND net_weight > 0 "
+            "AND stock_weight IS NOT NULL AND stock_weight <= net_weight "
+            "AND quantity IN (0, 1))",
+            name="items_stock_contract",
+        ),
+        CheckConstraint(
+            "item_type = 'stone' OR "
+            "(pricing_method = 'fixed_rate' AND fixed_rate > 0 "
+            "AND making_charge = 0 AND stock_mode = 'quantity') OR "
+            "(pricing_method IN ('fixed_making_charge', 'making_charge_per_gram') "
+            "AND fixed_rate = 0 AND "
+            "((stock_mode = 'quantity' AND net_weight > 0) OR stock_mode = 'weight'))",
+            name="items_pricing_contract",
         ),
         Index(
             "ix_items_shop_status_updated_at",
@@ -101,6 +136,18 @@ class Item(Base):
         index=True,
     )
 
+    item_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="jewellery", server_default="jewellery"
+    )
+
+    pricing_method: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="making_charge_per_gram"
+    )
+
+    stock_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="quantity", server_default="quantity"
+    )
+
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -130,6 +177,9 @@ class Item(Base):
         Numeric(12, 2), nullable=False, default=Decimal(0), server_default="0"
     )
 
+    stock_weight: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    ratti: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    rate_per_ratti: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -144,7 +194,7 @@ class Item(Base):
     )
 
     notes: Mapped[str | None] = mapped_column(
-        Text,
+        String(50),
         nullable=True,
     )
 
@@ -189,7 +239,13 @@ class ItemHistory(Base):
         ),
         CheckConstraint(
             "quantity >= 0 AND purity >= 0 AND purity <= 100 "
-            "AND net_weight >= 0 AND making_charge >= 0 AND fixed_rate >= 0",
+            "AND net_weight >= 0 AND making_charge >= 0 AND fixed_rate >= 0 "
+            "AND (stock_weight IS NULL OR stock_weight >= 0) "
+            "AND (ratti IS NULL OR ratti >= 0) "
+            "AND (rate_per_ratti IS NULL OR rate_per_ratti >= 0) "
+            "AND (stock_mode <> 'weight' OR "
+            "(net_weight > 0 AND stock_weight IS NOT NULL "
+            "AND stock_weight <= net_weight AND quantity IN (0, 1)))",
             name="item_history_values_valid",
         ),
     )
@@ -205,6 +261,9 @@ class ItemHistory(Base):
     event_type: Mapped[str] = mapped_column(String(20), nullable=False)
     sku: Mapped[str] = mapped_column(String(50), nullable=False)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
+    item_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    pricing_method: Mapped[str] = mapped_column(String(30), nullable=False)
+    stock_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     metal: Mapped[str] = mapped_column(String(50), nullable=False)
     purity: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     net_weight: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
@@ -212,6 +271,9 @@ class ItemHistory(Base):
     fixed_rate: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal(0), server_default="0"
     )
+    stock_weight: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    ratti: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    rate_per_ratti: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     effective_from: Mapped[datetime] = mapped_column(

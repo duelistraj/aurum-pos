@@ -1,6 +1,7 @@
 import secrets
 import string
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +14,20 @@ from app.modules.items.schemas import ItemBase, ItemCreate, ItemUpdate
 from app.modules.subscriptions.service import enforce_item_activation_limit
 
 
+def reconcile_remaining_weight(
+    *,
+    current_total: Decimal,
+    current_remaining: Decimal,
+    new_total: Decimal,
+) -> Decimal:
+    consumed_weight = current_total - current_remaining
+    if new_total <= 0:
+        raise ValueError("Total weight must be greater than 0")
+    if new_total < consumed_weight:
+        raise ValueError("Total weight cannot be less than consumed weight")
+    return new_total - consumed_weight
+
+
 def record_item_history(db: AsyncSession, item: Item, *, event_type: str) -> None:
     """Append an immutable inventory snapshot in the caller's transaction."""
     db.add(
@@ -22,11 +37,17 @@ def record_item_history(db: AsyncSession, item: Item, *, event_type: str) -> Non
             event_type=event_type,
             sku=item.sku,
             category=item.category,
+            item_type=item.item_type,
+            pricing_method=item.pricing_method,
+            stock_mode=item.stock_mode,
             metal=item.metal,
             purity=item.purity,
             net_weight=item.net_weight,
             making_charge=item.making_charge,
             fixed_rate=item.fixed_rate,
+            stock_weight=item.stock_weight,
+            ratti=item.ratti,
+            rate_per_ratti=item.rate_per_ratti,
             quantity=item.quantity,
             status=item.status,
             effective_from=datetime.now(UTC),
@@ -59,11 +80,6 @@ async def create_item(db: AsyncSession, data: ItemCreate, *, shop_id: UUID) -> I
     # Generate barcode if not provided
     if not item_data.get("barcode"):
         item_data["barcode"] = await generate_unique_barcode(db, shop_id=shop_id)
-
-    # Unique items use one fixed rate and have no weight or making charge.
-    if item_data.get("category") == "unique":
-        item_data["net_weight"] = 0
-        item_data["making_charge"] = 0
 
     item = Item(shop_id=shop_id, **item_data)
     db.add(item)
@@ -99,23 +115,68 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
         "sku": item.sku,
         "barcode": item.barcode,
         "category": item.category,
+        "item_type": item.item_type,
+        "pricing_method": item.pricing_method,
+        "stock_mode": item.stock_mode,
         "name": item.name,
         "metal": item.metal,
         "purity": float(item.purity),
         "net_weight": float(item.net_weight),
         "making_charge": float(item.making_charge) if item.making_charge is not None else None,
         "fixed_rate": float(item.fixed_rate),
+        "stock_weight": float(item.stock_weight) if item.stock_weight is not None else None,
+        "ratti": float(item.ratti) if item.ratti is not None else None,
+        "rate_per_ratti": float(item.rate_per_ratti) if item.rate_per_ratti is not None else None,
         "quantity": item.quantity,
         "notes": item.notes,
     }
 
     requested_updates = data.model_dump(exclude_unset=True)
-    resulting_category = requested_updates.get("category", item.category)
-    if resulting_category == "unique":
-        if "fixed_rate" not in requested_updates and "making_charge" in requested_updates:
-            requested_updates["fixed_rate"] = requested_updates["making_charge"]
-        requested_updates["net_weight"] = 0
-        requested_updates["making_charge"] = 0
+    if "item_type" in requested_updates and requested_updates["item_type"] != item.item_type:
+        raise ValueError("Item type cannot be changed after creation")
+    if "stock_mode" in requested_updates and requested_updates["stock_mode"] != item.stock_mode:
+        from app.modules.sales.models import SaleItem
+
+        has_sale = await db.scalar(
+            select(SaleItem.id)
+            .where(
+                SaleItem.shop_id == shop_id,
+                SaleItem.item_id == item.id,
+            )
+            .limit(1)
+        )
+        if has_sale is not None:
+            raise ValueError("Stock mode cannot be changed after the item has been sold")
+    target_stock_mode = requested_updates.get("stock_mode", item.stock_mode)
+    if target_stock_mode == "weight":
+        requested_stock_weight = requested_updates.get("stock_weight")
+        if item.stock_mode == "weight":
+            current_remaining = item.stock_weight or Decimal(0)
+            if (
+                "stock_weight" in requested_updates
+                and "net_weight" not in requested_updates
+                and requested_stock_weight != current_remaining
+            ):
+                raise ValueError("Remaining weight cannot be edited directly")
+            total_weight = Decimal(str(requested_updates.get("net_weight", item.net_weight)))
+            remaining_weight = reconcile_remaining_weight(
+                current_total=item.net_weight,
+                current_remaining=current_remaining,
+                new_total=total_weight,
+            )
+        else:
+            total_value = requested_updates.get("net_weight") or requested_stock_weight or 0
+            total_weight = Decimal(str(total_value))
+            remaining_weight = reconcile_remaining_weight(
+                current_total=Decimal(0),
+                current_remaining=Decimal(0),
+                new_total=total_weight,
+            )
+        requested_updates.update(
+            net_weight=total_weight,
+            stock_weight=remaining_weight,
+            quantity=1 if remaining_weight > 0 else 0,
+        )
     requested_quantity = requested_updates.get("quantity")
     if item.quantity <= 0 and requested_quantity is not None and requested_quantity > 0:
         await enforce_item_activation_limit(db, shop_id)
@@ -123,22 +184,44 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
         "sku": item.sku,
         "barcode": item.barcode,
         "category": item.category,
+        "item_type": item.item_type,
+        "pricing_method": item.pricing_method,
+        "stock_mode": item.stock_mode,
         "name": item.name,
         "metal": item.metal,
         "purity": item.purity,
         "net_weight": item.net_weight,
         "making_charge": item.making_charge,
         "fixed_rate": item.fixed_rate,
+        "stock_weight": item.stock_weight,
+        "ratti": item.ratti,
+        "rate_per_ratti": item.rate_per_ratti,
         "quantity": item.quantity,
         "notes": item.notes,
     }
     validated_item = ItemBase.model_validate({**current_item_data, **requested_updates})
-    if validated_item.category == "unique" and validated_item.fixed_rate <= 0:
-        raise ValueError("fixed_rate must be greater than 0 for unique items")
     validated_data = validated_item.model_dump()
     fields_to_update = set(requested_updates)
-    if "category" in fields_to_update:
-        fields_to_update.update({"net_weight", "making_charge", "fixed_rate"})
+    if fields_to_update & {
+        "category",
+        "item_type",
+        "pricing_method",
+        "stock_mode",
+        "net_weight",
+    }:
+        fields_to_update.update(
+            {
+                "metal",
+                "purity",
+                "net_weight",
+                "making_charge",
+                "fixed_rate",
+                "stock_weight",
+                "ratti",
+                "rate_per_ratti",
+                "quantity",
+            }
+        )
     item_data = {field: validated_data[field] for field in fields_to_update}
 
     # Remove status from tracking if it exists
@@ -156,6 +239,9 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
         item_data_for_logging["making_charge"] = float(item_data_for_logging["making_charge"])
     if "fixed_rate" in item_data_for_logging and item_data_for_logging["fixed_rate"] is not None:
         item_data_for_logging["fixed_rate"] = float(item_data_for_logging["fixed_rate"])
+    for decimal_field in ("stock_weight", "ratti", "rate_per_ratti"):
+        if item_data_for_logging.get(decimal_field) is not None:
+            item_data_for_logging[decimal_field] = float(item_data_for_logging[decimal_field])
 
     # Build a more user-friendly change log with only changed fields
     changes = {}
@@ -171,6 +257,8 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
     # Apply changes to the item
     for field, value in item_data.items():
         setattr(item, field, value)
+    if item.stock_mode == "weight" and item.stock_weight == 0:
+        item.status = "sold"
     record_item_history(db, item, event_type="update")
 
     # Only log if there are actual changes (excluding status)
@@ -192,23 +280,23 @@ async def update_item(db: AsyncSession, item_id: UUID, data: ItemUpdate, *, shop
     return item
 
 
-async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None:
-    item = await get_item_by_id(db, item_id, shop_id=shop_id, for_update=True)
-    if not item:
-        raise ValueError("Item does not exist")
-    if item.status != "in_stock":
-        raise ValueError("Only in_stock items can be deleted")
-
+async def _archive_item(db: AsyncSession, item: Item, *, shop_id: UUID) -> None:
     payload = {
         "sku": item.sku,
         "barcode": item.barcode,
         "category": item.category,
+        "item_type": item.item_type,
+        "pricing_method": item.pricing_method,
+        "stock_mode": item.stock_mode,
         "name": item.name,
         "metal": item.metal,
         "purity": float(item.purity),
         "net_weight": float(item.net_weight),
         "making_charge": float(item.making_charge) if item.making_charge is not None else None,
         "fixed_rate": float(item.fixed_rate),
+        "stock_weight": float(item.stock_weight) if item.stock_weight is not None else None,
+        "ratti": float(item.ratti) if item.ratti is not None else None,
+        "rate_per_ratti": float(item.rate_per_ratti) if item.rate_per_ratti is not None else None,
         "quantity": item.quantity,
         "notes": item.notes,
     }
@@ -225,6 +313,45 @@ async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None
     item.status = "archived"
     item.archived_at = datetime.now(UTC)
     record_item_history(db, item, event_type="archive")
+
+
+async def delete_item(db: AsyncSession, item_id: UUID, *, shop_id: UUID) -> None:
+    item = await get_item_by_id(db, item_id, shop_id=shop_id, for_update=True)
+    if not item:
+        raise ValueError("Item does not exist")
+    if item.status != "in_stock":
+        raise ValueError("Only in_stock items can be deleted")
+
+    await _archive_item(db, item, shop_id=shop_id)
+    await db.flush()
+
+
+async def delete_items(
+    db: AsyncSession,
+    item_ids: list[UUID],
+    *,
+    shop_id: UUID,
+) -> None:
+    result = await db.execute(
+        select(Item)
+        .where(
+            Item.id.in_(item_ids),
+            Item.shop_id == shop_id,
+            Item.archived_at.is_(None),
+        )
+        .with_for_update()
+    )
+    item_by_id = {item.id: item for item in result.scalars().all()}
+    if len(item_by_id) != len(item_ids):
+        raise ValueError("One or more selected items do not exist")
+
+    non_deletable_items = [item for item in item_by_id.values() if item.status != "in_stock"]
+    if non_deletable_items:
+        raise ValueError("Only in_stock items can be deleted")
+
+    for item_id in item_ids:
+        await _archive_item(db, item_by_id[item_id], shop_id=shop_id)
+
     await db.flush()
 
 
@@ -395,8 +522,29 @@ async def list_items_paginated(
 async def get_items_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
     from app.modules.sales.models import SaleItem
 
+    sold_stock_mode = func.coalesce(SaleItem.item_stock_mode, Item.stock_mode)
     sold_items = (
-        select(func.coalesce(func.sum(SaleItem.quantity), 0))
+        select(
+            func.coalesce(
+                func.sum(case((sold_stock_mode != "weight", SaleItem.quantity), else_=0)),
+                0,
+            )
+            + func.count(
+                func.distinct(
+                    case(
+                        (
+                            (sold_stock_mode == "weight") & (Item.status == "sold"),
+                            SaleItem.item_id,
+                        )
+                    )
+                )
+            )
+        )
+        .select_from(SaleItem)
+        .outerjoin(
+            Item,
+            (Item.id == SaleItem.item_id) & (Item.shop_id == SaleItem.shop_id),
+        )
         .where(SaleItem.shop_id == shop_id)
         .scalar_subquery()
     )
@@ -467,7 +615,20 @@ async def get_items_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
         await db.execute(
             select(
                 func.lower(func.coalesce(SaleItem.item_metal, Item.metal)),
-                func.coalesce(func.sum(SaleItem.quantity), 0),
+                func.coalesce(
+                    func.sum(case((sold_stock_mode != "weight", SaleItem.quantity), else_=0)),
+                    0,
+                )
+                + func.count(
+                    func.distinct(
+                        case(
+                            (
+                                (sold_stock_mode == "weight") & (Item.status == "sold"),
+                                SaleItem.item_id,
+                            )
+                        )
+                    )
+                ),
             )
             .select_from(SaleItem)
             .outerjoin(
@@ -480,7 +641,7 @@ async def get_items_summary(db: AsyncSession, *, shop_id: UUID) -> dict:
     ).all()
     metal_summaries: dict[str, dict[str, Any]] = {
         metal: {"in_stock": 0, "sold_items": 0, "unique_items": 0, "purity_counts": {}}
-        for metal in ("gold", "silver", "platinum")
+        for metal in ("gold", "silver", "platinum", "stone")
     }
     for metal, purity, stock_count, unique_count in inventory_rows:
         if metal not in metal_summaries:

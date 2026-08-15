@@ -34,20 +34,26 @@ def _draw_single_label(c, item):
     c.drawString(left_margin, top, item.name)
 
     c.setFont("Helvetica", 5.5)
-    c.drawString(
-        left_margin,
-        top - 4 * mm,
-        f"Purity: {item.purity}%",
+    detail = (
+        f"Ratti: {item.ratti}"
+        if getattr(item, "item_type", "jewellery") == "stone"
+        else f"Purity: {item.purity}%"
     )
+    c.drawString(left_margin, top - 4 * mm, detail)
 
     # Display the fixed rate for unique items, otherwise display weight.
-    weight_text = (
-        f"Rate: {item.fixed_rate}" if item.category == "unique" else f"{item.net_weight} g"
-    )
+    if getattr(item, "item_type", "jewellery") == "stone":
+        weight_text = f"Rate/Ratti: {item.rate_per_ratti}"
+    elif getattr(item, "stock_mode", "quantity") == "weight":
+        weight_text = f"Available: {item.stock_weight} g"
+    elif getattr(item, "pricing_method", None) == "fixed_rate" or item.category == "unique":
+        weight_text = f"Fixed: {item.fixed_rate}"
+    else:
+        weight_text = f"Weight: {item.net_weight} g"
     c.drawString(
         left_margin,
         top - 8 * mm,
-        weight_text if item.category == "unique" else f"Net: {weight_text}",
+        weight_text,
     )
 
     # =========================
@@ -103,15 +109,27 @@ def _draw_pdf_batch_label(c, item):
     c.drawCentredString(center_x, first_line_y, item.name or "")
 
     c.setFont("Helvetica", 6.5)
-    if getattr(item, "category", None) == "unique":
-        weight_text = "Fixed price"
+    if getattr(item, "item_type", "jewellery") == "stone":
+        weight_text = f"{getattr(item, 'ratti', 0)} Ratti"
+    elif getattr(item, "stock_mode", "quantity") == "weight":
+        weight_text = f"{getattr(item, 'stock_weight', 0)} g available"
+    elif (
+        getattr(item, "pricing_method", None) == "fixed_rate"
+        or getattr(item, "category", None) == "unique"
+    ):
+        weight_text = "Fixed"
     else:
         net_weight = getattr(item, "net_weight", None)
         weight_text = f"{net_weight} g" if net_weight is not None else "-"
 
     purity_val = getattr(item, "purity", None)
     purity_text = f"{purity_val}%" if purity_val not in (None, 0.0, 0, 0.00) else ""
-    if getattr(item, "category", None) == "unique":
+    if getattr(item, "item_type", "jewellery") == "stone":
+        mc_text = f"Rate/Ratti: {getattr(item, 'rate_per_ratti', 0)}"
+    elif (
+        getattr(item, "pricing_method", None) == "fixed_rate"
+        or getattr(item, "category", None) == "unique"
+    ):
         mc_text = f"Rate: {getattr(item, 'fixed_rate', 0)}"
     else:
         making_charge = getattr(item, "making_charge", None)
@@ -191,15 +209,15 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         "Name 1",
         "Name 2",
         "Name 3",
-        "Purity 1",
-        "Purity 2",
-        "Purity 3",
-        "Charge 1",
-        "Charge 2",
-        "Charge 3",
-        "Wt. 1",
-        "Wt. 2",
-        "Wt. 3",
+        "Purity / Ratti 1",
+        "Purity / Ratti 2",
+        "Purity / Ratti 3",
+        "Charge / Rate 1",
+        "Charge / Rate 2",
+        "Charge / Rate 3",
+        "Weight / Stock 1",
+        "Weight / Stock 2",
+        "Weight / Stock 3",
         "Barcode 1",
         "Barcode 2",
         "Barcode 3",
@@ -231,9 +249,11 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         for j in range(3):
             if i + j < len(items_list):
                 item = items_list[i + j]
-                purity_text = (
-                    f"{item.purity}%" if getattr(item, "purity", None) in (92.5, 99.9) else ""
-                )
+                if getattr(item, "item_type", "jewellery") == "stone":
+                    purity_text = f"{getattr(item, 'ratti', '')} Ratti"
+                else:
+                    purity = getattr(item, "purity", None)
+                    purity_text = f"{purity}%" if purity not in (None, 0) else ""
                 row_data.append(purity_text)
             else:
                 row_data.append("")
@@ -242,11 +262,15 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         for j in range(3):
             if i + j < len(items_list):
                 item = items_list[i + j]
-                value = (
-                    getattr(item, "fixed_rate", 0)
-                    if getattr(item, "category", None) == "unique"
-                    else getattr(item, "making_charge", None)
-                )
+                if getattr(item, "item_type", "jewellery") == "stone":
+                    value = getattr(item, "rate_per_ratti", None)
+                elif (
+                    getattr(item, "pricing_method", None) == "fixed_rate"
+                    or getattr(item, "category", None) == "unique"
+                ):
+                    value = getattr(item, "fixed_rate", 0)
+                else:
+                    value = getattr(item, "making_charge", None)
                 mc_text = f"{value}" if value is not None else ""
                 row_data.append(mc_text)
             else:
@@ -256,8 +280,16 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         for j in range(3):
             if i + j < len(items_list):
                 item = items_list[i + j]
-                if hasattr(item, "category") and item.category == "unique":
-                    weight_text = "unique"
+                if getattr(item, "item_type", "jewellery") == "stone":
+                    weight_text = f"Qty {getattr(item, 'quantity', 0)}"
+                elif getattr(item, "stock_mode", "quantity") == "weight":
+                    weight_text = f"{getattr(item, 'stock_weight', 0)} g available"
+                elif (
+                    getattr(item, "pricing_method", None) == "fixed_rate"
+                    or getattr(item, "category", None) == "unique"
+                ):
+                    weight = getattr(item, "net_weight", 0)
+                    weight_text = f"{weight} g" if weight else "Fixed"
                 elif hasattr(item, "net_weight") and item.net_weight:
                     weight_text = f"{item.net_weight} g"
                 else:

@@ -7,10 +7,10 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Sequence
-
+from typing import Any
 
 SCHEMA_VERSION = 1
 MANIFEST_PATH = ".ai/token-atlas-lite.json"
@@ -123,7 +123,8 @@ def validate_manifest(root: Path, errors: list[Finding]) -> None:
         errors.append(
             Finding(
                 MANIFEST_PATH,
-                "manifest must contain exactly edition=lite, schema_version=1, and entrypoint=.ai/INDEX.md",
+                "manifest must contain exactly edition=lite, schema_version=1, "
+                "and entrypoint=.ai/INDEX.md",
             )
         )
 
@@ -134,12 +135,16 @@ def validate_bootstrap(root: Path, errors: list[Finding]) -> None:
     if text is None:
         return
     if text.count(BOOTSTRAP_START) != 1 or text.count(BOOTSTRAP_END) != 1:
-        errors.append(Finding(relative, "managed Lite bootstrap markers must each appear exactly once"))
+        errors.append(
+            Finding(relative, "managed Lite bootstrap markers must each appear exactly once")
+        )
         return
     start = text.index(BOOTSTRAP_START)
     end = text.index(BOOTSTRAP_END, start) + len(BOOTSTRAP_END)
     if text[start:end] != BOOTSTRAP:
-        errors.append(Finding(relative, "managed Lite bootstrap does not match the runtime contract"))
+        errors.append(
+            Finding(relative, "managed Lite bootstrap does not match the runtime contract")
+        )
 
 
 def section_records(text: str) -> list[tuple[str, str]]:
@@ -147,7 +152,9 @@ def section_records(text: str) -> list[tuple[str, str]]:
     return [
         (
             match.group(1).strip(),
-            text[match.end() : matches[index + 1].start() if index + 1 < len(matches) else len(text)].strip(),
+            text[
+                match.end() : matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            ].strip(),
         )
         for index, match in enumerate(matches)
     ]
@@ -193,21 +200,29 @@ def normalize_evidence(
     path_value = path_value.strip().replace("\\", "/")
     locator = locator.strip()
     if not path_value or path_value.startswith("/"):
-        errors.append(Finding(relative, f"record {heading!r} has a non-relative evidence path: {value}"))
+        errors.append(
+            Finding(relative, f"record {heading!r} has a non-relative evidence path: {value}")
+        )
         return None
     pure = PurePosixPath(path_value)
     while pure.parts and pure.parts[0] == ".":
         pure = PurePosixPath(*pure.parts[1:])
     if not pure.parts or ".." in pure.parts:
-        errors.append(Finding(relative, f"record {heading!r} has an invalid evidence path: {value}"))
+        errors.append(
+            Finding(relative, f"record {heading!r} has an invalid evidence path: {value}")
+        )
         return None
     normalized_path = pure.as_posix()
     if not (root / normalized_path).is_file():
         errors.append(
-            Finding(relative, f"record {heading!r} evidence path does not resolve: {normalized_path}")
+            Finding(
+                relative, f"record {heading!r} evidence path does not resolve: {normalized_path}"
+            )
         )
     if separator and not locator:
-        errors.append(Finding(relative, f"record {heading!r} has an empty evidence locator: {value}"))
+        errors.append(
+            Finding(relative, f"record {heading!r} has an empty evidence locator: {value}")
+        )
         return None
     return f"{normalized_path}::{locator}" if separator else normalized_path
 
@@ -257,7 +272,9 @@ def validate_decision(
         confirmed = fields.get("confirmed")
         if not confirmed or not DATE_PATTERN.fullmatch(confirmed):
             errors.append(
-                Finding(relative, f"user-confirmed decision {heading!r} requires a valid Confirmed date")
+                Finding(
+                    relative, f"user-confirmed decision {heading!r} requires a valid Confirmed date"
+                )
             )
 
 
@@ -273,14 +290,17 @@ def validate_documents(root: Path, errors: list[Finding]) -> tuple[list[Record],
                 errors.append(Finding(relative, f"required heading is missing: {heading}"))
         incomplete = INCOMPLETE_PATTERN.search(text)
         if incomplete:
-            errors.append(Finding(relative, f"incomplete content is forbidden: {incomplete.group(0)}"))
+            errors.append(
+                Finding(relative, f"incomplete content is forbidden: {incomplete.group(0)}")
+            )
 
     memory_tokens = approximate_tokens(texts.get(".ai/MEMORY.md", ""))
     if memory_tokens > MEMORY_TOKEN_LIMIT:
         errors.append(
             Finding(
                 ".ai/MEMORY.md",
-                f"memory budget exceeded: {memory_tokens} approximate tokens > {MEMORY_TOKEN_LIMIT}",
+                f"memory budget exceeded: {memory_tokens} approximate tokens "
+                f"> {MEMORY_TOKEN_LIMIT}",
             )
         )
 
@@ -348,7 +368,8 @@ def validate_duplicates(records: Sequence[Record], errors: list[Finding]) -> Non
                         f"{left.file}, {right.file}",
                         (
                             f"duplicate durable facts {left.heading!r} and {right.heading!r}; "
-                            f"shared evidence={list(left.normalized_evidence)!r}; similarity={similarity:.2f}"
+                            f"shared evidence={list(left.normalized_evidence)!r}; "
+                            f"similarity={similarity:.2f}"
                         ),
                     )
                 )

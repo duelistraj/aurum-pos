@@ -164,12 +164,21 @@ async def _execute_create_sale(
     """Internal helper to execute sale creation operations within an active transaction"""
     # Fetch items and lock them
     item_quantities: dict[UUID, int] = {}
+    item_weights: dict[UUID, Decimal] = {}
     for input_item in data.items:
-        item_quantities[input_item.item_id] = (
-            item_quantities.get(input_item.item_id, 0) + input_item.quantity
-        )
+        if input_item.weight_grams is not None:
+            item_weights[input_item.item_id] = (
+                item_weights.get(input_item.item_id, Decimal(0)) + input_item.weight_grams
+            )
+        else:
+            quantity = input_item.quantity or 1
+            item_quantities[input_item.item_id] = (
+                item_quantities.get(input_item.item_id, 0) + quantity
+            )
 
-    item_ids = list(item_quantities.keys())
+    if set(item_quantities) & set(item_weights):
+        raise HTTPException(400, "An item cannot be sold by quantity and weight together")
+    item_ids = list(set(item_quantities) | set(item_weights))
 
     stmt = (
         select(Item)
@@ -188,17 +197,29 @@ async def _execute_create_sale(
     item_by_id = {item.id: item for item in items}
 
     for item in items:
-        quantity_requested = item_quantities[item.id]
         if item.status != "in_stock":
             raise HTTPException(
                 400,
                 f"Item {item.sku} already sold or unavailable",
             )
-        if item.quantity < quantity_requested:
-            raise HTTPException(
-                400,
-                f"Item {item.sku} only has {item.quantity} unit(s) available",
-            )
+        if item.stock_mode == "weight":
+            weight_requested = item_weights.get(item.id)
+            if weight_requested is None:
+                raise HTTPException(400, f"Item {item.sku} requires a weight")
+            if item.stock_weight is None or item.stock_weight < weight_requested:
+                raise HTTPException(
+                    400,
+                    f"Item {item.sku} only has {item.stock_weight or 0} gram(s) available",
+                )
+        else:
+            if item.id in item_weights:
+                raise HTTPException(400, f"Item {item.sku} is sold by quantity")
+            quantity_requested = item_quantities[item.id]
+            if item.quantity < quantity_requested:
+                raise HTTPException(
+                    400,
+                    f"Item {item.sku} only has {item.quantity} unit(s) available",
+                )
 
     shop = await db.scalar(select(Shop).where(Shop.id == shop_id).with_for_update())
     if shop is None or not shop.is_active:
@@ -234,7 +255,7 @@ async def _execute_create_sale(
         seller_address=shop.address,
         seller_state=shop.state or "West Bengal",
         seller_state_code=shop.state_code or "19",
-        tax_rate_percent=shop.tax_rate_percent,
+        tax_rate_percent=None,
         invoice_pdf_status="pending",
     )
     db.add(sale)
@@ -243,7 +264,11 @@ async def _execute_create_sale(
 
     sale_items: list[SaleItem] = []
 
-    metal_names = {item.metal.lower() for item in items if item.category.lower() != "unique"}
+    metal_names = {
+        item.metal.lower()
+        for item in items
+        if item.item_type == "jewellery" and item.pricing_method != "fixed_rate"
+    }
     rates_result = await db.execute(
         select(MetalRate)
         .where(
@@ -258,10 +283,12 @@ async def _execute_create_sale(
         rate_by_metal.setdefault(rate.metal.lower(), rate)
 
     # Create sale items with locked pricing
-    for item_id, quantity_requested in item_quantities.items():
+    for item_id in item_ids:
         item = item_by_id[item_id]
+        quantity_requested = item_quantities.get(item_id, 1)
+        sold_weight = item_weights.get(item_id)
         effective_rate = Decimal(0)
-        if item.category.lower() != "unique":
+        if item.item_type == "jewellery" and item.pricing_method != "fixed_rate":
             selected_rate = rate_by_metal.get(item.metal.lower())
             if selected_rate is None:
                 raise HTTPException(400, f"Metal rate not set for {item.metal}")
@@ -274,15 +301,19 @@ async def _execute_create_sale(
         breakdown = lock_price_at_sale(
             metal=item.metal,
             category=item.category,
+            item_type=item.item_type,
+            pricing_method=item.pricing_method,
             purity=item.purity,
-            net_weight=item.net_weight,
+            net_weight=sold_weight if sold_weight is not None else item.net_weight,
             rate_per_gram=effective_rate,
             making_charge=item.making_charge,
             fixed_rate=item.fixed_rate,
-            tax_rate_percent=shop.tax_rate_percent,
+            ratti=item.ratti,
+            rate_per_ratti=item.rate_per_ratti,
         )
 
-        line_total = Decimal(str(breakdown["final_price"])) * quantity_requested
+        line_multiplier = 1 if sold_weight is not None else quantity_requested
+        line_total = Decimal(str(breakdown["final_price"])) * line_multiplier
         json_breakdown = {
             key: float(value) if isinstance(value, Decimal) else value
             for key, value in breakdown.items()
@@ -296,6 +327,7 @@ async def _execute_create_sale(
             price_breakdown={
                 **json_breakdown,
                 "quantity": quantity_requested,
+                "sold_weight": float(sold_weight) if sold_weight is not None else None,
                 "line_total": float(line_total),
             },
             item_sku=item.sku,
@@ -306,6 +338,12 @@ async def _execute_create_sale(
             item_net_weight=item.net_weight,
             item_making_charge=item.making_charge,
             item_fixed_rate=item.fixed_rate,
+            item_type=item.item_type,
+            item_pricing_method=item.pricing_method,
+            item_stock_mode=item.stock_mode,
+            item_ratti=item.ratti,
+            item_rate_per_ratti=item.rate_per_ratti,
+            sold_weight=sold_weight,
         )
 
         db.add(sale_item)
@@ -334,12 +372,22 @@ async def _execute_create_sale(
     # Decrement inventory and mark items sold if fully depleted
     for si in sale_items:
         item = item_by_id[si.item_id]
-        item.quantity -= si.quantity
-        if item.quantity <= 0:
-            item.quantity = 0
-            item.status = "sold"
+        if item.stock_mode == "weight":
+            item.stock_weight = (item.stock_weight or Decimal(0)) - (si.sold_weight or Decimal(0))
+            if item.stock_weight <= 0:
+                item.stock_weight = Decimal(0)
+                item.quantity = 0
+                item.status = "sold"
+            else:
+                item.quantity = 1
+                item.status = "in_stock"
         else:
-            item.status = "in_stock"
+            item.quantity -= si.quantity
+            if item.quantity <= 0:
+                item.quantity = 0
+                item.status = "sold"
+            else:
+                item.status = "in_stock"
         record_item_history(db, item, event_type="sale")
 
         await log_change(
@@ -352,6 +400,7 @@ async def _execute_create_sale(
                 "barcode": item.barcode,
                 "invoice_no": sale.invoice_no,
                 "quantity": si.quantity,
+                "weight_grams": float(si.sold_weight) if si.sold_weight is not None else None,
                 "pricing": si.price_breakdown,
             },
         )

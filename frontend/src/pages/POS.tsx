@@ -20,8 +20,12 @@ import {
   clearCheckoutIdempotencyKey,
   getCheckoutIdempotencyKey,
 } from '../utils/checkout';
+import {
+  acceptIndianPhoneInput,
+  INDIAN_PHONE_ERROR,
+  isValidIndianPhone,
+} from '../utils/phone';
 
-const FIXED_MAKING_CATEGORIES = new Set(['unique', 'other']);
 const CAMERA_BARCODE_FORMATS = Object.freeze([
   'code_128',
   'ean_13',
@@ -31,9 +35,6 @@ const CAMERA_BARCODE_FORMATS = Object.freeze([
   'upc_e',
 ]);
 const AURUM_LABEL_BARCODE_FORMAT = 'code_128';
-
-const isFixedMakingCategory = (category: string) =>
-  FIXED_MAKING_CATEGORIES.has(category.toLowerCase());
 
 const formatMetalLabel = (metal: string, purity: number) => {
   if (metal.toLowerCase() === 'silver' && purity === 0) {
@@ -47,8 +48,10 @@ const focusBarcodeInput = () => {
   document.getElementById('barcodeInput')?.focus();
 };
 
-type CartItem = ItemPOSWithPrice & {
+type CartItem = Omit<ItemPOSWithPrice, 'pricing'> & {
+  pricing: NonNullable<ItemPOSWithPrice['pricing']>;
   cartQuantity: number;
+  weightGrams?: number;
 };
 
 export const POS: React.FC = () => {
@@ -66,6 +69,8 @@ export const POS: React.FC = () => {
   const [showCheckout, setShowCheckout] = React.useState(false);
   const [sendInvoiceViaWhatsApp, setSendInvoiceViaWhatsApp] = React.useState(false);
   const [showCameraScanner, setShowCameraScanner] = React.useState(false);
+  const [weightedItem, setWeightedItem] = React.useState<ItemPOSWithPrice | null>(null);
+  const [weightInput, setWeightInput] = React.useState('');
   const [cameraError, setCameraError] = React.useState<string>('');
   const [customerDetails, setCustomerDetails] = React.useState<CustomerDetails>(
     {
@@ -130,6 +135,16 @@ export const POS: React.FC = () => {
         throw new Error('Item is out of stock');
       }
 
+      if (item.requires_weight) {
+        const existingWeighted = cartRef.current.find((line) => line.id === item.id);
+        setWeightedItem(item);
+        setWeightInput(existingWeighted?.weightGrams?.toString() ?? '');
+        setBarcode('');
+        return;
+      }
+      if (!item.pricing) throw new Error('Price could not be calculated');
+      const pricedItem = { ...item, pricing: item.pricing } as CartItem;
+
       const existingLine = cartRef.current.find((line) => line.barcode === trimmedValue);
       if (existingLine && existingLine.cartQuantity >= item.quantity) {
         throw new Error('Item is out of stock');
@@ -147,7 +162,7 @@ export const POS: React.FC = () => {
           return next;
         }
 
-        return [...prev, { ...item, cartQuantity: 1 }];
+        return [...prev, { ...pricedItem, cartQuantity: 1 }];
       });
 
       setBarcode('');
@@ -167,6 +182,36 @@ export const POS: React.FC = () => {
       setLoading(false);
     }
   }, [isReadOnly]);
+
+  const confirmWeightedItem = async () => {
+    if (!weightedItem) return;
+    const weight = Number(weightInput);
+    if (!Number.isFinite(weight) || weight <= 0) {
+      setError('Enter a weight greater than 0');
+      return;
+    }
+    setLoading(true);
+    try {
+      const quoted = await apiClient.quoteWeightedItem(weightedItem.id, weight);
+      if (!quoted.pricing) throw new Error('Price could not be calculated');
+      setCart((current) => {
+        const existingIndex = current.findIndex((line) => line.id === quoted.id);
+        const line: CartItem = { ...quoted, pricing: quoted.pricing!, cartQuantity: 1, weightGrams: weight };
+        if (existingIndex === -1) return [...current, line];
+        const next = [...current];
+        next[existingIndex] = line;
+        return next;
+      });
+      setWeightedItem(null);
+      setWeightInput('');
+      setError('');
+      setSuccess('Weighted item added to cart');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to quote weighted item');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleScanBarcode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -358,11 +403,17 @@ export const POS: React.FC = () => {
       setError('Customer name and phone are required');
       return;
     }
+    if (!isValidIndianPhone(customerDetails.phone)) {
+      setError(INDIAN_PHONE_ERROR);
+      return;
+    }
 
     setLoading(true);
     try {
       const salePayload = {
-        items: cart.map((item) => ({ item_id: item.id, quantity: item.cartQuantity })),
+        items: cart.map((item) => item.stock_mode === 'weight'
+          ? { item_id: item.id, weight_grams: item.weightGrams }
+          : { item_id: item.id, quantity: item.cartQuantity }),
         customer_name: customerDetails.name,
         customer_phone: customerDetails.phone,
         customer_address: customerDetails.address,
@@ -512,14 +563,20 @@ export const POS: React.FC = () => {
                           {item.name}
                         </p>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                          {item.category === 'unique'
-                            ? 'Fixed price item'
-                            : `${formatMetalLabel(item.metal, item.purity)} • ${item.net_weight}g`}
+                          {item.item_type === 'stone'
+                            ? `${item.category} • ${item.ratti} Ratti`
+                            : item.stock_mode === 'weight'
+                              ? `${formatMetalLabel(item.metal, item.purity)} • ${item.weightGrams}g sold by weight`
+                              : item.pricing_method === 'fixed_rate'
+                                ? 'Fixed price item'
+                                : `${formatMetalLabel(item.metal, item.purity)} • ${item.net_weight}g`}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/50 px-2 py-1 rounded-app-control inline-block font-mono font-medium mt-1">
-                          {item.category === 'unique'
+                          {item.item_type === 'stone'
+                            ? `Rate/Ratti: ${formatCurrency(item.rate_per_ratti ?? 0)}`
+                            : item.pricing_method === 'fixed_rate'
                             ? `Fixed rate: ${formatCurrency(item.pricing.fixed_rate ?? 0)}`
-                            : `Base: ${formatCurrency(item.pricing.metal_value)} + Making: ${formatCurrency(item.pricing.making_charge)} ${isFixedMakingCategory(item.category) ? 'Fixed' : '/ gram'}`}
+                            : `Base: ${formatCurrency(item.pricing.metal_value)} + ${item.pricing_method === 'fixed_making_charge' ? 'Fixed Making Charge' : 'Making Charge'}: ${formatCurrency(item.pricing.making_charge)}`}
                         </p>
                       </div>
 
@@ -532,7 +589,12 @@ export const POS: React.FC = () => {
                         </div>
                         
                         {/* Quantity controls */}
-                        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-app-control border border-slate-200 dark:border-slate-800 shadow-xs">
+                        {item.stock_mode === 'weight' ? (
+                          <Button type="button" variant="secondary" onClick={() => {
+                            setWeightedItem(item);
+                            setWeightInput(item.weightGrams?.toString() ?? '');
+                          }} className="text-sm">Edit grams</Button>
+                        ) : <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-app-control border border-slate-200 dark:border-slate-800 shadow-xs">
                           <button
                             type="button"
                             onClick={() => decrementCartItem(index)}
@@ -552,7 +614,7 @@ export const POS: React.FC = () => {
                           >
                             <Plus className="w-4 h-4" />
                           </button>
-                        </div>
+                        </div>}
                       </div>
                     </div>
                   ))}
@@ -676,15 +738,20 @@ export const POS: React.FC = () => {
               label="Phone Number *"
               placeholder="Enter phone number"
               value={customerDetails.phone}
+              error={customerDetails.phone && !isValidIndianPhone(customerDetails.phone)
+                ? INDIAN_PHONE_ERROR
+                : undefined}
               onChange={(e) =>
                 setCustomerDetails({
                   ...customerDetails,
-                  phone: e.target.value,
+                  phone: acceptIndianPhoneInput(customerDetails.phone, e.target.value),
                 })
               }
               required
               type="tel"
-              inputMode="tel"
+              inputMode="numeric"
+              maxLength={10}
+              pattern="[0-9]{10}"
               className="py-2.5 rounded-app-control"
             />
             {whatsAppCapability.data?.enabled ? (
@@ -746,6 +813,40 @@ export const POS: React.FC = () => {
               </div>
             </div>
           </form>
+        </Modal>
+
+        <Modal
+          isOpen={weightedItem !== null}
+          title="Enter sale weight"
+          onClose={() => {
+            setWeightedItem(null);
+            setWeightInput('');
+          }}
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => setWeightedItem(null)}>Cancel</Button>
+              <Button onClick={() => void confirmWeightedItem()} isLoading={loading}>Use weight</Button>
+            </>
+          )}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {weightedItem?.name} has {weightedItem?.stock_weight ?? 0} g available.
+            </p>
+            <Input
+              id="weighted-sale-grams"
+              label="Weight to sell (g)"
+              type="number"
+              inputMode="decimal"
+              min="0.001"
+              max={weightedItem?.stock_weight ?? undefined}
+              step="0.001"
+              value={weightInput}
+              onChange={(event) => setWeightInput(event.target.value)}
+              autoFocus
+              required
+            />
+          </div>
         </Modal>
 
         {/* Fullscreen Camera Barcode Scanner View */}

@@ -4,8 +4,6 @@ import {
   Plus, 
   AlertCircle, 
   Download,
-  DownloadCloud,
-  Pencil, 
   Trash2, 
   ChevronDown, 
   CheckCircle, 
@@ -15,33 +13,33 @@ import {
   Search, 
   ChevronLeft, 
   ChevronRight, 
-  Sparkles,
-  LayoutGrid,
-  Circle,
-  CircleDot,
-  Disc,
-  Scissors,
-  Award,
-  MoreHorizontal,
   Check,
-  IndianRupee
+  IndianRupee,
+  LayoutGrid,
 } from 'lucide-react';
 import { Card, Button, Input, Alert, Modal, Loader } from '../components/UI';
 import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { Item } from '../types';
 import { useShop } from '../context/ShopContext';
-import { formatCurrency, formatWeight, downloadBlob } from '../utils';
+import { formatCurrency, downloadBlob } from '../utils';
 import { getPreference, setPreference } from '../utils/storage';
 import {
+  CATEGORY_OPTIONS,
+  getCategoryOption,
   getCanonicalMetal,
   getDefaultPurity,
   getMetalIconBg,
   getPurityIconBg,
   getPurityOptions,
+  INVENTORY_CATEGORY_FILTERS,
+  JEWELLERY_CATEGORIES,
   METAL_FILTER_OPTIONS,
+  normalizeCategory,
+  STONE_CATEGORIES,
 } from '../features/items/catalog';
 import { ExcelIcon, PDFIcon } from '../features/items/catalogIcons';
+import { formatMetalName } from '../features/metalRates/display';
 
 const ITEM_STATUS_LABEL_BY_STATUS: Record<string, string> = {
   archived: 'Archived',
@@ -57,11 +55,15 @@ const DEFAULT_INVENTORY_FILTERS = {
   category: 'all',
   status: 'in_stock',
 } as const;
-const INVENTORY_CATEGORY_FILTERS = new Set([
-  'all', 'jewellery', 'unique', 'ring', 'necklace', 'bracelet', 'earring',
-  'pendant', 'other',
-]);
 const INVENTORY_STATUS_FILTERS = new Set(['all', 'in_stock', 'sold']);
+const LONG_PRESS_DURATION_MS = 600;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+const inferPricingMethod = (item: Item): Item['pricing_method'] => item.pricing_method
+  ?? (item.category === 'unique'
+    ? 'fixed_rate'
+    : item.category === 'other'
+      ? 'fixed_making_charge'
+      : 'making_charge_per_gram');
 
 interface InventoryFilters {
   metal: string;
@@ -74,13 +76,15 @@ const parseInventoryFilters = (value: string | null): InventoryFilters => {
   try {
     const parsed = JSON.parse(value) as Partial<InventoryFilters>;
     const validMetals = new Set(METAL_FILTER_OPTIONS.map((option) => option.value));
+    const category = typeof parsed.category === 'string'
+      ? normalizeCategory(parsed.category)
+      : '';
     return {
       metal: typeof parsed.metal === 'string' && validMetals.has(parsed.metal)
         ? parsed.metal
         : DEFAULT_INVENTORY_FILTERS.metal,
-      category: typeof parsed.category === 'string'
-        && INVENTORY_CATEGORY_FILTERS.has(parsed.category)
-        ? parsed.category
+      category: INVENTORY_CATEGORY_FILTERS.has(category)
+        ? category
         : DEFAULT_INVENTORY_FILTERS.category,
       status: typeof parsed.status === 'string' && INVENTORY_STATUS_FILTERS.has(parsed.status)
         ? parsed.status
@@ -89,6 +93,32 @@ const parseInventoryFilters = (value: string | null): InventoryFilters => {
   } catch {
     return { ...DEFAULT_INVENTORY_FILTERS };
   }
+};
+
+const getMetalTone = (item: Item) => {
+  const metal = item.item_type === 'stone' ? 'stone' : item.metal.trim().toLowerCase();
+  return METAL_FILTER_OPTIONS.some((option) => option.value === metal) ? metal : 'other';
+};
+
+const inventoryWeightFormatter = new Intl.NumberFormat('en-IN', {
+  maximumFractionDigits: 3,
+});
+
+const formatInventoryQtyGrams = (weight: number) => (
+  `${inventoryWeightFormatter.format(weight)} g`
+);
+
+const formatInventoryWeightGrams = (weight: number) => (
+  `${inventoryWeightFormatter.format(weight)} gram`
+);
+
+const getInventoryWeightText = (item: Item) => {
+  if (item.item_type === 'stone') return `${item.ratti} ratti`;
+  if (item.stock_mode === 'weight') {
+    return formatInventoryWeightGrams(item.net_weight);
+  }
+  if (item.pricing_method === 'fixed_rate' || item.category === 'unique') return 'Fixed';
+  return formatInventoryWeightGrams(item.net_weight);
 };
 
 const subscribeToPhoneViewport = (onChange: () => void) => {
@@ -111,13 +141,11 @@ const usePhoneViewport = () => React.useSyncExternalStore(
 type LabelDownloadFormat = 'xlsx' | 'pdf';
 
 interface AddItemButtonProps {
-  compact: boolean;
   disabled: boolean;
   onClick: () => void;
 }
 
 const AddItemButton: React.FC<AddItemButtonProps> = ({
-  compact,
   disabled,
   onClick,
 }) => (
@@ -125,21 +153,15 @@ const AddItemButton: React.FC<AddItemButtonProps> = ({
     type="button"
     onClick={onClick}
     disabled={disabled}
-    aria-label={compact ? 'Add Item' : undefined}
-    title={compact ? 'Add Item' : undefined}
-    className={`inventory-page__add-action flex items-center bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white rounded-app-control shadow-md font-semibold transition-all ${
-      compact
-        ? 'inventory-page__phone-icon'
-        : 'space-x-2 px-5 py-2.5'
-    }`}
+    aria-label="Add Item"
+    title="Add Item"
+    className="inventory-page__icon-action inventory-page__add-action"
   >
-    <Plus className="w-5 h-5 font-bold" />
-    {compact ? null : <span>Add Item</span>}
+    <Plus className="h-6 w-6" />
   </Button>
 );
 
 interface DownloadLabelsMenuProps {
-  compact: boolean;
   containerRef: React.RefObject<HTMLDivElement>;
   disabled: boolean;
   isOpen: boolean;
@@ -148,7 +170,6 @@ interface DownloadLabelsMenuProps {
 }
 
 const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
-  compact,
   containerRef,
   disabled,
   isOpen,
@@ -156,7 +177,7 @@ const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
   onToggle,
 }) => (
   <div
-    className={`inventory-download relative ${compact ? 'inventory-download--phone' : ''}`}
+    className="inventory-download relative"
     ref={containerRef}
   >
     <Button
@@ -164,28 +185,14 @@ const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
       onClick={onToggle}
       variant="primary"
       disabled={disabled}
-      aria-label={compact ? 'Download selected item labels' : undefined}
+      aria-label="Download selected item labels"
       aria-controls="inventory-label-download-menu"
       aria-expanded={isOpen}
       aria-haspopup="menu"
-      title={compact ? 'Download selected item labels' : undefined}
-      className={`inventory-download__trigger flex items-center rounded-app-control font-bold shadow-xs transition-all ${
-        compact
-          ? 'inventory-page__phone-icon'
-          : 'space-x-2 px-5 py-2.5'
-      }`}
+      title="Download selected item labels"
+      className="inventory-download__trigger inventory-page__icon-action"
     >
-      {compact ? (
-        <Download className="w-5 h-5" />
-      ) : (
-        <DownloadCloud className="w-5 h-5" />
-      )}
-      {compact ? null : (
-        <>
-          <span>Download</span>
-          <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </>
-      )}
+      <Download className="h-6 w-6" />
     </Button>
 
     {isOpen ? (
@@ -193,52 +200,30 @@ const DownloadLabelsMenu: React.FC<DownloadLabelsMenuProps> = ({
         id="inventory-label-download-menu"
         role="menu"
         aria-label="Download selected item labels"
-        className={`inventory-download__menu absolute mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-20 flex flex-col animate-fade-in ${
-          compact
-            ? 'inventory-download__menu--compact'
-            : 'inventory-download__menu--standard right-0'
-        }`}
+        className="inventory-download__menu inventory-download__menu--standard absolute right-0 z-20 mt-2 flex animate-fade-in flex-col rounded-app-surface border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
       >
         <button
           type="button"
           role="menuitem"
           onClick={() => onDownload('xlsx')}
-          className={compact
-            ? 'inventory-download__option--compact'
-            : 'inventory-download__option inventory-download__option--xlsx'}
+          className="inventory-download__option inventory-download__option--xlsx"
         >
-          <div className={compact
-            ? 'inventory-download__format-icon'
-            : 'inventory-download__option-icon text-emerald-600 dark:text-emerald-500'}
-          >
+          <div className="inventory-download__option-icon text-emerald-600 dark:text-emerald-500">
             <ExcelIcon className="h-6 w-6" />
           </div>
-          {compact ? (
-            <span>XLSX</span>
-          ) : (
-            <span className="font-bold text-slate-900 dark:text-white text-sm">Excel (.xlsx)</span>
-          )}
+          <span className="text-sm font-bold text-slate-900 dark:text-white">Excel (.xlsx)</span>
         </button>
 
         <button
           type="button"
           role="menuitem"
           onClick={() => onDownload('pdf')}
-          className={compact
-            ? 'inventory-download__option--compact'
-            : 'inventory-download__option inventory-download__option--pdf'}
+          className="inventory-download__option inventory-download__option--pdf"
         >
-          <div className={compact
-            ? 'inventory-download__format-icon'
-            : 'inventory-download__option-icon text-red-500 dark:text-red-500'}
-          >
+          <div className="inventory-download__option-icon text-red-500 dark:text-red-500">
             <PDFIcon className="h-6 w-6" />
           </div>
-          {compact ? (
-            <span>PDF</span>
-          ) : (
-            <span className="font-bold text-slate-900 dark:text-white text-sm">PDF (.pdf)</span>
-          )}
+          <span className="text-sm font-bold text-slate-900 dark:text-white">PDF (.pdf)</span>
         </button>
       </div>
     ) : null}
@@ -259,7 +244,7 @@ const ItemStatusBadge: React.FC<{ status: string }> = ({ status }) => {
 
   return (
     <span
-      className={`flex w-fit flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[0.65rem] font-bold sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs ${colorClass}`}
+      className={`flex w-fit flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[0.65rem] font-bold sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-sm ${colorClass}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
       {ITEM_STATUS_LABEL_BY_STATUS[status] ?? status}
@@ -348,17 +333,30 @@ export const Items: React.FC = () => {
   const formPurityDropdownRef = React.useRef<HTMLDivElement>(null);
   const [showDownloadDropdown, setShowDownloadDropdown] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const longPressRef = React.useRef<{
+    itemId: string;
+    startX: number;
+    startY: number;
+    timer: number;
+  } | null>(null);
+  const suppressRowClickRef = React.useRef<string | null>(null);
   
   const [formData, setFormData] = React.useState({
     sku: '',
     barcode: '',
     name: '',
     category: 'jewellery',
+    item_type: 'jewellery' as Item['item_type'],
+    pricing_method: 'making_charge_per_gram' as Item['pricing_method'],
+    stock_mode: 'quantity' as Item['stock_mode'],
     metal: '',
     purity: '92.5',
     net_weight: '',
     making_charge: '',
     fixed_rate: '',
+    stock_weight: '',
+    ratti: '',
+    rate_per_ratti: '',
     quantity: '1',
     notes: '',
   });
@@ -412,17 +410,7 @@ export const Items: React.FC = () => {
   }, [filtersReadyShopId, selectedCategory, selectedMetal, selectedStatus, shopId]);
 
   // Category and Status drop-down options config
-  const categoryOptions = [
-    { value: 'all', label: 'All Categories', icon: LayoutGrid, bg: 'bg-orange-50 text-orange-500 dark:bg-orange-950/20 dark:text-orange-400' },
-    { value: 'jewellery', label: 'Jewellery', icon: Sparkles, bg: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400' },
-    { value: 'unique', label: 'Unique', icon: Gem, bg: 'bg-purple-50 text-purple-500 dark:bg-purple-950/20 dark:text-purple-400' },
-    { value: 'ring', label: 'Ring', icon: Circle, bg: 'bg-blue-50 text-blue-500 dark:bg-blue-950/20 dark:text-blue-400' },
-    { value: 'necklace', label: 'Necklace', icon: CircleDot, bg: 'bg-emerald-50 text-emerald-500 dark:bg-emerald-950/20 dark:text-emerald-400' },
-    { value: 'bracelet', label: 'Bracelet', icon: Disc, bg: 'bg-red-50 text-red-500 dark:bg-red-950/20 dark:text-red-400' },
-    { value: 'earring', label: 'Earring', icon: Scissors, bg: 'bg-violet-50 text-violet-500 dark:bg-violet-950/20 dark:text-violet-400' },
-    { value: 'pendant', label: 'Pendant', icon: Award, bg: 'bg-cyan-50 text-cyan-500 dark:bg-cyan-950/20 dark:text-cyan-400' },
-    { value: 'other', label: 'Other', icon: MoreHorizontal, bg: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
-  ];
+  const categoryOptions = CATEGORY_OPTIONS;
 
   const statusOptions = [
     { value: 'all', label: 'All Status', icon: LayoutGrid, bg: 'bg-orange-50 text-orange-500 dark:bg-orange-950/20 dark:text-orange-400' },
@@ -612,11 +600,17 @@ export const Items: React.FC = () => {
       sku: '',
       name: '',
       category: 'jewellery',
+      item_type: 'jewellery',
+      pricing_method: 'making_charge_per_gram',
+      stock_mode: 'quantity',
       metal: 'Silver',
       purity: '92.5',
       net_weight: '',
       making_charge: '',
       fixed_rate: '',
+      stock_weight: '',
+      ratti: '',
+      rate_per_ratti: '',
       quantity: '1',
       notes: '',
       barcode: '',
@@ -629,17 +623,23 @@ export const Items: React.FC = () => {
       setError('This shop has reached its active-item limit. Sell or remove an item, or activate Pro.');
       return;
     }
-    if (latestItem) {
+    if (latestItem && latestItem.item_type !== 'stone' && latestItem.metal.toLowerCase() !== 'stone') {
       const metal = getCanonicalMetal(latestItem.metal, availableMetals);
       setFormData({
         sku: latestItem.sku,
         name: latestItem.name,
-        category: latestItem.category,
+        category: normalizeCategory(latestItem.category),
+        item_type: 'jewellery',
+        pricing_method: inferPricingMethod(latestItem),
+        stock_mode: latestItem.stock_mode ?? 'quantity',
         metal,
         purity: String(latestItem.purity),
         net_weight: '',
         making_charge: latestItem.making_charge?.toString() ?? '',
         fixed_rate: latestItem.fixed_rate?.toString() ?? '',
+        stock_weight: '',
+        ratti: '',
+        rate_per_ratti: '',
         quantity: '1',
         notes: '',
         barcode: '',
@@ -653,16 +653,24 @@ export const Items: React.FC = () => {
   const openEditItem = (item: Item) => {
     if (!canManage) return;
     setEditingItem(item);
-    const metal = getCanonicalMetal(item.metal, availableMetals);
+    const metal = item.item_type === 'stone'
+      ? 'stone'
+      : getCanonicalMetal(item.metal, availableMetals);
     setFormData({
       sku: item.sku,
       name: item.name,
-      category: item.category,
+      category: normalizeCategory(item.category),
+      item_type: item.item_type,
+      pricing_method: inferPricingMethod(item),
+      stock_mode: item.stock_mode ?? 'quantity',
       metal,
       purity: String(item.purity),
       net_weight: String(item.net_weight),
       making_charge: item.making_charge?.toString() ?? '',
       fixed_rate: item.fixed_rate?.toString() ?? '',
+      stock_weight: item.stock_weight?.toString() ?? '',
+      ratti: item.ratti?.toString() ?? '',
+      rate_per_ratti: item.rate_per_ratti?.toString() ?? '',
       quantity: String(item.quantity),
       notes: item.notes ?? '',
       barcode: item.barcode,
@@ -721,6 +729,42 @@ export const Items: React.FC = () => {
     setShowMetalDropdown(false);
   };
 
+  const handleFormMetalSelect = (metal: string) => {
+    setFormData((current) => {
+      if (metal === 'stone') {
+        return {
+          ...current,
+          category: current.item_type === 'stone' ? current.category : 'neelam',
+          item_type: 'stone',
+          pricing_method: 'rate_per_ratti',
+          stock_mode: 'quantity',
+          metal: 'stone',
+          purity: '0',
+          net_weight: '',
+          making_charge: '',
+          fixed_rate: '',
+          stock_weight: '',
+          ratti: current.item_type === 'stone' ? current.ratti : '',
+          rate_per_ratti: current.item_type === 'stone' ? current.rate_per_ratti : '',
+        };
+      }
+      return {
+        ...current,
+        category: current.item_type === 'stone' ? 'jewellery' : current.category,
+        item_type: 'jewellery',
+        pricing_method: current.item_type === 'stone'
+          ? 'making_charge_per_gram'
+          : current.pricing_method,
+        stock_mode: current.item_type === 'stone' ? 'quantity' : current.stock_mode,
+        metal,
+        purity: getDefaultPurity(metal, availableMetals),
+        ratti: '',
+        rate_per_ratti: '',
+      };
+    });
+    setShowFormMetalDropdown(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -729,15 +773,17 @@ export const Items: React.FC = () => {
         ? 0
         : parseFloat(formData.purity);
 
-      const isUnique = formData.category === 'unique';
-      const makingChargeValue = isUnique ? 0 : parseFloat(formData.making_charge);
-      const fixedRateValue = isUnique ? parseFloat(formData.fixed_rate) : 0;
-      if (Number.isNaN(makingChargeValue)) throw new Error('Making Charge is required');
-      if (isUnique && (Number.isNaN(fixedRateValue) || fixedRateValue <= 0)) {
+      const isStone = formData.item_type === 'stone';
+      const isFixedRate = formData.pricing_method === 'fixed_rate';
+      const isWeighted = formData.stock_mode === 'weight';
+      const makingChargeValue = isStone || isFixedRate ? 0 : parseFloat(formData.making_charge);
+      const fixedRateValue = isFixedRate ? parseFloat(formData.fixed_rate) : 0;
+      if (!isStone && !isFixedRate && Number.isNaN(makingChargeValue)) throw new Error('Making Charge is required');
+      if (isFixedRate && (Number.isNaN(fixedRateValue) || fixedRateValue <= 0)) {
         throw new Error('Fixed Rate must be greater than 0');
       }
 
-      const quantityValue = parseInt(formData.quantity, 10);
+      const quantityValue = isWeighted ? 1 : parseInt(formData.quantity, 10);
       if (Number.isNaN(quantityValue) || quantityValue <= 0) {
         throw new Error('Quantity must be greater than 0');
       }
@@ -745,13 +791,25 @@ export const Items: React.FC = () => {
       const payload = {
         sku: formData.sku,
         barcode: formData.barcode || '',
-        category: formData.category,
+        category: normalizeCategory(formData.category),
+        item_type: formData.item_type,
+        pricing_method: formData.pricing_method,
+        stock_mode: formData.stock_mode,
         name: formData.name,
-        metal: formData.metal,
-        purity: purityValue,
-        net_weight: isUnique ? 0 : parseFloat(formData.net_weight),
+        metal: isStone ? 'stone' : formData.metal,
+        purity: isStone ? 0 : purityValue,
+        net_weight: isStone
+          ? 0
+          : isFixedRate
+            ? parseFloat(formData.net_weight) || 0
+            : parseFloat(formData.net_weight),
         making_charge: makingChargeValue,
         fixed_rate: fixedRateValue,
+        stock_weight: isWeighted
+          ? editingItem?.stock_weight ?? parseFloat(formData.net_weight)
+          : null,
+        ratti: isStone ? parseFloat(formData.ratti) : null,
+        rate_per_ratti: isStone ? parseFloat(formData.rate_per_ratti) : null,
         quantity: quantityValue,
         notes: formData.notes || null,
       };
@@ -779,23 +837,19 @@ export const Items: React.FC = () => {
     }
   };
 
-  const handleDeleteItem = async (itemId: string) => {
-    if (!canManage) return;
+  const handleDeleteSelectedItems = async () => {
+    if (!canManage || selectedItems.size === 0) return;
+    const selectedCount = selectedItems.size;
     const shouldDelete = window.confirm(
-      'Delete this item? This action cannot be undone.'
+      `Delete ${selectedCount} selected ${selectedCount === 1 ? 'item' : 'items'}? This action cannot be undone.`
     );
-    if (!shouldDelete) {
-      return;
-    }
+    if (!shouldDelete) return;
 
     setLoading(true);
     try {
-      await apiClient.deleteItem(itemId);
-      setSelectedItems((prev) => {
-        const next = new Set(prev);
-        next.delete(itemId);
-        return next;
-      });
+      await apiClient.deleteItems(Array.from(selectedItems));
+      setSelectedItems(new Set());
+      setShowDownloadDropdown(false);
       await Promise.all([
         refreshItems(),
         queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
@@ -862,6 +916,60 @@ export const Items: React.FC = () => {
     setExpandedItemId((current) => current === itemId ? null : itemId);
   };
 
+  const cancelLongPress = React.useCallback(() => {
+    if (longPressRef.current) window.clearTimeout(longPressRef.current.timer);
+    longPressRef.current = null;
+  }, []);
+
+  React.useEffect(() => cancelLongPress, [cancelLongPress]);
+
+  const handleRowPointerDown = (
+    event: React.PointerEvent<HTMLTableRowElement>,
+    item: Item,
+  ) => {
+    if (
+      !canManage
+      || item.status !== 'in_stock'
+      || (typeof event.button === 'number' && event.button !== 0)
+    ) return;
+    if ((event.target as HTMLElement).closest('button, input, a')) return;
+    cancelLongPress();
+    const timer = window.setTimeout(() => {
+      suppressRowClickRef.current = item.id;
+      longPressRef.current = null;
+      openEditItem(item);
+    }, LONG_PRESS_DURATION_MS);
+    longPressRef.current = {
+      itemId: item.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      timer,
+    };
+  };
+
+  const handleRowPointerMove = (event: React.PointerEvent<HTMLTableRowElement>) => {
+    const press = longPressRef.current;
+    if (!press) return;
+    const moved = Math.hypot(
+      event.clientX - press.startX,
+      event.clientY - press.startY,
+    );
+    if (moved > LONG_PRESS_MOVE_TOLERANCE_PX) cancelLongPress();
+  };
+
+  const handleRowClick = (
+    event: React.MouseEvent<HTMLTableRowElement>,
+    itemId: string,
+  ) => {
+    if (suppressRowClickRef.current === itemId) {
+      suppressRowClickRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    handleMobileRowClick(event, itemId);
+  };
+
   const handleMobileRowClick = (
     event: React.MouseEvent<HTMLTableRowElement>,
     itemId: string,
@@ -893,14 +1001,29 @@ export const Items: React.FC = () => {
   };
 
   const purityOptions = getPurityOptions(formData.metal, availableMetals);
+  const formMetalOptions = editingItem?.item_type === 'stone'
+    ? ['stone']
+    : [
+        ...Object.keys(availableMetals).filter((metal) => metal.toLowerCase() !== 'stone'),
+        ...(editingItem ? [] : ['stone']),
+      ];
   const selectedMetalSummary = summary.metal_summaries[selectedMetal];
   const purityCount = (purity: string) => selectedMetalSummary?.purity_counts[purity] ?? 0;
-  const summaryCards = selectedMetal === 'all'
+  const goldConfig = getMetalIconBg('gold');
+  const silverConfig = getMetalIconBg('silver');
+  const platinumConfig = getMetalIconBg('platinum');
+  const stoneConfig = getMetalIconBg('stone');
+  const summaryCards: Array<{
+    label: string;
+    value: number;
+    icon: React.ComponentType<{ className?: string }>;
+    bg?: string;
+  }> = selectedMetal === 'all'
     ? [
-        { label: 'In Stock', value: summary.in_stock, icon: CheckCircle },
-        { label: 'Gold Items', value: summary.metal_summaries.gold?.in_stock ?? 0, icon: Circle },
-        { label: 'Silver Items', value: summary.metal_summaries.silver?.in_stock ?? 0, icon: Disc },
-        { label: 'Platinum Items', value: summary.metal_summaries.platinum?.in_stock ?? 0, icon: Award },
+        { label: 'Gold Items', value: summary.metal_summaries.gold?.in_stock ?? 0, icon: goldConfig.icon, bg: goldConfig.bg },
+        { label: 'Silver Items', value: summary.metal_summaries.silver?.in_stock ?? 0, icon: silverConfig.icon, bg: silverConfig.bg },
+        { label: 'Platinum Items', value: summary.metal_summaries.platinum?.in_stock ?? 0, icon: platinumConfig.icon, bg: platinumConfig.bg },
+        { label: 'Stones', value: summary.metal_summaries.stone?.in_stock ?? 0, icon: stoneConfig.icon, bg: stoneConfig.bg },
       ]
     : selectedMetal === 'gold'
       ? [
@@ -944,31 +1067,41 @@ export const Items: React.FC = () => {
               isPhoneViewport ? 'inventory-page__actions--phone' : ''
             }`}
           >
-            {isPhoneViewport ? null : <AddItemButton compact={false} disabled={false} onClick={openAddItemModal} />}
+            <AddItemButton disabled={false} onClick={openAddItemModal} />
 
             {selectedItems.size > 0 ? (
-              <DownloadLabelsMenu
-                compact={isPhoneViewport}
-                containerRef={dropdownRef}
-                disabled={false}
-                isOpen={showDownloadDropdown}
-                onToggle={() => setShowDownloadDropdown((current) => !current)}
-                onDownload={(format) => {
-                  setShowDownloadDropdown(false);
-                  void handleDownloadBatchLabels(format);
-                }}
-              />
+              <>
+                <DownloadLabelsMenu
+                  containerRef={dropdownRef}
+                  disabled={loading}
+                  isOpen={showDownloadDropdown}
+                  onToggle={() => setShowDownloadDropdown((current) => !current)}
+                  onDownload={(format) => {
+                    setShowDownloadDropdown(false);
+                    void handleDownloadBatchLabels(format);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={loading}
+                  aria-label="Delete selected items"
+                  title="Delete selected items"
+                  className="inventory-page__icon-action"
+                  onClick={() => void handleDeleteSelectedItems()}
+                >
+                  <Trash2 className="h-6 w-6" />
+                </Button>
+              </>
             ) : null}
-
-            {isPhoneViewport ? <AddItemButton compact disabled={false} onClick={openAddItemModal} /> : null}
           </div> : null}
         </div>
 
         {/* Summary Metrics Cards (Responsive grid with 4 cards) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-slide-down">
-          {summaryCards.map(({ label, value, icon: Icon }) => (
-            <div key={label} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
-              <div className="inventory-summary-icon p-3.5 rounded-app-control mr-4">
+          {summaryCards.map(({ label, value, icon: Icon, bg }) => (
+            <div key={label} className="inventory-summary-card bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-app-surface p-5 flex items-center shadow-xs">
+              <div className={`${bg ?? 'inventory-summary-icon'} p-3.5 rounded-app-control mr-4`}>
                 <Icon className="w-6 h-6" />
               </div>
               <div>
@@ -1002,7 +1135,7 @@ export const Items: React.FC = () => {
               placeholder="Search by SKU, name, or barcode..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-app-control focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 shadow-xs placeholder-slate-400 font-medium"
+              className="inventory-focus-control w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-app-control focus:outline-none transition-all duration-200 shadow-xs placeholder-slate-400 font-medium"
             />
           </div>
           
@@ -1014,9 +1147,7 @@ export const Items: React.FC = () => {
                 setShowCategoryDropdown(false);
                 setShowStatusDropdown(false);
               }}
-              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${
-                showMetalDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-200 dark:border-slate-800'
-              }`}
+              className={`inventory-select-trigger relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${showMetalDropdown ? 'is-open' : ''}`}
             >
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5 pointer-events-none">Metal</label>
               <div className="flex items-center justify-between">
@@ -1036,14 +1167,10 @@ export const Items: React.FC = () => {
                     <div
                       key={opt.value}
                       onClick={() => handleMetalSelect(opt.value)}
-                      className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
-                        isSelected
-                          ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                      }`}
+                      className={`inventory-dropdown-option relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${isSelected ? 'is-selected' : ''}`}
                     >
                       <div className="flex items-center space-x-3">
-                        <div className="inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center">
+                        <div className={`${opt.bg} w-8 h-8 rounded-app-control flex items-center justify-center`}>
                           <Icon className="w-4 h-4" />
                         </div>
                         <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1051,11 +1178,11 @@ export const Items: React.FC = () => {
                         </span>
                       </div>
                       {isSelected ? (
-                        <div className="w-5 h-5 rounded-full border-2 border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                        <div className="inventory-selection-indicator is-selected w-5 h-5 rounded-full border-2 flex items-center justify-center text-white">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </div>
                       ) : (
-                        <div className="w-5 h-5 rounded-full border-2 border-slate-200 dark:border-slate-700" />
+                        <div className="inventory-selection-indicator w-5 h-5 rounded-full border-2" />
                       )}
                     </div>
                   );
@@ -1071,9 +1198,7 @@ export const Items: React.FC = () => {
                 setShowCategoryDropdown(!showCategoryDropdown);
                 setShowStatusDropdown(false);
               }}
-              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${
-                showCategoryDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-200 dark:border-slate-800'
-              }`}
+              className={`inventory-select-trigger relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${showCategoryDropdown ? 'is-open' : ''}`}
             >
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5 pointer-events-none">Category</label>
               <div className="flex items-center justify-between">
@@ -1094,7 +1219,7 @@ export const Items: React.FC = () => {
                     value={categorySearch}
                     onChange={(e) => setCategorySearch(e.target.value)}
                     onClick={(e) => e.stopPropagation()} // Prevent close on click
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-app-control focus:outline-none focus:ring-1 focus:ring-amber-500 text-sm placeholder-slate-400 font-medium"
+                    className="inventory-focus-control w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-app-control focus:outline-none text-sm placeholder-slate-400 font-medium"
                   />
                 </div>
 
@@ -1107,14 +1232,10 @@ export const Items: React.FC = () => {
                       <div
                         key={opt.value}
                         onClick={() => handleCategorySelect(opt.value)}
-                        className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
-                          isSelected 
-                            ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                        }`}
+                        className={`inventory-dropdown-option relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${isSelected ? 'is-selected' : ''}`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
+                          <div className="inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center">
                             <Icon className="w-4 h-4" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1122,11 +1243,11 @@ export const Items: React.FC = () => {
                           </span>
                         </div>
                         {isSelected ? (
-                          <div className="w-5 h-5 rounded-full border-2 border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                          <div className="inventory-selection-indicator is-selected w-5 h-5 rounded-full border-2 flex items-center justify-center text-white">
                             <Check className="w-3 h-3 stroke-[3]" />
                           </div>
                         ) : (
-                          <div className="w-5 h-5 rounded-full border-2 border-slate-200 dark:border-slate-700" />
+                          <div className="inventory-selection-indicator w-5 h-5 rounded-full border-2" />
                         )}
                       </div>
                     );
@@ -1142,9 +1263,7 @@ export const Items: React.FC = () => {
                 setShowStatusDropdown(!showStatusDropdown);
                 setShowCategoryDropdown(false);
               }}
-              className={`relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${
-                showStatusDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-200 dark:border-slate-800'
-              }`}
+              className={`inventory-select-trigger relative flex flex-col justify-center px-4 py-2 bg-white dark:bg-slate-900 border rounded-app-control cursor-pointer select-none shadow-xs h-full transition-all ${showStatusDropdown ? 'is-open' : ''}`}
             >
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5 pointer-events-none">Status</label>
               <div className="flex items-center justify-between">
@@ -1164,11 +1283,7 @@ export const Items: React.FC = () => {
                     <div
                       key={opt.value}
                       onClick={() => handleStatusSelect(opt.value)}
-                      className={`relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${
-                        isSelected 
-                          ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                      }`}
+                      className={`inventory-dropdown-option relative flex items-center justify-between px-3 py-2.5 rounded-app-control cursor-pointer select-none transition-all ${isSelected ? 'is-selected' : ''}`}
                     >
                       <div className="flex items-center space-x-3">
                         <div className={`inventory-option-icon w-8 h-8 rounded-app-control flex items-center justify-center ${opt.bg}`}>
@@ -1179,11 +1294,11 @@ export const Items: React.FC = () => {
                         </span>
                       </div>
                       {isSelected ? (
-                        <div className="w-5 h-5 rounded-full border-2 border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                        <div className="inventory-selection-indicator is-selected w-5 h-5 rounded-full border-2 flex items-center justify-center text-white">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </div>
                       ) : (
-                        <div className="w-5 h-5 rounded-full border-2 border-slate-200 dark:border-slate-700" />
+                        <div className="inventory-selection-indicator w-5 h-5 rounded-full border-2" />
                       )}
                     </div>
                   );
@@ -1238,7 +1353,7 @@ export const Items: React.FC = () => {
                     <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Category
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="hidden whitespace-nowrap px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Qty
                     </th>
                     <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
@@ -1247,14 +1362,14 @@ export const Items: React.FC = () => {
                     <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Weight
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="hidden whitespace-nowrap px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
                       Charge / Rate
                     </th>
                     <th className="w-20 px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:w-auto sm:px-6 sm:py-4 sm:text-xs">
                       Status
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
-                      Actions
+                    <th className="hidden min-w-48 px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                      Notes
                     </th>
                     <th className="w-11 px-1 py-3 sm:hidden">
                       <span className="sr-only">Details</span>
@@ -1265,13 +1380,39 @@ export const Items: React.FC = () => {
                   {items.map((item) => {
                       const isExpanded = expandedItemId === item.id;
                       const detailsId = `inventory-item-details-${item.id}`;
+                      const categoryOption = getCategoryOption(item.category);
+                      const CategoryIcon = categoryOption.icon;
+                      const metalTone = getMetalTone(item);
                       return (
                         <React.Fragment key={item.id}>
                           <tr
-                            onClick={(event) => handleMobileRowClick(event, item.id)}
-                            className={`transition-colors max-sm:cursor-pointer ${
+                            tabIndex={canManage && item.status === 'in_stock' ? 0 : undefined}
+                            aria-label={canManage && item.status === 'in_stock'
+                              ? `${item.name}. Hold to edit, or press Enter.`
+                              : undefined}
+                            onClick={(event) => handleRowClick(event, item.id)}
+                            onPointerDown={(event) => handleRowPointerDown(event, item)}
+                            onPointerMove={handleRowPointerMove}
+                            onPointerUp={cancelLongPress}
+                            onPointerCancel={cancelLongPress}
+                            onPointerLeave={cancelLongPress}
+                            onContextMenu={(event) => {
+                              if (canManage && item.status === 'in_stock') event.preventDefault();
+                            }}
+                            onKeyDown={(event) => {
+                              if (
+                                event.key === 'Enter'
+                                && event.target === event.currentTarget
+                                && canManage
+                                && item.status === 'in_stock'
+                              ) {
+                                event.preventDefault();
+                                openEditItem(item);
+                              }
+                            }}
+                            className={`inventory-table__row transition-colors max-sm:cursor-pointer ${
                               selectedItems.has(item.id)
-                                ? 'bg-amber-50/30 dark:bg-amber-950/30'
+                                ? 'inventory-row--selected'
                                 : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
                             }`}
                           >
@@ -1288,14 +1429,14 @@ export const Items: React.FC = () => {
                               />
                             </td>
                             <td className="inventory-sku-cell hidden px-6 py-5 sm:table-cell">
-                              <span className="inventory-sku-pill bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-app-control text-xs font-mono tracking-wider border border-blue-100/50 dark:border-blue-900/30">
+                              <span className="inventory-sku-pill font-mono text-sm font-bold tracking-wider text-slate-700 dark:text-slate-300">
                                 {item.sku}
                               </span>
                             </td>
                             <td className="min-w-0 px-2 py-3 sm:px-6 sm:py-5">
                               <span
                                 title={item.barcode}
-                                className="block truncate rounded-app-control border border-amber-100/50 bg-amber-50 px-2 py-1 font-mono text-xs font-bold tracking-wider text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400 sm:inline-block sm:px-3"
+                                className="block truncate rounded-app-control border border-amber-100/50 bg-amber-50 px-2 py-1 font-mono text-sm font-bold tracking-wider text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400 sm:inline-block sm:px-3"
                               >
                                 {item.barcode}
                               </span>
@@ -1303,64 +1444,50 @@ export const Items: React.FC = () => {
                             <td className="min-w-0 px-2 py-3 sm:px-6 sm:py-5">
                               <p
                                 title={item.name}
-                                className="truncate text-sm font-bold text-slate-900 dark:text-white sm:text-base"
+                                className="truncate text-sm font-bold text-slate-900 dark:text-white"
                               >
                                 {item.name}
                               </p>
                             </td>
                             <td className="hidden px-6 py-5 sm:table-cell">
-                              <span className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-slate-200 dark:border-slate-700">
-                                {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
+                              <span className="inventory-category-label inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                <CategoryIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                                {categoryOption.label}
                               </span>
                             </td>
-                            <td className="hidden px-6 py-5 text-base font-bold text-slate-800 dark:text-slate-100 sm:table-cell">
-                              {item.quantity}
+                            <td className="hidden whitespace-nowrap px-6 py-5 text-sm font-bold text-slate-800 dark:text-slate-100 sm:table-cell">
+                              {item.stock_mode === 'weight'
+                                ? formatInventoryQtyGrams(item.stock_weight ?? 0)
+                                : item.quantity}
                             </td>
                             <td className="inventory-metal-cell hidden px-6 py-5 sm:table-cell">
-                              <span className="inventory-metal-pill bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-semibold px-3 py-1.5 rounded-app-control text-xs border border-indigo-100/50 dark:border-indigo-900/30">
-                                <span>{item.metal}</span>
+                              <span className={`inventory-metal-pill inventory-metal-pill--${metalTone} border px-3 py-1.5 text-sm font-semibold rounded-app-control`}>
+                                <span>{item.item_type === 'stone' ? 'Stone' : formatMetalName(item.metal)}</span>
                                 <span aria-hidden="true">·</span>
-                                <span>{item.purity > 0 ? `${item.purity}%` : 'Unspecified'}</span>
+                                <span>{item.item_type === 'stone' ? `${item.ratti} Ratti` : item.purity > 0 ? `${item.purity}%` : 'Unspecified'}</span>
                               </span>
                             </td>
-                            <td className="hidden px-6 py-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:table-cell">
-                              {item.category === 'unique' ? 'Fixed price' : `Net: ${formatWeight(item.net_weight)}`}
+                            <td className="hidden whitespace-nowrap px-6 py-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:table-cell">
+                              {getInventoryWeightText(item)}
                             </td>
-                            <td className="hidden px-6 py-5 text-base font-semibold text-slate-900 dark:text-white sm:table-cell">
-                              {item.category === 'unique'
-                                ? formatCurrency(item.fixed_rate ?? 0)
-                                : formatCurrency(item.making_charge)}
+                            <td className="hidden whitespace-nowrap px-6 py-5 text-sm font-semibold text-slate-900 dark:text-white sm:table-cell">
+                              {item.item_type === 'stone'
+                                ? `${formatCurrency(item.rate_per_ratti ?? 0)} / ratti`
+                                : item.pricing_method === 'fixed_rate' || item.category === 'unique'
+                                  ? formatCurrency(item.fixed_rate ?? 0)
+                                  : item.pricing_method === 'fixed_making_charge'
+                                    ? `${formatCurrency(item.making_charge)} fixed`
+                                    : `${formatCurrency(item.making_charge)} / gram`}
                             </td>
-                            <td className="px-2 py-3 sm:px-6 sm:py-5">
-                              <ItemStatusBadge status={item.status} />
-                            </td>
-                            <td className="hidden px-6 py-5 sm:table-cell">
-                              <div className="flex items-center space-x-2">
-                                {item.status === 'in_stock' ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => openEditItem(item)}
-                                      disabled={!canManage}
-                                      aria-label={`Edit ${item.barcode}`}
-                                      className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                                      title="Edit item"
-                                    >
-                                      <Pencil className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteItem(item.id)}
-                                      disabled={!canManage}
-                                      aria-label={`Delete ${item.barcode}`}
-                                      className="p-2 bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-app-control transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-                                      title="Delete item"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </>
-                                ) : null}
+                            <td className="inventory-status-cell px-2 py-3 sm:px-6 sm:py-5">
+                              <div className="inventory-status-cell__content">
+                                <ItemStatusBadge status={item.status} />
                               </div>
+                            </td>
+                            <td className="hidden max-w-64 px-6 py-5 text-sm font-medium text-slate-600 dark:text-slate-300 sm:table-cell">
+                              <span className="inventory-notes-clamp block" title={item.notes ?? undefined}>
+                                {item.notes || '-'}
+                              </span>
                             </td>
                             <td className="px-1 py-2 sm:hidden">
                               <button
@@ -1403,15 +1530,24 @@ export const Items: React.FC = () => {
                                   </div>
                                   {[
                                     ['SKU', item.sku],
-                                    ['Category', item.category.charAt(0).toUpperCase() + item.category.slice(1)],
-                                    ['Quantity', String(item.quantity)],
-                                    ['Metal', `${item.metal} ${item.purity > 0 ? `${item.purity}%` : '(unspecified)'}`],
-                                    ...(item.category === 'unique'
-                                      ? [['Fixed rate', formatCurrency(item.fixed_rate ?? 0)]]
+                                    ['Category', categoryOption.label],
+                                    ['Qty', item.stock_mode === 'weight' ? formatInventoryQtyGrams(item.stock_weight ?? 0) : String(item.quantity)],
+                                    ['Type', item.item_type === 'stone' ? 'Stone' : `${formatMetalName(item.metal)} ${item.purity > 0 ? `${item.purity}%` : '(unspecified)'}`],
+                                    ...(item.item_type === 'stone'
+                                      ? [
+                                          ['Ratti', String(item.ratti ?? '')],
+                                          ['Rate per Ratti', formatCurrency(item.rate_per_ratti ?? 0)],
+                                          ['HSN / GST', `${item.hsn ?? ''} / ${item.gst_rate_percent ?? ''}%`],
+                                        ]
+                                      : item.pricing_method === 'fixed_rate' || item.category === 'unique'
+                                      ? [
+                                          ['Weight', 'Fixed'],
+                                          ['Fixed rate', formatCurrency(item.fixed_rate ?? 0)],
+                                        ]
                                       : [
-                                          ['Net weight', formatWeight(item.net_weight)],
+                                          ['Weight', formatInventoryWeightGrams(item.net_weight)],
                                           [
-                                            item.category === 'other' ? 'Fixed making charge' : 'Making charge',
+                                            item.pricing_method === 'fixed_making_charge' ? 'Fixed making charge' : 'Making charge per gram',
                                             formatCurrency(item.making_charge),
                                           ],
                                         ]),
@@ -1431,28 +1567,17 @@ export const Items: React.FC = () => {
                                     </p>
                                     <ItemStatusBadge status={item.status} />
                                   </div>
-                                  {canManage && item.status === 'in_stock' ? (
-                                    <div className="col-span-2 flex gap-3 border-t border-slate-200 pt-3 dark:border-slate-800">
-                                      <Button
-                                        type="button"
-                                        variant="secondary"
-                                        className="flex-1"
-                                        onClick={() => openEditItem(item)}
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                        <span>Edit</span>
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="danger"
-                                        className="flex-1"
-                                        onClick={() => handleDeleteItem(item.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                        <span>Delete</span>
-                                      </Button>
-                                    </div>
-                                  ) : null}
+                                  <div className="col-span-2">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                      Notes
+                                    </p>
+                                    <p
+                                      className="inventory-notes-clamp mt-1 text-sm font-semibold text-slate-700 dark:text-slate-300"
+                                      title={item.notes ?? undefined}
+                                    >
+                                      {item.notes || '-'}
+                                    </p>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -1616,6 +1741,7 @@ export const Items: React.FC = () => {
               }
               required
               className="py-2.5 rounded-app-control"
+              wrapperClassName={formData.item_type === 'stone' ? 'order-2' : 'order-3'}
             />
             <Input
               label="Item Name *"
@@ -1626,22 +1752,59 @@ export const Items: React.FC = () => {
               }
               required
               className="py-2.5 rounded-app-control"
+              wrapperClassName={formData.item_type === 'stone' ? 'order-2' : 'order-3'}
             />
-            <Input
-              label="Quantity *"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              step={1}
-              placeholder="1"
-              value={formData.quantity}
-              onChange={(e) =>
-                setFormData({ ...formData, quantity: e.target.value })
-              }
-              required
-              className="py-2.5 rounded-app-control"
-            />
-             <div className="relative" ref={formCategoryDropdownRef}>
+            {formData.item_type === 'jewellery' ? (
+              <>
+                <fieldset className="order-2 md:col-span-2">
+                  <legend className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Pricing method</legend>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {([
+                      ['making_charge_per_gram', 'Making charge / gram'],
+                      ['fixed_making_charge', 'Fixed making charge'],
+                      ['fixed_rate', 'Fixed rate'],
+                    ] as const).map(([value, label]) => (
+                      <label key={value} className={`inventory-radio-card flex cursor-pointer items-center gap-2 rounded-app-control border p-3 ${formData.pricing_method === value ? 'is-selected' : ''}`}>
+                        <input
+                          className="inventory-radio"
+                          type="radio"
+                          name="pricing-method"
+                          value={value}
+                          checked={formData.pricing_method === value}
+                          disabled={formData.stock_mode === 'weight' && value === 'fixed_rate'}
+                          onChange={() => setFormData({ ...formData, pricing_method: value })}
+                        />
+                        <span className="text-sm font-semibold">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <fieldset className="order-2 md:col-span-2">
+                  <legend className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Stock is deducted by</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([['quantity', 'Quantity'], ['weight', 'Weight']] as const).map(([value, label]) => (
+                      <label key={value} className={`inventory-radio-card flex cursor-pointer items-center gap-2 rounded-app-control border p-3 ${formData.stock_mode === value ? 'is-selected' : ''}`}>
+                        <input
+                          className="inventory-radio"
+                          type="radio"
+                          name="stock-mode"
+                          checked={formData.stock_mode === value}
+                          onChange={() => setFormData({
+                            ...formData,
+                            stock_mode: value,
+                            pricing_method: value === 'weight' && formData.pricing_method === 'fixed_rate'
+                              ? 'making_charge_per_gram'
+                              : formData.pricing_method,
+                          })}
+                        />
+                        <span className="text-sm font-semibold">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              </>
+            ) : null}
+             <div className={`relative ${formData.item_type === 'stone' ? 'order-3' : 'order-4'}`} ref={formCategoryDropdownRef}>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Category *
               </label>
@@ -1651,9 +1814,7 @@ export const Items: React.FC = () => {
                   setShowFormMetalDropdown(false);
                   setShowFormPurityDropdown(false);
                 }}
-                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
-                  showFormCategoryDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-300 dark:border-slate-800'
-                }`}
+                className={`inventory-select-trigger w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${showFormCategoryDropdown ? 'is-open' : ''}`}
               >
                 <span className="font-semibold text-sm">
                   {categoryOptions.find(o => o.value === formData.category)?.label || 'Select Category'}
@@ -1663,24 +1824,27 @@ export const Items: React.FC = () => {
 
               {showFormCategoryDropdown && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full max-h-60 overflow-y-auto animate-fade-in">
-                  {categoryOptions.filter(o => o.value !== 'all').map((opt) => {
+                  {categoryOptions.filter((option) => option.value !== 'all' && (
+                    formData.item_type === 'stone'
+                      ? STONE_CATEGORIES.has(option.value)
+                      : JEWELLERY_CATEGORIES.has(option.value)
+                  )).map((opt) => {
                     const isSelected = opt.value === formData.category;
                     const Icon = opt.icon;
                     return (
                       <div
                         key={opt.value}
                         onClick={() => {
-                          setFormData({ ...formData, category: opt.value });
+                          setFormData({
+                            ...formData,
+                            category: opt.value,
+                          });
                           setShowFormCategoryDropdown(false);
                         }}
-                        className={`relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${
-                          isSelected 
-                            ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                        }`}
+                        className={`inventory-dropdown-option relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${isSelected ? 'is-selected' : ''}`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${opt.bg}`}>
+                          <div className="inventory-option-icon w-7 h-7 rounded-app-control flex items-center justify-center">
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
@@ -1688,11 +1852,11 @@ export const Items: React.FC = () => {
                           </span>
                         </div>
                         {isSelected ? (
-                          <div className="w-4 h-4 rounded-full border border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                          <div className="inventory-selection-indicator is-selected w-4 h-4 rounded-full border flex items-center justify-center text-white">
                             <Check className="w-2.5 h-2.5 stroke-[3]" />
                           </div>
                         ) : (
-                          <div className="w-4 h-4 rounded-full border border-slate-200 dark:border-slate-700" />
+                          <div className="inventory-selection-indicator w-4 h-4 rounded-full border" />
                         )}
                       </div>
                     );
@@ -1700,64 +1864,81 @@ export const Items: React.FC = () => {
                 </div>
               )}
             </div>
+            {formData.stock_mode === 'weight' ? (
+              <Input
+                label="Weight (g) *"
+                type="number"
+                inputMode="decimal"
+                min="0.001"
+                step="0.001"
+                value={formData.net_weight}
+                onChange={(e) => setFormData({ ...formData, net_weight: e.target.value })}
+                required
+                className="py-2.5 rounded-app-control"
+                wrapperClassName={formData.item_type === 'stone' ? 'order-3' : 'order-4'}
+              />
+            ) : (
+              <Input
+                label="Quantity *"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                placeholder="1"
+                value={formData.quantity}
+                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                required
+                className="py-2.5 rounded-app-control"
+                wrapperClassName={formData.item_type === 'stone' ? 'order-3' : 'order-4'}
+              />
+            )}
 
-            <div className="relative" ref={formMetalDropdownRef}>
+            <div className="relative order-1" ref={formMetalDropdownRef}>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Metal *
               </label>
-              <div 
+              <div
+                aria-disabled={editingItem?.item_type === 'stone'}
                 onClick={() => {
+                  if (editingItem?.item_type === 'stone') return;
                   setShowFormMetalDropdown(!showFormMetalDropdown);
                   setShowFormCategoryDropdown(false);
                   setShowFormPurityDropdown(false);
                 }}
-                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
-                  showFormMetalDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-300 dark:border-slate-800'
-                }`}
+                className={`inventory-select-trigger flex h-[46px] w-full select-none items-center justify-between rounded-app-control border bg-white px-4 py-2.5 text-slate-800 transition-all duration-200 focus:outline-none dark:bg-slate-900 dark:text-slate-100 ${editingItem?.item_type === 'stone' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'} ${showFormMetalDropdown ? 'is-open' : ''}`}
               >
                 <span className="font-semibold text-sm">
-                  {formData.metal ? (formData.metal.charAt(0).toUpperCase() + formData.metal.slice(1)) : 'Select Metal'}
+                  {formData.metal ? formatMetalName(formData.metal) : 'Select Metal'}
                 </span>
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showFormMetalDropdown ? 'rotate-180' : ''}`} />
               </div>
 
               {showFormMetalDropdown && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-app-surface shadow-xl z-30 p-2 flex flex-col gap-1 w-full animate-fade-in">
-                  {Object.keys(availableMetals).map((metal) => {
+                  {formMetalOptions.map((metal) => {
                     const isSelected = metal === formData.metal;
                     const config = getMetalIconBg(metal);
                     const Icon = config.icon;
                     return (
                       <div
                         key={metal}
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            metal: metal,
-                            purity: getDefaultPurity(metal, availableMetals),
-                          });
-                          setShowFormMetalDropdown(false);
-                        }}
-                        className={`relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${
-                          isSelected 
-                            ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                        }`}
+                        onClick={() => handleFormMetalSelect(metal)}
+                        className={`inventory-dropdown-option relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${isSelected ? 'is-selected' : ''}`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`inventory-option-icon w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
+                          <div className={`w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <span className={`text-sm ${isSelected ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-500 dark:text-slate-400'}`}>
-                            {metal.charAt(0).toUpperCase() + metal.slice(1)}
+                            {formatMetalName(metal)}
                           </span>
                         </div>
                         {isSelected ? (
-                          <div className="w-4 h-4 rounded-full border border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                          <div className="inventory-selection-indicator is-selected w-4 h-4 rounded-full border flex items-center justify-center text-white">
                             <Check className="w-2.5 h-2.5 stroke-[3]" />
                           </div>
                         ) : (
-                          <div className="w-4 h-4 rounded-full border border-slate-200 dark:border-slate-700" />
+                          <div className="inventory-selection-indicator w-4 h-4 rounded-full border" />
                         )}
                       </div>
                     );
@@ -1766,7 +1947,7 @@ export const Items: React.FC = () => {
               )}
             </div>
 
-            <div className="relative" ref={formPurityDropdownRef}>
+            {formData.item_type === 'jewellery' ? <div className="relative order-1" ref={formPurityDropdownRef}>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Purity *
               </label>
@@ -1776,9 +1957,7 @@ export const Items: React.FC = () => {
                   setShowFormCategoryDropdown(false);
                   setShowFormMetalDropdown(false);
                 }}
-                className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${
-                  showFormPurityDropdown ? 'border-amber-500 ring-2 ring-amber-500/25 dark:border-amber-500' : 'border-slate-300 dark:border-slate-800'
-                }`}
+                className={`inventory-select-trigger w-full px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border rounded-app-control focus:outline-none transition-all duration-200 cursor-pointer select-none flex items-center justify-between h-[46px] ${showFormPurityDropdown ? 'is-open' : ''}`}
               >
                 <span className="font-semibold text-sm">
                   {purityOptions.find(o => o.value === formData.purity)?.label || 'Select Purity'}
@@ -1799,11 +1978,7 @@ export const Items: React.FC = () => {
                           setFormData({ ...formData, purity: opt.value });
                           setShowFormPurityDropdown(false);
                         }}
-                        className={`relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${
-                          isSelected 
-                            ? 'bg-amber-50/50 dark:bg-amber-950/30 border-l-4 border-amber-500 pl-2' 
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-l-4 border-transparent'
-                        }`}
+                        className={`inventory-dropdown-option relative flex items-center justify-between px-3 py-2 rounded-app-control cursor-pointer select-none transition-all ${isSelected ? 'is-selected' : ''}`}
                       >
                         <div className="flex items-center space-x-3">
                           <div className={`inventory-option-icon w-7 h-7 rounded-app-control flex items-center justify-center ${config.bg}`}>
@@ -1814,46 +1989,75 @@ export const Items: React.FC = () => {
                           </span>
                         </div>
                         {isSelected ? (
-                          <div className="w-4 h-4 rounded-full border border-amber-500 bg-amber-500 flex items-center justify-center text-white">
+                          <div className="inventory-selection-indicator is-selected w-4 h-4 rounded-full border flex items-center justify-center text-white">
                             <Check className="w-2.5 h-2.5 stroke-[3]" />
                           </div>
                         ) : (
-                          <div className="w-4 h-4 rounded-full border border-slate-200 dark:border-slate-700" />
+                          <div className="inventory-selection-indicator w-4 h-4 rounded-full border" />
                         )}
                       </div>
                     );
                   })}
                 </div>
               )}
-            </div>
-            {formData.category === 'unique' ? (
-              <Input
-                label="Fixed Rate *"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0.01"
-                placeholder="0.00"
-                value={formData.fixed_rate}
-                onChange={(e) => setFormData({ ...formData, fixed_rate: e.target.value })}
-                required
-                className="py-2.5 rounded-app-control"
-              />
-            ) : (
+            </div> : null}
+            {formData.item_type === 'stone' ? (
               <>
                 <Input
-                  label="Net Weight (g) *"
+                  label="Ratti *"
+                  type="number"
+                  inputMode="decimal"
+                  min="0.001"
+                  step="0.001"
+                  value={formData.ratti}
+                  onChange={(e) => setFormData({ ...formData, ratti: e.target.value })}
+                  required
+                  wrapperClassName="order-1"
+                />
+                <Input
+                  label="Rate per Ratti *"
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01"
+                  step="0.01"
+                  value={formData.rate_per_ratti}
+                  onChange={(e) => setFormData({ ...formData, rate_per_ratti: e.target.value })}
+                  required
+                  wrapperClassName="order-4"
+                />
+              </>
+            ) : formData.pricing_method === 'fixed_rate' ? (
+              <>
+                <Input
+                  label="Fixed Rate *"
                   type="number"
                   inputMode="decimal"
                   step="0.01"
+                  min="0.01"
                   placeholder="0.00"
-                  value={formData.net_weight}
-                  onChange={(e) => setFormData({ ...formData, net_weight: e.target.value })}
+                  value={formData.fixed_rate}
+                  onChange={(e) => setFormData({ ...formData, fixed_rate: e.target.value })}
                   required
                   className="py-2.5 rounded-app-control"
+                  wrapperClassName="order-5"
                 />
                 <Input
-                  label={formData.category === 'other' ? 'Fixed Making Charge *' : 'Making Charge *'}
+                  label="Weight (g) (Optional)"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.001"
+                  min="0"
+                  placeholder="0.000"
+                  value={formData.net_weight}
+                  onChange={(e) => setFormData({ ...formData, net_weight: e.target.value })}
+                  className="py-2.5 rounded-app-control"
+                  wrapperClassName="order-5"
+                />
+              </>
+            ) : (
+              <>
+                <Input
+                  label={formData.pricing_method === 'fixed_making_charge' ? 'Fixed Making Charge *' : 'Making Charge per gram *'}
                   type="number"
                   inputMode="decimal"
                   step="0.01"
@@ -1862,21 +2066,38 @@ export const Items: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, making_charge: e.target.value })}
                   required
                   className="py-2.5 rounded-app-control"
+                  wrapperClassName="order-5"
                 />
+                {formData.stock_mode === 'quantity' ? <Input
+                  label="Weight (g) *"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.net_weight}
+                  onChange={(e) => setFormData({ ...formData, net_weight: e.target.value })}
+                  required
+                  className="py-2.5 rounded-app-control"
+                  wrapperClassName="order-5"
+                /> : null}
               </>
             )}
-            <div className="md:col-span-2">
+            <div className={`${formData.item_type === 'stone' ? 'order-5' : 'order-6'} md:col-span-2`}>
               <Input
                 label="Notes (Optional)"
                 placeholder="Add any notes about this item"
                 value={formData.notes}
+                maxLength={50}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
                 }
                 className="py-2.5 rounded-app-control"
               />
+              <p className="mt-1 text-right text-xs font-medium text-slate-400" aria-live="polite">
+                {formData.notes.length}/50
+              </p>
             </div>
-            <div className="bg-blue-50 border border-blue-150 rounded-app-inset p-3.5 md:col-span-2">
+            <div className={`${formData.item_type === 'stone' ? 'order-6' : 'order-7'} bg-blue-50 border border-blue-150 rounded-app-inset p-3.5 md:col-span-2`}>
               <p className="text-sm text-blue-700 font-medium">
                 <strong>Note:</strong> Barcode will be automatically generated as a unique 8-digit code.
               </p>

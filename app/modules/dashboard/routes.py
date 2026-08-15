@@ -23,7 +23,7 @@ async def dashboard_summary(
 async def dashboard_analytics(
     from_date: datetime = Query(..., description="Start of date range (ISO)"),
     to_date: datetime = Query(..., description="End of date range (ISO)"),
-    metal: str = Query("all", description="Metal type filter (all/gold/silver/platinum)"),
+    metal: str = Query("all", description="Inventory filter (all/gold/silver/platinum/stone)"),
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -32,7 +32,7 @@ async def dashboard_analytics(
     if to_date - from_date > timedelta(days=366):
         raise HTTPException(status_code=422, detail="Analytics date range cannot exceed 366 days")
     normalized_metal = metal.strip().lower()
-    if normalized_metal not in {"all", "gold", "silver", "platinum"}:
+    if normalized_metal not in {"all", "gold", "silver", "platinum", "stone"}:
         raise HTTPException(status_code=422, detail="Unsupported metal filter")
     return await get_dashboard_analytics(
         db,

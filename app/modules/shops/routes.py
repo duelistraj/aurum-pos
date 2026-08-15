@@ -82,7 +82,6 @@ async def _shop_response(
         state=shop.state,
         state_code=shop.state_code,
         invoice_prefix=shop.invoice_prefix,
-        tax_rate_percent=shop.tax_rate_percent,
     )
 
 

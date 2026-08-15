@@ -3,12 +3,20 @@ export interface Item {
   sku: string;
   barcode: string;
   category: string;
+  item_type?: 'jewellery' | 'stone';
+  pricing_method?: 'fixed_rate' | 'fixed_making_charge' | 'making_charge_per_gram' | 'rate_per_ratti';
+  stock_mode?: 'quantity' | 'weight';
   name: string;
   metal: string;
   purity: number;
   net_weight: number;
   making_charge: number;
   fixed_rate?: number;
+  stock_weight?: number | null;
+  ratti?: number | null;
+  rate_per_ratti?: number | null;
+  hsn?: string;
+  gst_rate_percent?: number;
   quantity: number;
   notes: string | null;
   status: string;
@@ -19,13 +27,19 @@ export interface ItemPOSWithPrice {
   sku: string;
   barcode: string | null;
   category: string;
+  item_type?: 'jewellery' | 'stone';
+  pricing_method?: Item['pricing_method'];
+  stock_mode?: Item['stock_mode'];
   name: string;
   metal: string;
   purity: number;
   net_weight: number;
+  stock_weight?: number | null;
+  ratti?: number | null;
+  rate_per_ratti?: number | null;
   quantity: number;
   status: string;
-  tax_rate_percent: number;
+  requires_weight?: boolean;
   pricing: {
     metal_value: number;
     making_charge: number;
@@ -35,7 +49,7 @@ export interface ItemPOSWithPrice {
     gst_rate_percent: number;
     gst_amount: number;
     final_price: number;
-  };
+  } | null;
 }
 
 export interface MetalRate {
@@ -58,7 +72,8 @@ export interface AnalyticsMetalRate extends DashboardMetalRate {
 
 export interface SaleItem {
   item_id: string;
-  quantity: number;
+  quantity?: number;
+  weight_grams?: number;
   item?: Item;
   pricing?: Record<string, string | number | null>;
 }

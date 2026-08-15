@@ -166,6 +166,26 @@ describe('Analytics', () => {
     ));
   });
 
+  it('supports a dedicated stones analytics filter without a market-rate card', async () => {
+    vi.mocked(apiClient.getDashboardAnalytics).mockResolvedValue({
+      ...analyticsData,
+      metal_rates: [],
+    });
+    const user = userEvent.setup();
+    renderAnalytics();
+
+    await screen.findByText('Top selling categories');
+    await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
+    await user.click(screen.getByRole('option', { name: 'Stones' }));
+
+    await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.any(String),
+      'stone',
+    ));
+    expect(screen.queryByText(/rate per 10g/i)).not.toBeInTheDocument();
+  });
+
   it('renders an actionable error state and retries the request', async () => {
     vi.mocked(apiClient.getDashboardAnalytics)
       .mockRejectedValueOnce(new Error('Analytics unavailable'))

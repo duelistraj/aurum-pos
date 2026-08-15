@@ -17,6 +17,7 @@ vi.mock('@capacitor/core', () => ({
 vi.mock('../api/client', () => ({
   apiClient: {
     getItemForPOS: vi.fn(),
+    quoteWeightedItem: vi.fn(),
     getWhatsAppCapability: vi.fn().mockResolvedValue({
       enabled: false,
       available: false,
@@ -201,5 +202,84 @@ describe('POS camera scanning', () => {
       screen.getByRole('heading', { name: 'Cart Items (2)' }),
     ).toBeInTheDocument();
     expect(apiClient.getItemForPOS).toHaveBeenCalledTimes(3);
+  });
+
+  it('quotes a weighted item in grams and adds one editable cart line', async () => {
+    const weightedItem = {
+      ...scannedItem,
+      id: 'weighted-1',
+      barcode: '87654321',
+      name: 'Silver chain lot',
+      stock_mode: 'weight' as const,
+      pricing_method: 'fixed_making_charge' as const,
+      stock_weight: 50,
+      requires_weight: true,
+      pricing: null,
+    };
+    const quotedItem = {
+      ...weightedItem,
+      pricing: {
+        metal_value: 1250,
+        making_charge: 25,
+        suggested_price: 1275,
+        subtotal: 1275,
+        gst_rate_percent: 3,
+        gst_amount: 38.25,
+        final_price: 1313.25,
+      },
+    };
+    vi.mocked(apiClient.getItemForPOS).mockResolvedValue(weightedItem);
+    vi.mocked(apiClient.quoteWeightedItem).mockResolvedValue(quotedItem);
+    const user = userEvent.setup();
+    renderPOS();
+
+    await user.type(screen.getByPlaceholderText('Scan or type barcode here...'), '87654321');
+    await user.click(screen.getByRole('button', { name: 'Add barcode to cart' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Enter sale weight' });
+    await user.type(screen.getByRole('spinbutton', { name: 'Weight to sell (g)' }), '12.5');
+    await user.click(screen.getByRole('button', { name: 'Use weight' }));
+
+    expect(apiClient.quoteWeightedItem).toHaveBeenCalledWith('weighted-1', 12.5);
+    expect(await screen.findByText('Silver chain lot')).toBeInTheDocument();
+    expect(screen.getByText(/12.5g sold by weight/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit grams' })).toBeInTheDocument();
+    expect(dialog).not.toBeInTheDocument();
+  });
+
+  it('labels fixed and per-gram making charges explicitly in the cart', async () => {
+    const fixedMakingChargeItem = {
+      ...scannedItem,
+      id: 'fixed-making-1',
+      barcode: '11112222',
+      name: 'Platinum Cufflink Pair',
+      pricing_method: 'fixed_making_charge' as const,
+    };
+    const perGramMakingChargeItem = {
+      ...scannedItem,
+      id: 'per-gram-making-1',
+      barcode: '33334444',
+      name: 'Oxidized Silver Ring',
+      pricing_method: 'making_charge_per_gram' as const,
+    };
+    vi.mocked(apiClient.getItemForPOS)
+      .mockResolvedValueOnce(fixedMakingChargeItem)
+      .mockResolvedValueOnce(perGramMakingChargeItem);
+    const user = userEvent.setup();
+    renderPOS();
+
+    const barcodeInput = screen.getByPlaceholderText('Scan or type barcode here...');
+    await user.type(barcodeInput, fixedMakingChargeItem.barcode);
+    await user.click(screen.getByRole('button', { name: 'Add barcode to cart' }));
+    await user.type(barcodeInput, perGramMakingChargeItem.barcode);
+    await user.click(screen.getByRole('button', { name: 'Add barcode to cart' }));
+
+    expect(await screen.findByText(
+      'Base: ₹1000.00 + Fixed Making Charge: ₹100.00',
+    )).toBeInTheDocument();
+    expect(screen.getByText(
+      'Base: ₹1000.00 + Making Charge: ₹100.00',
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/\+ Making:/)).not.toBeInTheDocument();
   });
 });

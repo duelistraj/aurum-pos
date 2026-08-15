@@ -512,7 +512,7 @@ export const ManageShop: React.FC = () => {
         </div>
 
         <div
-          className="inline-flex rounded-app-control border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          className="app-segmented-control"
           role="tablist"
           aria-label="Manage shop sections"
         >
@@ -524,11 +524,7 @@ export const ManageShop: React.FC = () => {
             aria-selected={activeTab === 'invoice-settings'}
             aria-controls="invoice-settings-panel"
             tabIndex={activeTab === 'invoice-settings' ? 0 : -1}
-            className={`flex items-center gap-2 rounded-app-control px-4 py-2.5 text-sm font-bold transition-colors ${
-              activeTab === 'invoice-settings'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
+            className={`app-segmented-control__tab ${activeTab === 'invoice-settings' ? 'is-active' : ''}`}
             onClick={() => selectTab('invoice-settings')}
             onKeyDown={(event) => handleTabKeyDown(event, 'invoice-settings')}
           >
@@ -543,11 +539,7 @@ export const ManageShop: React.FC = () => {
             aria-selected={activeTab === 'staff'}
             aria-controls="staff-management-panel"
             tabIndex={activeTab === 'staff' ? 0 : -1}
-            className={`flex items-center gap-2 rounded-app-control px-4 py-2.5 text-sm font-bold transition-colors ${
-              activeTab === 'staff'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
+            className={`app-segmented-control__tab ${activeTab === 'staff' ? 'is-active' : ''}`}
             onClick={() => selectTab('staff')}
             onKeyDown={(event) => handleTabKeyDown(event, 'staff')}
           >

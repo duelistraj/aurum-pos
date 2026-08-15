@@ -20,16 +20,19 @@ from app.modules.auth.dependencies import (
 from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
 from app.modules.items.schemas import (
+    ItemBatchDelete,
     ItemCreate,
     ItemOut,
     ItemPaginationOut,
     ItemPOS,
     ItemPOSWithPrice,
     ItemUpdate,
+    WeightedQuoteInput,
 )
 from app.modules.items.service import (
     create_item,
     delete_item,
+    delete_items,
     get_item_by_barcode,
     get_item_by_id,
     get_item_for_pos_by_barcode,
@@ -131,21 +134,12 @@ async def get_latest(
     return item
 
 
-@router.get("/pos/scan/{barcode}", response_model=ItemPOSWithPrice)
-async def pos_scan(
-    barcode: str,
-    context: ShopContext = Depends(get_shop_context),
-    db: AsyncSession = Depends(get_db),
-):
-    item = await get_item_for_pos_by_barcode(db, barcode, shop_id=context.shop.id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Item not found or is out of stock")
-
+async def _price_item(db: AsyncSession, item: Item, *, weight: Decimal | None = None) -> dict:
     rate_per_gram = Decimal(0)
-    if item.category.lower() != "unique":
+    if item.item_type == "jewellery" and item.pricing_method != "fixed_rate":
         base_rate = await get_latest_metal_rate(
             db,
-            shop_id=context.shop.id,
+            shop_id=item.shop_id,
             metal=item.metal,
         )
         if base_rate is None:
@@ -159,18 +153,57 @@ async def pos_scan(
     pricing = lock_price_at_sale(
         metal=item.metal,
         category=item.category,
+        item_type=item.item_type,
+        pricing_method=item.pricing_method,
         purity=item.purity,
-        net_weight=item.net_weight,
+        net_weight=weight if weight is not None else item.net_weight,
         rate_per_gram=rate_per_gram,
         making_charge=item.making_charge,
         fixed_rate=item.fixed_rate,
-        tax_rate_percent=context.shop.tax_rate_percent,
+        ratti=item.ratti,
+        rate_per_ratti=item.rate_per_ratti,
     )
     pricing["suggested_price"] = pricing["subtotal"]
+    return pricing
+
+
+@router.get("/pos/scan/{barcode}", response_model=ItemPOSWithPrice)
+async def pos_scan(
+    barcode: str,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await get_item_for_pos_by_barcode(db, barcode, shop_id=context.shop.id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found or is out of stock")
+
+    requires_weight = item.stock_mode == "weight"
+    pricing = None if requires_weight else await _price_item(db, item)
     return {
         **ItemPOS.model_validate(item).model_dump(),
         "pricing": pricing,
-        "tax_rate_percent": float(context.shop.tax_rate_percent),
+        "requires_weight": requires_weight,
+    }
+
+
+@router.post("/pos/quote/{item_id}", response_model=ItemPOSWithPrice)
+async def pos_weight_quote(
+    item_id: UUID,
+    data: WeightedQuoteInput,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await get_item_by_id(db, item_id, shop_id=context.shop.id)
+    if item is None or item.status != "in_stock":
+        raise HTTPException(status_code=404, detail="Item not found or is out of stock")
+    if item.stock_mode != "weight":
+        raise HTTPException(status_code=400, detail="This item is not sold by weight")
+    if item.stock_weight is None or data.weight_grams > item.stock_weight:
+        raise HTTPException(status_code=400, detail="Entered weight exceeds available stock")
+    return {
+        **ItemPOS.model_validate(item).model_dump(),
+        "pricing": await _price_item(db, item, weight=data.weight_grams),
+        "requires_weight": True,
     }
 
 
@@ -253,6 +286,24 @@ async def print_labels_batch(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=jewellery-labels.xlsx"},
     )
+
+
+@router.post(
+    "/delete/batch",
+    status_code=204,
+    dependencies=[RequireManager, RequireWritableShop],
+)
+async def delete_batch(
+    data: ItemBatchDelete,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    try:
+        await delete_items(db, data.item_ids, shop_id=context.shop.id)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "do not exist" in message else 400
+        raise HTTPException(status_code=status_code, detail=message) from exc
 
 
 @router.get("/{item_id}", response_model=ItemOut)

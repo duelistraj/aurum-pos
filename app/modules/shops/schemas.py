@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -24,25 +23,22 @@ class ShopResponse(BaseModel):
     state: str | None = None
     state_code: str | None = None
     invoice_prefix: str | None = None
-    tax_rate_percent: Decimal
 
 
 class ShopUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     legal_name: str | None = Field(default=None, min_length=1, max_length=200)
     tax_id: str | None = Field(default=None, max_length=30)
-    phone: str | None = Field(default=None, max_length=30)
+    phone: str | None = Field(default=None, pattern=r"^[0-9]{10}$")
     address: str | None = Field(default=None, max_length=500)
     state: str | None = Field(default=None, min_length=1, max_length=100)
     state_code: str | None = Field(default=None, min_length=1, max_length=10)
     invoice_prefix: str | None = Field(default=None, min_length=1, max_length=20)
-    tax_rate_percent: Decimal | None = Field(default=None, ge=0, le=100)
 
     @field_validator(
         "name",
         "legal_name",
         "tax_id",
-        "phone",
         "address",
         "state",
         "state_code",
@@ -52,7 +48,7 @@ class ShopUpdate(BaseModel):
     def strip_optional_text(cls, value: str | None) -> str | None:
         return value.strip() if value is not None else None
 
-    @field_validator("phone")
+    @field_validator("phone", mode="before")
     @classmethod
     def normalize_optional_phone(cls, value: str | None) -> str | None:
         return value or None

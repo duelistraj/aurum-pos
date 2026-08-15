@@ -323,7 +323,7 @@ client.interceptors.response.use(
 );
 
 type SaleCreatePayload = {
-  items: Array<{ item_id: string; quantity: number }>;
+  items: Array<{ item_id: string; quantity?: number; weight_grams?: number }>;
   customer_name: string;
   customer_phone: string;
   customer_address?: string;
@@ -415,7 +415,7 @@ export const apiClient = {
       state: string | null;
       state_code: string | null;
       invoice_prefix: string | null;
-      tax_rate_percent: number;
+      tax_rate_percent?: number;
     }>>('/shops');
     return data;
   },
@@ -445,7 +445,6 @@ export const apiClient = {
       state?: string;
       state_code?: string;
       invoice_prefix?: string;
-      tax_rate_percent?: number;
     },
   ) {
     const { data } = await client.patch(`/shops/${shopId}`, payload);
@@ -645,6 +644,13 @@ export const apiClient = {
     return data;
   },
 
+  async quoteWeightedItem(itemId: string, weightGrams: number) {
+    const { data } = await client.post<ItemPOSWithPrice>(`/items/pos/quote/${itemId}`, {
+      weight_grams: weightGrams,
+    });
+    return data;
+  },
+
   async createItem(item: Omit<Item, 'id' | 'status'>) {
     const { data } = await client.post<Item>('/items/', item);
     return data;
@@ -662,6 +668,10 @@ export const apiClient = {
 
   async deleteItem(id: string) {
     await client.delete(`/items/${id}`);
+  },
+
+  async deleteItems(itemIds: string[]) {
+    await client.post('/items/delete/batch', { item_ids: itemIds });
   },
 
   async getBatchLabels(itemIds: string[], format: 'xlsx' | 'pdf' = 'xlsx') {
@@ -691,7 +701,12 @@ export const apiClient = {
   // Sales
   async createSale(sale: SaleCreatePayload, idempotencyKey: string) {
     const { data } = await client.post<Sale>('/sales/', {
-      items: sale.items.map(item => ({ item_id: item.item_id, quantity: item.quantity })),
+      items: sale.items.map(item => ({
+        item_id: item.item_id,
+        ...(item.weight_grams === undefined
+          ? { quantity: item.quantity }
+          : { weight_grams: item.weight_grams }),
+      })),
       customer_name: sale.customer_name,
       customer_phone: sale.customer_phone,
       customer_address: sale.customer_address,

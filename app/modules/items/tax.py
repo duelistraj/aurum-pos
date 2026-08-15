@@ -7,22 +7,17 @@ class TaxProfile(TypedDict):
     gst_rate_percent: Decimal
 
 
-def get_tax_profile(*, metal: str, category: str) -> TaxProfile:
-    """
-    Returns HSN code and GST rate based on item type.
-    """
-
-    category = category.lower()
-    metal = metal.lower()
-
-    if category == "coin":
+def get_tax_profile(
+    *,
+    metal: str,
+    category: str,
+    item_type: str = "jewellery",
+) -> TaxProfile:
+    if item_type.strip().lower() == "stone":
         return {
-            "hsn": "7114",
-            "gst_rate_percent": Decimal("3.0"),
+            "hsn": "7101" if category.strip().lower() == "moti" else "7103",
+            "gst_rate_percent": Decimal("3.00"),
         }
-
-    # Jewellery (default)
-    return {
-        "hsn": "7113",
-        "gst_rate_percent": Decimal("3.0"),
-    }
+    if category.strip().lower() == "coin":
+        return {"hsn": "7118", "gst_rate_percent": Decimal("3.00")}
+    return {"hsn": "7113", "gst_rate_percent": Decimal("3.00")}

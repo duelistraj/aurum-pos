@@ -48,17 +48,18 @@ const PRESETS: Array<{ id: PresetId; label: string }> = [
 ];
 
 const JEWELLERY_OPTIONS = [
-  { value: 'all', label: 'All jewellery' },
+  { value: 'all', label: 'All inventory' },
   { value: 'gold', label: 'Gold' },
   { value: 'silver', label: 'Silver' },
   { value: 'platinum', label: 'Platinum' },
+  { value: 'stone', label: 'Stones' },
 ] as const;
 const EMPTY_METAL_RATES: AnalyticsMetalRate[] = [];
 
 const CHART_THEME = {
   light: {
     grid: '#E9E5DC',
-    label: '#7B8790',
+    label: '#63717D',
     tooltipBackground: '#182027',
     tooltipBorder: '#2D3942',
     tooltipText: '#FFFDF8',
@@ -362,7 +363,7 @@ export const Analytics: React.FC = () => {
   const inventoryTotal = inventoryChartData.reduce((sum, category) => sum + category.value, 0);
   const selectedJewelleryLabel = JEWELLERY_OPTIONS.find(
     ({ value }) => value === selectedJewellery,
-  )?.label ?? 'All jewellery';
+  )?.label ?? 'All inventory';
   const analyticsMetalRates = useMemo(() => {
     const responseRates = data?.metal_rates ?? EMPTY_METAL_RATES;
     if (responseRates.length > 0) {

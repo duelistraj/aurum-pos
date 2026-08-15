@@ -22,10 +22,9 @@ Evidence:
 
 ### Item and stock status
 
-An **item** is a jewellery inventory record identified by UUID and barcode. It
-tracks descriptive data, metal and pricing inputs, quantity, and a status such
-as `in_stock` or `sold`; sale completion reduces quantity and marks an exhausted
-item sold.
+An **item** is a jewellery or stone inventory record identified by UUID and barcode.
+It tracks descriptive data, an immutable item type, an explicit pricing method and stock mode, pricing inputs, remaining stock, and a status such as `in_stock` or `sold`.
+Quantity-stock sales reduce integer quantity, while weighted inventory preserves total weight, reduces a separate decimal remaining balance, and retains an internal quantity of one until remaining weight reaches zero.
 
 Evidence:
 - `app/modules/items/models.py::Item`
@@ -43,26 +42,23 @@ Evidence:
 - `app/modules/items/pricing.py::lock_price_at_sale`
 - `tests/test_pricing.py::test_price_calculation_uses_decimal_and_half_up_rounding`
 
-### Making charge and unique item
+### Pricing method and stone item
 
-A **making charge** is the labour/value component added to metal value. It is a
-fixed amount for `unique` and `other`, while every other category uses the
-making charge per unit of net weight. A **unique item** has zero net weight and
-its price is only its fixed making charge, without GST in the implemented sale
-rule. An `other` item retains metal value and adds its making charge as a fixed
-amount.
+A jewellery **pricing method** is fixed rate, fixed making charge, or making charge per gram, and is independent of category.
+A weighted jewellery item can use either making-charge method but cannot use fixed rate.
+A **stone item** has Ratti and rate per Ratti instead of purity, metal weight, or making charge, and always uses quantity stock.
+A Moti stone uses HSN 7101, every other stone category uses HSN 7103, and every stone uses 3 percent GST.
 
 Evidence:
-- `app/modules/items/pricing.py::FIXED_MAKING_CATEGORIES`
-- `app/modules/items/schemas.py::ItemBase.normalize_net_weight`
-- `tests/test_pricing.py::test_unique_item_price_is_only_the_fixed_making_charge`
+- `app/modules/items/schemas.py::ItemBase.validate_modes`
+- `app/modules/items/pricing.py::lock_price_at_sale`
+- `app/modules/items/tax.py::get_tax_profile`
 
 ### Locked price breakdown
 
 A **locked price breakdown** is the sale-time snapshot stored on each sale
-line. It includes the applicable rate, weight, metal value, making charge, tax,
-quantity, and final line value so later invoices use sale-time values rather
-than current rates.
+line.
+It includes item type, pricing method, applicable unit rate, quantity or sold weight, metal or stone value, making charge, HSN, GST rate, tax amount, and final line value so later invoices use sale-time values rather than current rates.
 
 Evidence:
 - `app/modules/sales/models.py::SaleItem.price_breakdown`

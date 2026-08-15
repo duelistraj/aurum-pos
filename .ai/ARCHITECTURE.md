@@ -68,9 +68,17 @@ After Pro expiry, additional shops remain readable and reject server-side mutati
 Sold and zero-quantity rows do not consume that allowance, and sold rows remain immutable to preserve invoice and audit history.
 Item activation locks the shop before counting.
 Item updates, sales, and archival append immutable inventory snapshots, while deletion is a soft archive that preserves sale references.
-Unique inventory items use a per-unit `fixed_rate` with zero net weight and making charge, while all weight-based categories keep `fixed_rate` at zero.
-The fixed rate is snapshotted on sale items, participates in dashboard valuation, and receives the shop tax rate during checkout without requiring a metal rate.
+Batch deletion locks and validates the complete shop-scoped selection before archiving any item, so it never partially deletes a mixed selection.
+Jewellery pricing is selected per item as fixed rate, fixed making charge, or making charge per gram, independently of its descriptive category.
+Jewellery stock is selected per item as quantity or weight; weighted inventory preserves its total weight separately from its remaining balance.
+Weighted checkout accepts a decimal gram amount, keeps one internal active row while weight remains, and marks the row sold only at zero remaining weight.
+Stone items use quantity stock, Ratti per piece, rate per Ratti, and a fixed `stone` metal discriminator.
+The client creates jewellery and stones through one Add Item form by selecting Stone from the metal field, while persisted item types cannot be converted.
+Moti uses HSN 7101, every other stone category uses HSN 7103, and all stones use 3 percent GST; the resolved HSN and GST are snapshotted on each sale line.
+Tax is derived from item data rather than editable shop settings, and invoices group CGST and SGST totals by rate.
+All price and physical snapshots participate in dashboard valuation and immutable invoice rendering without requiring later inventory state.
 The client stores validated inventory metal, category, and status filters in a shop-scoped device preference and restores them before the first inventory request.
+Customer and optional shop phone fields accept exactly ten Indian digits for new writes without rewriting historical invoice snapshots.
 Metal-rate writes preserve one compatible current row and append immutable history for as-of analytics.
 Sale creation locks inventory rows, prices with `Decimal`, stores seller, tax, item, and price snapshots, decrements stock, assigns a server-controlled invoice sequence, and records a shop-scoped idempotency result.
 The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
@@ -80,6 +88,7 @@ Evidence:
 - `app/modules/subscriptions/service.py::enforce_item_activation_limit`
 - `app/modules/sales/routes.py::create`
 - `app/modules/sales/service.py::_execute_create_sale`
+- `app/modules/items/tax.py::get_tax_profile`
 
 ### Billing and asynchronous work
 

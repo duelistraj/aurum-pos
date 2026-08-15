@@ -199,8 +199,11 @@ describe('Manage Shop', () => {
     );
     expect(await screen.findByDisplayValue('Demo Shop Private Limited')).toBeInTheDocument();
     expect(screen.getByDisplayValue('+91 98765 43210')).toBeInTheDocument();
+    expect(screen.getByText('Enter a 10-digit Indian phone number.')).toBeInTheDocument();
     expect(apiClient.listStaff).not.toHaveBeenCalled();
 
+    await user.clear(screen.getByRole('textbox', { name: 'Shop phone number' }));
+    await user.type(screen.getByRole('textbox', { name: 'Shop phone number' }), '9876543210');
     await user.clear(screen.getByRole('textbox', { name: 'Invoice prefix' }));
     await user.type(screen.getByRole('textbox', { name: 'Invoice prefix' }), 'TAX');
     await user.click(screen.getByRole('button', { name: 'Save invoice settings' }));
@@ -208,7 +211,7 @@ describe('Manage Shop', () => {
     await waitFor(() => {
       expect(apiClient.updateShop).toHaveBeenCalledWith(
         'shop-1',
-        expect.objectContaining({ invoice_prefix: 'TAX', tax_rate_percent: 3 }),
+        expect.objectContaining({ invoice_prefix: 'TAX', phone: '9876543210' }),
       );
     });
   });

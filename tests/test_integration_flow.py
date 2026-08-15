@@ -301,7 +301,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 json={
                     "legal_name": "Integration Jewellers Private Limited",
                     "tax_id": "19ABCDE1234F1Z5",
-                    "phone": "+91 98765 43210",
+                    "phone": "9876543210",
                     "address": "Kolkata",
                     "state": "West Bengal",
                     "state_code": "19",
@@ -309,7 +309,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 },
             )
             assert shop_profile.status_code == 200, shop_profile.text
-            assert shop_profile.json()["phone"] == "+91 98765 43210"
+            assert shop_profile.json()["phone"] == "9876543210"
 
             rate = await client.post(
                 "/api/v1/metal-rates/",
@@ -436,7 +436,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                         "unique_items": 0,
                         "purity_counts": {},
                     }
-                    for metal in ("gold", "silver", "platinum")
+                    for metal in ("gold", "silver", "platinum", "stone")
                 },
             }
 
@@ -667,7 +667,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 assert not hasattr(persisted_sale, "presigned_url")
                 assert persisted_sale.seller_name == "Integration Jewellers Private Limited"
                 assert persisted_sale.seller_tax_id == "19ABCDE1234F1Z5"
-                assert persisted_sale.seller_phone == "+91 98765 43210"
+                assert persisted_sale.seller_phone == "9876543210"
                 assert persisted_sale.items[0].item_name == "Integration Ring"
                 assert persisted_sale.items[0].item_sku == f"SKU-{suffix}"
 
@@ -735,6 +735,168 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 },
             )
             assert partial_sale.status_code == 200, partial_sale.text
+
+            weighted_item = await client.post(
+                "/api/v1/items/",
+                headers=headers,
+                json={
+                    "sku": f"WEIGHTED-{suffix}",
+                    "name": "Weighted silver lot",
+                    "category": "chain",
+                    "item_type": "jewellery",
+                    "pricing_method": "fixed_making_charge",
+                    "stock_mode": "weight",
+                    "metal": metal,
+                    "purity": 92.5,
+                    "net_weight": 50,
+                    "making_charge": 25,
+                },
+            )
+            assert weighted_item.status_code == 200, weighted_item.text
+            weighted_data = weighted_item.json()
+            assert weighted_data["quantity"] == 1
+            assert weighted_data["net_weight"] == 50
+            assert weighted_data["stock_weight"] == 50
+
+            weighted_quote = await client.post(
+                f"/api/v1/items/pos/quote/{weighted_data['id']}",
+                headers=headers,
+                json={"weight_grams": 12.5},
+            )
+            assert weighted_quote.status_code == 200, weighted_quote.text
+            assert weighted_quote.json()["pricing"]["making_charge"] == 25
+
+            weighted_partial_sale = await client.post(
+                "/api/v1/sales/",
+                headers={**headers, "Idempotency-Key": f"weighted-partial-{suffix}"},
+                json={
+                    "items": [{"item_id": weighted_data["id"], "weight_grams": 12.5}],
+                    "customer_name": "Weighted Customer",
+                    "customer_phone": "9999999999",
+                },
+            )
+            assert weighted_partial_sale.status_code == 200, weighted_partial_sale.text
+            weighted_after_partial = await client.get(
+                f"/api/v1/items/{weighted_data['id']}", headers=headers
+            )
+            assert weighted_after_partial.json()["stock_weight"] == 37.5
+            assert weighted_after_partial.json()["net_weight"] == 50
+            assert weighted_after_partial.json()["quantity"] == 1
+
+            weighted_total_edit = await client.patch(
+                f"/api/v1/items/{weighted_data['id']}",
+                headers=headers,
+                json={"net_weight": 55},
+            )
+            assert weighted_total_edit.status_code == 200, weighted_total_edit.text
+            assert weighted_total_edit.json()["net_weight"] == 55
+            assert weighted_total_edit.json()["stock_weight"] == 42.5
+
+            invalid_weighted_total = await client.patch(
+                f"/api/v1/items/{weighted_data['id']}",
+                headers=headers,
+                json={"net_weight": 12.499},
+            )
+            assert invalid_weighted_total.status_code == 400
+
+            overweight_sale = await client.post(
+                "/api/v1/sales/",
+                headers={**headers, "Idempotency-Key": f"weighted-over-{suffix}"},
+                json={
+                    "items": [{"item_id": weighted_data["id"], "weight_grams": 43}],
+                    "customer_name": "Overweight Customer",
+                    "customer_phone": "9999999999",
+                },
+            )
+            assert overweight_sale.status_code == 400
+
+            weighted_exact_sale = await client.post(
+                "/api/v1/sales/",
+                headers={**headers, "Idempotency-Key": f"weighted-exact-{suffix}"},
+                json={
+                    "items": [{"item_id": weighted_data["id"], "weight_grams": 42.5}],
+                    "customer_name": "Exact Weight Customer",
+                    "customer_phone": "9999999999",
+                },
+            )
+            assert weighted_exact_sale.status_code == 200, weighted_exact_sale.text
+            weighted_depleted = await client.get(
+                f"/api/v1/items/{weighted_data['id']}", headers=headers
+            )
+            assert weighted_depleted.json()["stock_weight"] == 0
+            assert weighted_depleted.json()["net_weight"] == 55
+            assert weighted_depleted.json()["quantity"] == 0
+            assert weighted_depleted.json()["status"] == "sold"
+
+            stone_item = await client.post(
+                "/api/v1/items/",
+                headers=headers,
+                json={
+                    "sku": f"STONE-{suffix}",
+                    "name": "Blue sapphire",
+                    "category": "neelam",
+                    "item_type": "stone",
+                    "ratti": 2.5,
+                    "rate_per_ratti": 1000,
+                    "quantity": 2,
+                },
+            )
+            assert stone_item.status_code == 200, stone_item.text
+            stone_data = stone_item.json()
+            assert stone_data["metal"] == "stone"
+            assert stone_data["hsn"] == "7103"
+            assert stone_data["gst_rate_percent"] == 3.0
+            stone_analytics_to = datetime.now(UTC) + timedelta(minutes=1)
+            stone_analytics = await client.get(
+                "/api/v1/dashboard/analytics",
+                headers=headers,
+                params={
+                    "from_date": (stone_analytics_to - timedelta(days=1)).isoformat(),
+                    "to_date": stone_analytics_to.isoformat(),
+                    "metal": "stone",
+                },
+            )
+            assert stone_analytics.status_code == 200, stone_analytics.text
+            assert stone_analytics.json()["inventory_items"] == 2
+            assert stone_analytics.json()["total_sale_value"] == 5000.0
+            assert stone_analytics.json()["metal_rates"] == []
+            stone_sale = await client.post(
+                "/api/v1/sales/",
+                headers={**headers, "Idempotency-Key": f"stone-{suffix}"},
+                json={
+                    "items": [{"item_id": stone_data["id"], "quantity": 2}],
+                    "customer_name": "Stone Customer",
+                    "customer_phone": "9999999999",
+                },
+            )
+            assert stone_sale.status_code == 200, stone_sale.text
+            all_inventory_stone_analytics = await client.get(
+                "/api/v1/dashboard/analytics",
+                headers=headers,
+                params={
+                    "from_date": (stone_analytics_to - timedelta(days=1)).isoformat(),
+                    "to_date": stone_analytics_to.isoformat(),
+                    "metal": "all",
+                },
+            )
+            assert all_inventory_stone_analytics.status_code == 200
+            assert any(
+                category["category"] == "Stones"
+                for category in all_inventory_stone_analytics.json()["sales_by_category"]
+            )
+
+            rejected_batch = await client.post(
+                "/api/v1/items/delete/batch",
+                headers=headers,
+                json={"item_ids": [multi_item_id, stone_data["id"]]},
+            )
+            assert rejected_batch.status_code == 400
+            preserved_item = await client.get(
+                f"/api/v1/items/{multi_item_id}",
+                headers=headers,
+            )
+            assert preserved_item.status_code == 200
+            assert preserved_item.json()["status"] == "in_stock"
             archived = await client.delete(
                 f"/api/v1/items/{multi_item_id}",
                 headers=headers,

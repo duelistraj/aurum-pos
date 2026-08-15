@@ -229,3 +229,27 @@ Evidence:
 - `scripts/export_legacy_items.py::export`
 - `app/cli.py::import_items`
 - `README.md::BMR item-only cutover`
+### Select pricing and stock behavior per inventory item
+
+Recorded: 2026-08-14
+Status: accepted
+Basis: user-confirmed
+Decision: Jewellery category is descriptive and each item selects fixed rate, fixed making charge, or making charge per gram.
+Each jewellery item also selects quantity or weight stock, with weighted sale amounts entered in decimal grams and fixed-rate pricing unavailable for weighted stock.
+Weighted inventory preserves its total weight while maintaining a separate remaining balance, and total-weight corrections preserve the amount already consumed.
+Stone inventory is selected from the Add Item metal field, uses quantity stock, Ratti per piece, rate per Ratti, and an immutable stone item type.
+Moti uses HSN 7101, every other stone category uses HSN 7103, and all stones use 3 percent GST without a user-editable stone tax classification.
+The inventory catalog uses the singular `earring` value and one `jewellery-set` category rather than separate set subcategories.
+Rationale: The user explicitly requested item-level pricing, weighted inventory deduction, a dedicated polished-stone workflow, and fixed stone tax rules for jewellers.
+Consequences: Categories no longer contain jewellery pricing behavior, weighted rows stay active until their remaining grams reach zero, and sale lines snapshot sold weight and resolved HSN and GST data.
+Inventory multi-delete validates and locks the complete selection before archiving any row, so a mixed non-deletable selection fails atomically.
+Customer and optional shop phone inputs accept exactly ten Indian digits while historical invoice snapshots remain unchanged.
+
+Evidence:
+- `alembic/versions/w2x3y4z5a6b7_add_item_level_pricing_and_stones.py::upgrade`
+- `app/modules/items/schemas.py::ItemBase`
+- `app/modules/sales/service.py::_execute_create_sale`
+- `frontend/src/pages/Items.tsx::Items`
+- `frontend/src/pages/POS.tsx::POS`
+- `frontend/src/features/items/catalog.ts::CATEGORY_OPTIONS`
+- `alembic/versions/y4z5a6b7c8d9_normalize_earring_category.py::upgrade`

@@ -88,7 +88,7 @@ describe('Navbar', () => {
       expires_at: null,
     });
     vi.mocked(apiClient.version).mockResolvedValue({
-      version: '0.2.0',
+      version: '0.3.0',
       revision: 'abc123',
       license: 'AGPL-3.0-only',
       source: 'https://github.com/duelistraj/aurum-pos/tree/abc123',
@@ -258,7 +258,7 @@ describe('Navbar', () => {
       'href',
       'https://github.com/duelistraj/aurum-pos/tree/abc123',
     );
-    expect(screen.getByText('Version').parentElement).toHaveTextContent('Version0.2.0');
+    expect(screen.getByText('Version').parentElement).toHaveTextContent('Version0.3.0');
     expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('menuitem', { name: 'Log out' }));

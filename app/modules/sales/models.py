@@ -219,6 +219,12 @@ class SaleItem(Base):
     item_net_weight: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
     item_making_charge: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     item_fixed_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    item_type: Mapped[str | None] = mapped_column(String(20))
+    item_pricing_method: Mapped[str | None] = mapped_column(String(30))
+    item_stock_mode: Mapped[str | None] = mapped_column(String(20))
+    item_ratti: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    item_rate_per_ratti: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    sold_weight: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
 
     sale = relationship(
         "Sale",

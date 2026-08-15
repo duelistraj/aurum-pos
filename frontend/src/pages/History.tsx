@@ -551,7 +551,7 @@ export const Transactions: React.FC = () => {
         </div>
 
         <div
-          className="mb-5 inline-flex rounded-app-control border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          className="app-segmented-control mb-5"
           role="tablist"
           aria-label="Transaction sections"
         >
@@ -563,11 +563,7 @@ export const Transactions: React.FC = () => {
             aria-selected={activeTab === 'activity'}
             aria-controls="transaction-activity-panel"
             tabIndex={activeTab === 'activity' ? 0 : -1}
-            className={`flex items-center gap-2 rounded-app-control px-4 py-2.5 text-sm font-bold transition-colors ${
-              activeTab === 'activity'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
+            className={`app-segmented-control__tab ${activeTab === 'activity' ? 'is-active' : ''}`}
             onClick={() => selectTab('activity')}
             onKeyDown={(event) => handleTabKeyDown(event, 'activity')}
           >
@@ -582,11 +578,7 @@ export const Transactions: React.FC = () => {
             aria-selected={activeTab === 'invoices'}
             aria-controls="invoice-history-panel"
             tabIndex={activeTab === 'invoices' ? 0 : -1}
-            className={`flex items-center gap-2 rounded-app-control px-4 py-2.5 text-sm font-bold transition-colors ${
-              activeTab === 'invoices'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
+            className={`app-segmented-control__tab ${activeTab === 'invoices' ? 'is-active' : ''}`}
             onClick={() => selectTab('invoices')}
             onKeyDown={(event) => handleTabKeyDown(event, 'invoices')}
           >

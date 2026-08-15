@@ -28,6 +28,11 @@ import {
 import { useShop } from '../context/ShopContext';
 import type { InvoicePdfStatus, InvoiceSummary } from '../types';
 import { downloadUrl, formatCurrency, formatDate, printInvoicePdf } from '../utils';
+import {
+  acceptIndianPhoneInput,
+  INDIAN_PHONE_ERROR,
+  isValidIndianPhone,
+} from '../utils/phone';
 
 interface InvoiceFilters {
   search: string;
@@ -50,7 +55,6 @@ interface ShopProfile {
   state: string;
   state_code: string;
   invoice_prefix: string;
-  tax_rate_percent: string;
 }
 
 const EMPTY_FILTERS: InvoiceFilters = {
@@ -69,7 +73,6 @@ const EMPTY_PROFILE: ShopProfile = {
   state: '',
   state_code: '',
   invoice_prefix: 'INV',
-  tax_rate_percent: '3',
 };
 
 const STATUS_OPTIONS = [
@@ -238,7 +241,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     const isPrinting = printingId === invoice.sale_id;
     const isSending = sendingId === invoice.sale_id;
     const isPdfReady = invoice.pdf_status === 'ready';
-    const actionClass = mobile ? 'h-11 w-11 p-0' : 'h-9 w-9 p-0';
+    const actionClass = 'h-11 w-11 p-0';
     return (
       <div className={`flex items-center ${mobile ? 'justify-start' : 'justify-end'} gap-2`}>
         <Button
@@ -246,16 +249,15 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           size="sm"
           className={actionClass}
           variant={invoice.pdf_status === 'failed' ? 'secondary' : 'primary'}
-          isLoading={isDownloading}
           disabled={downloadingId !== null}
           title={invoice.pdf_status === 'failed' ? 'Retry invoice' : 'Download invoice'}
           aria-label={`${invoice.pdf_status === 'failed' ? 'Retry' : 'Download'} ${invoice.invoice_no}${mobile ? ' from details' : ''}`}
           onClick={() => void downloadInvoice(invoice)}
         >
-          {invoice.pdf_status === 'failed' ? (
-            <RefreshCw className="h-4 w-4" />
+          {isDownloading || invoice.pdf_status === 'failed' ? (
+            <RefreshCw className={`h-5 w-5 ${isDownloading ? 'animate-spin' : ''}`} />
           ) : (
-            <Download className="h-4 w-4" />
+            <Download className="h-5 w-5" />
           )}
         </Button>
         <Button
@@ -263,13 +265,16 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           size="sm"
           className={actionClass}
           variant="secondary"
-          isLoading={isPrinting}
           disabled={!isPdfReady || printingId !== null}
           title="Print invoice"
           aria-label={`Print ${invoice.invoice_no}${mobile ? ' from details' : ''}`}
           onClick={() => void printInvoice(invoice)}
         >
-          <Printer className="h-4 w-4" />
+          {isPrinting ? (
+            <RefreshCw className="h-5 w-5 animate-spin" />
+          ) : (
+            <Printer className="h-5 w-5" />
+          )}
         </Button>
         {whatsAppCapability.data?.enabled ? (
           <Button
@@ -277,7 +282,6 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
             size="sm"
             className={actionClass}
             variant="secondary"
-            isLoading={isSending}
             disabled={!whatsAppCapability.data.available || sendingId !== null}
             title={whatsAppCapability.data.available
               ? 'Send invoice on WhatsApp'
@@ -288,7 +292,11 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
               setWhatsAppInvoice(invoice);
             }}
           >
-            <WhatsAppIcon className="h-4 w-4" />
+            {isSending ? (
+              <RefreshCw className="h-5 w-5 animate-spin" />
+            ) : (
+              <WhatsAppIcon className="h-5 w-5" />
+            )}
           </Button>
         ) : null}
       </div>
@@ -406,7 +414,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed text-left sm:min-w-[820px] sm:table-auto">
+            <table className="invoice-table w-full table-fixed text-left sm:min-w-[820px] sm:table-auto">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-950/60 dark:text-slate-400">
                 <tr>
                   <th className="w-[7.5rem] px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Invoice</th>
@@ -432,12 +440,12 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                         className="bg-white transition-colors hover:bg-slate-50/70 max-sm:cursor-pointer dark:bg-slate-900 dark:hover:bg-slate-800/50"
                       >
                         <td className="min-w-0 px-2 py-3 font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4">
-                          <span title={invoice.invoice_no} className="block truncate text-xs sm:text-base">
+                          <span title={invoice.invoice_no} className="block truncate text-xs sm:text-sm">
                             {invoice.invoice_no}
                           </span>
                         </td>
                         <td className="hidden px-5 py-4 sm:table-cell">
-                          <p className="font-semibold text-slate-800 dark:text-slate-200">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                             {invoice.customer_name}
                           </p>
                           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -450,7 +458,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                             {formatDate(invoice.created_at)}
                           </span>
                         </td>
-                        <td className="px-2 py-3 text-right text-xs font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4 sm:text-base">
+                        <td className="px-2 py-3 text-right text-xs font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4 sm:text-sm">
                           {formatCurrency(invoice.total_amount)}
                         </td>
                         <td className="px-2 py-3 sm:px-5 sm:py-4">
@@ -656,20 +664,21 @@ export const InvoiceSettings: React.FC<{ shopId: string }> = ({ shopId }) => {
       state: selectedShop.state ?? '',
       state_code: selectedShop.state_code ?? '',
       invoice_prefix: selectedShop.invoice_prefix ?? 'INV',
-      tax_rate_percent: String(selectedShop.tax_rate_percent),
     });
   }, [selectedShop]);
 
   const saveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (profile.phone && !isValidIndianPhone(profile.phone)) {
+      setMessage('');
+      setError(INDIAN_PHONE_ERROR);
+      return;
+    }
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      await apiClient.updateShop(shopId, {
-        ...profile,
-        tax_rate_percent: Number(profile.tax_rate_percent),
-      });
+      await apiClient.updateShop(shopId, profile);
       await Promise.all([reload(), shopsQuery.refetch()]);
       setMessage('Invoice settings updated.');
     } catch (caught) {
@@ -710,7 +719,6 @@ export const InvoiceSettings: React.FC<{ shopId: string }> = ({ shopId }) => {
               ['tax_id', 'Tax ID / GSTIN'],
               ['phone', 'Shop phone number'],
               ['invoice_prefix', 'Invoice prefix'],
-              ['tax_rate_percent', 'GST rate (%)'],
               ['state', 'State'],
               ['state_code', 'State code'],
             ] as const).map(([field, label]) => (
@@ -719,21 +727,19 @@ export const InvoiceSettings: React.FC<{ shopId: string }> = ({ shopId }) => {
                 id={`invoice-${field}`}
                 label={label}
                 required={field !== 'tax_id' && field !== 'phone'}
-                type={
-                  field === 'tax_rate_percent'
-                    ? 'number'
-                    : field === 'phone'
-                      ? 'tel'
-                      : 'text'
-                }
-                maxLength={field === 'phone' ? 30 : undefined}
-                min={field === 'tax_rate_percent' ? 0 : undefined}
-                max={field === 'tax_rate_percent' ? 100 : undefined}
-                step={field === 'tax_rate_percent' ? '0.01' : undefined}
+                type={field === 'phone' ? 'tel' : 'text'}
+                inputMode={field === 'phone' ? 'numeric' : undefined}
+                maxLength={field === 'phone' ? 10 : undefined}
+                pattern={field === 'phone' ? '[0-9]{10}' : undefined}
+                error={field === 'phone' && profile.phone && !isValidIndianPhone(profile.phone)
+                  ? INDIAN_PHONE_ERROR
+                  : undefined}
                 value={profile[field]}
                 onChange={(event) => setProfile((current) => ({
                   ...current,
-                  [field]: event.target.value,
+                  [field]: field === 'phone'
+                    ? acceptIndianPhoneInput(current.phone, event.target.value)
+                    : event.target.value,
                 }))}
               />
             ))}
