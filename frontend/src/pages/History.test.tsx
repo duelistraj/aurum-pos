@@ -11,6 +11,7 @@ import { Transactions } from './History';
 vi.mock('../api/client', () => ({
   apiClient: {
     getChangeLogHistory: vi.fn(),
+    getCashierSoldHistory: vi.fn(),
     getInvoiceDownload: vi.fn(),
     getInvoicePdf: vi.fn(),
     getWhatsAppCapability: vi.fn(),
@@ -53,7 +54,7 @@ describe('Transactions', () => {
         access_mode: 'read_write',
         shop_name: 'Demo Shop',
         shop_slug: 'demo',
-        role: 'CASHIER',
+        role: 'MANAGER',
       },
       canManage: false,
       selectShop: vi.fn().mockResolvedValue(undefined),
@@ -84,6 +85,25 @@ describe('Transactions', () => {
         created_at: '2026-07-28T08:29:00Z',
       }],
       total: 2,
+      page: 1,
+      limit: 50,
+      pages: 1,
+    });
+    vi.mocked(apiClient.getCashierSoldHistory).mockResolvedValue({
+      entries: [{
+        id: 'entry-2',
+        entity: 'item',
+        action: 'sold',
+        payload: {
+          barcode: 'SKU-1',
+          invoice_no: 'INV-2026-000001',
+          quantity: 1,
+          weight_grams: null,
+          pricing: { total_price: 12500 },
+        },
+        created_at: '2026-07-28T08:29:00Z',
+      }],
+      total: 1,
       page: 1,
       limit: 50,
       pages: 1,
@@ -263,5 +283,41 @@ describe('Transactions', () => {
     );
     expect(await screen.findByText('Sale created')).toBeInTheDocument();
     expect(apiClient.listInvoices).not.toHaveBeenCalled();
+  });
+
+  it('shows cashiers sold activity and invoices without mounting management history', async () => {
+    vi.mocked(useShop).mockReturnValue({
+      user: null,
+      memberships: [],
+      activeMembership: {
+        shop_id: 'shop-1',
+        organization_id: 'organization-1',
+        organization_name: 'Demo Organization',
+        is_primary: true,
+        access_mode: 'read_write',
+        shop_name: 'Demo Shop',
+        shop_slug: 'demo',
+        role: 'CASHIER',
+      },
+      canManage: false,
+      selectShop: vi.fn().mockResolvedValue(undefined),
+      reload: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderTransactions('/transactions?tab=activity');
+
+    expect(await screen.findByRole('heading', { name: 'Transactions' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Invoices' })).toBeInTheDocument();
+    expect(await screen.findByText('Item sold: SKU-1')).toBeInTheDocument();
+    expect(screen.queryByText('Action')).not.toBeInTheDocument();
+    expect(apiClient.getCashierSoldHistory).toHaveBeenCalledWith({
+      barcode: undefined,
+      from_date: undefined,
+      to_date: undefined,
+      page: 1,
+      limit: 50,
+    });
+    expect(apiClient.getChangeLogHistory).not.toHaveBeenCalled();
   });
 });

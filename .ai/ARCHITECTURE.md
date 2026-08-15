@@ -44,7 +44,9 @@ Staff join through hashed, expiring shop invitations.
 Owners and administrators can immediately deactivate memberships, while only the organization owner can request a durable ownership transfer to another active member.
 Access JWTs contain user and session identity but no role; opaque hashed refresh tokens rotate in the database.
 Roles are OWNER, ADMIN, MANAGER, and CASHIER.
-Cashiers can view shop data and create sales, managers additionally control inventory, rates, and label exports, administrators additionally manage shop settings, staff, and devices, and organization owners alone control administrator membership, organization ownership transfer, shop creation, and Play billing.
+Cashiers can create sales, access every selected-shop invoice, read all-date sold-item activity, read metal rates, view today-only sales analytics, and look up one item by an exact barcode through purpose-built responses.
+Cashiers cannot browse inventory, stock and catalog values, non-sale activity logs, management analytics, or subscription usage.
+Managers additionally control inventory, rates, labels, and management reporting, administrators additionally manage shop settings, staff, and devices, and organization owners alone control administrator membership, organization ownership transfer, shop creation, and Play billing.
 Confirmed account deletions execute after seven days and can be cancelled with the confirmation token until cleanup begins.
 Sensitive auth routes use both PostgreSQL-backed account/IP limits and coarse Nginx IP limits.
 Password work runs in a capacity-limited thread pool, and every authenticated request must present the device UUID bound to its session.
@@ -83,12 +85,19 @@ Metal-rate writes preserve one compatible current row and append immutable histo
 Sale creation locks inventory rows, prices with `Decimal`, stores seller, tax, item, and price snapshots, decrements stock, assigns a server-controlled invoice sequence, and records a shop-scoped idempotency result.
 The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
 Dashboard analytics use bounded date ranges and database aggregates instead of loading sale and inventory graphs into application memory.
+Cashier dashboard sales and invoice metrics plus Cashier analytics derive the current calendar day in `Asia/Kolkata`, convert its half-open bounds to UTC, and never accept a client-selected date range.
+Cashier recent activity and Transactions use an allowlisted sold-item feed across all dates, with optional barcode and timestamp filters that cannot be broadened to other activity types.
+Cashier All sales analytics aggregate sale values by Gold Jewellery, Silver Jewellery, Platinum Jewellery, and Stones, while selecting one material drills into its item categories.
+Management and Cashier analytics rank the top three items by filtered sales value and report the sold amount as pieces or grams without exposing internal item IDs.
+The Cashier barcode lookup has a dedicated allowlisted response and returns no internal item ID, quantity balance, stock weight, pricing inputs, notes, or inventory aggregates.
 
 Evidence:
 - `app/modules/subscriptions/service.py::enforce_item_activation_limit`
 - `app/modules/sales/routes.py::create`
 - `app/modules/sales/service.py::_execute_create_sale`
 - `app/modules/items/tax.py::get_tax_profile`
+- `app/modules/items/routes.py::cashier_item_lookup`
+- `app/modules/dashboard/service.py::get_cashier_analytics`
 
 ### Billing and asynchronous work
 
@@ -175,6 +184,8 @@ Native Android access and refresh tokens are encrypted with an AES-GCM key held 
 Browser access tokens remain in memory, while the rotating browser refresh token stays in an HttpOnly, Secure, path-scoped SameSite cookie.
 Browsers persist only a random untrusted installation UUID and coordinate refresh and logout across tabs without storing or broadcasting credentials.
 Dashboard summary and analytics responses expose ordered configured metal rates while retaining the legacy silver-rate fields for client compatibility.
+The React client dispatches Cashiers to separate Dashboard, Inventory, and Analytics components so management data fetching code is never mounted for that role.
+Cashier Transactions combines the allowlisted sold-item feed with invoice history without mounting management activity queries, and the subscription query and controls are omitted.
 The authenticated client rotates configured dashboard rates and gives writable manager-level users one device-local reminder after 08:00 Asia/Kolkata when configured rates have not been refreshed during that IST day.
 Completed Android downloads are written to app-owned storage, and a native bridge accepts only those app-owned paths before posting a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
 Inventory and invoice data remain full tables at viewport widths of 640 pixels and above.

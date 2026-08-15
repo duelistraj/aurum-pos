@@ -13,10 +13,13 @@ import { useNetworkState } from './utils/network';
 import './index.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(({ Dashboard }) => ({ default: Dashboard })));
+const CashierDashboard = lazy(() => import('./pages/CashierDashboard').then(({ CashierDashboard }) => ({ default: CashierDashboard })));
 const POS = lazy(() => import('./pages/POS').then(({ POS }) => ({ default: POS })));
 const Items = lazy(() => import('./pages/Items').then(({ Items }) => ({ default: Items })));
+const CashierInventory = lazy(() => import('./pages/CashierInventory').then(({ CashierInventory }) => ({ default: CashierInventory })));
 const MetalRates = lazy(() => import('./pages/MetalRates').then(({ MetalRates }) => ({ default: MetalRates })));
 const Analytics = lazy(() => import('./pages/Analytics').then(({ Analytics }) => ({ default: Analytics })));
+const CashierAnalytics = lazy(() => import('./pages/CashierAnalytics').then(({ CashierAnalytics }) => ({ default: CashierAnalytics })));
 const Transactions = lazy(() => import('./pages/History').then(({ Transactions }) => ({ default: Transactions })));
 const Login = lazy(() => import('./pages/Login').then(({ Login }) => ({ default: Login })));
 const Subscription = lazy(() => import('./pages/Subscription').then(({ Subscription }) => ({ default: Subscription })));
@@ -27,6 +30,26 @@ const PageLoader = () => (
     Loading…
   </div>
 );
+
+const InventoryRoute: React.FC = () => {
+  const { activeMembership } = useShop();
+  return activeMembership?.role === 'CASHIER' ? <CashierInventory /> : <Items />;
+};
+
+const DashboardRoute: React.FC = () => {
+  const { activeMembership } = useShop();
+  return activeMembership?.role === 'CASHIER' ? <CashierDashboard /> : <Dashboard />;
+};
+
+const AnalyticsRoute: React.FC = () => {
+  const { activeMembership } = useShop();
+  return activeMembership?.role === 'CASHIER' ? <CashierAnalytics /> : <Analytics />;
+};
+
+const ManagerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { activeMembership } = useShop();
+  return activeMembership?.role === 'CASHIER' ? <Navigate to="/" replace /> : <>{children}</>;
+};
 
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
@@ -102,15 +125,15 @@ function App() {
                 <ProtectedRoute>
                   <AppShell>
                     <Routes>
-                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/" element={<DashboardRoute />} />
                       <Route path="/pos" element={<POS />} />
-                      <Route path="/items" element={<Items />} />
+                      <Route path="/items" element={<InventoryRoute />} />
                       <Route path="/rates" element={<MetalRates />} />
                       <Route path="/transactions" element={<Transactions />} />
-                      <Route path="/analytics" element={<Analytics />} />
-                      <Route path="/subscription" element={<Subscription />} />
+                      <Route path="/analytics" element={<AnalyticsRoute />} />
+                      <Route path="/subscription" element={<ManagerRoute><Subscription /></ManagerRoute>} />
                       <Route path="/account" element={<Account />} />
-                      <Route path="/manage-shop" element={<ManageShop />} />
+                      <Route path="/manage-shop" element={<ManagerRoute><ManageShop /></ManagerRoute>} />
                       <Route path="/history" element={<Navigate to="/transactions" replace />} />
                       <Route
                         path="/invoices"

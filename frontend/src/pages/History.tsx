@@ -180,12 +180,16 @@ const getHistorySummary = (entry: ChangeLogEntry) => {
   };
 };
 
-const ActivityHistory: React.FC = () => {
+interface ActivityHistoryProps {
+  soldOnly?: boolean;
+}
+
+const ActivityHistory: React.FC<ActivityHistoryProps> = ({ soldOnly = false }) => {
   const { activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
   const [filters, setFilters] = React.useState({
     barcode: '',
-    action: '',
+    action: soldOnly ? 'sold' : '',
     fromDate: '',
     toDate: '',
   });
@@ -197,6 +201,7 @@ const ActivityHistory: React.FC = () => {
   const actionDropdownRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
+    if (soldOnly) return undefined;
     const handleClickOutside = (event: MouseEvent) => {
       if (actionDropdownRef.current && !actionDropdownRef.current.contains(event.target as Node)) {
         setShowActionDropdown(false);
@@ -206,18 +211,28 @@ const ActivityHistory: React.FC = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [soldOnly]);
 
   const historyQuery = useQuery<ChangeLogPage>({
-    queryKey: queryKeys.history(shopId, { ...appliedFilters, page }),
-    queryFn: () => apiClient.getChangeLogHistory({
-      barcode: appliedFilters.barcode || undefined,
-      action: appliedFilters.action || undefined,
-      from_date: appliedFilters.fromDate || undefined,
-      to_date: appliedFilters.toDate || undefined,
-      page,
-      limit: 50,
-    }),
+    queryKey: soldOnly
+      ? queryKeys.cashierSoldHistory(shopId, { ...appliedFilters, page })
+      : queryKeys.history(shopId, { ...appliedFilters, page }),
+    queryFn: () => soldOnly
+      ? apiClient.getCashierSoldHistory({
+          barcode: appliedFilters.barcode || undefined,
+          from_date: appliedFilters.fromDate || undefined,
+          to_date: appliedFilters.toDate || undefined,
+          page,
+          limit: 50,
+        })
+      : apiClient.getChangeLogHistory({
+          barcode: appliedFilters.barcode || undefined,
+          action: appliedFilters.action || undefined,
+          from_date: appliedFilters.fromDate || undefined,
+          to_date: appliedFilters.toDate || undefined,
+          page,
+          limit: 50,
+        }),
     enabled: Boolean(shopId),
   });
   const entries = historyQuery.data?.entries ?? [];
@@ -240,7 +255,7 @@ const ActivityHistory: React.FC = () => {
   const handleReset = () => {
     const emptyFilters = {
       barcode: '',
-      action: '',
+      action: soldOnly ? 'sold' : '',
       fromDate: '',
       toDate: '',
     };
@@ -263,7 +278,7 @@ const ActivityHistory: React.FC = () => {
       <form onSubmit={handleSubmit} className="mb-8 space-y-6">
           <Card className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm rounded-app-surface">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-              <div className="lg:col-span-4">
+              <div className={soldOnly ? 'lg:col-span-5' : 'lg:col-span-4'}>
                 <Input
                   label="Barcode"
                   placeholder="Enter barcode"
@@ -274,6 +289,7 @@ const ActivityHistory: React.FC = () => {
                   className="py-2.5 rounded-app-control"
                 />
               </div>
+              {!soldOnly ? (
               <div className="relative flex flex-col w-full" ref={actionDropdownRef}>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-400 mb-1.5">Action</label>
                 <div 
@@ -329,6 +345,7 @@ const ActivityHistory: React.FC = () => {
                   </div>
                 )}
               </div>
+              ) : null}
               <div className="lg:col-span-2">
                 <Input
                   label="From date"
@@ -373,7 +390,9 @@ const ActivityHistory: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100/80 dark:border-slate-800 p-8 shadow-[0_8px_30px_rgba(0,0,0,0.015)] animate-slide-up">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Change Log Results</h2>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                {soldOnly ? 'Sold Transactions' : 'Change Log Results'}
+              </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
                 {historyQuery.data?.total ?? 0} entries found.
               </p>
@@ -386,7 +405,9 @@ const ActivityHistory: React.FC = () => {
             </div>
           ) : entries.length === 0 ? (
             <div className="text-center py-12 text-slate-400 dark:text-slate-500 font-semibold">
-              No history entries were found for the selected filters.
+              {soldOnly
+                ? 'No sold transactions were found for the selected filters.'
+                : 'No history entries were found for the selected filters.'}
             </div>
           ) : (
             <div className="space-y-4">
@@ -518,6 +539,7 @@ export const Transactions: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const activityTabRef = React.useRef<HTMLButtonElement>(null);
   const invoicesTabRef = React.useRef<HTMLButtonElement>(null);
+  const isCashier = activeMembership?.role === 'CASHIER';
   const activeTab: TransactionTab = searchParams.get('tab') === 'invoices'
     ? 'invoices'
     : 'activity';
@@ -547,7 +569,11 @@ export const Transactions: React.FC = () => {
       <div className="app-page__container mx-auto max-w-screen-2xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="app-page__header app-page__header--stacked mb-6 animate-slide-down">
           <h1>Transactions</h1>
-          <p>Review shop activity or find and download any issued invoice.</p>
+          <p>
+            {isCashier
+              ? 'Review sold items or find, download, print, and send issued invoices.'
+              : 'Review shop activity or find and download any issued invoice.'}
+          </p>
         </div>
 
         <div
@@ -588,7 +614,7 @@ export const Transactions: React.FC = () => {
         </div>
 
         {activeTab === 'activity' ? (
-          <ActivityHistory />
+          <ActivityHistory soldOnly={isCashier} />
         ) : (
           <InvoiceHistory shopId={activeMembership?.shop_id ?? ''} />
         )}

@@ -58,3 +58,66 @@ async def get_change_log_history(
         "limit": limit,
         "pages": (total + limit - 1) // limit,
     }
+
+
+def serialize_sold_change_log_entry(row: ChangeLog) -> dict:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    pricing = payload.get("pricing")
+    return {
+        "id": row.id,
+        "entity": "item",
+        "action": "sold",
+        "payload": {
+            "barcode": payload.get("barcode"),
+            "invoice_no": payload.get("invoice_no"),
+            "quantity": payload.get("quantity"),
+            "weight_grams": payload.get("weight_grams"),
+            "pricing": pricing if isinstance(pricing, dict) else {},
+        },
+        "created_at": row.created_at,
+    }
+
+
+async def get_sold_change_log_history(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    barcode: str | None = None,
+    page: int = 1,
+    limit: int = 50,
+) -> dict:
+    filters = [
+        ChangeLog.shop_id == shop_id,
+        ChangeLog.entity == "item",
+        ChangeLog.action == "sold",
+    ]
+    if from_date is not None:
+        filters.append(ChangeLog.created_at >= from_date)
+    if to_date is not None:
+        filters.append(ChangeLog.created_at <= to_date)
+    if barcode:
+        filters.append(ChangeLog.barcode.startswith(barcode.strip()))
+
+    total = int(
+        await db.scalar(select(func.count(ChangeLog.id)).where(*filters)) or 0
+    )
+    rows = list(
+        (
+            await db.execute(
+                select(ChangeLog)
+                .where(*filters)
+                .order_by(ChangeLog.created_at.desc())
+                .offset((page - 1) * limit)
+                .limit(limit)
+            )
+        ).scalars()
+    )
+    return {
+        "entries": [serialize_sold_change_log_entry(row) for row in rows],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit,
+    }

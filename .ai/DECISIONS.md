@@ -1,5 +1,26 @@
 # Decisions
 
+### Give Cashiers a purpose-built sales workspace
+
+Recorded: 2026-08-15
+Status: accepted
+Basis: user-confirmed
+Decision: Cashiers retain the full primary navigation but receive role-specific Dashboard, Inventory, Analytics, Transactions, and Metal Rates experiences.
+Cashier Inventory supports only exact 8-digit barcode lookup and exposes a narrow item-detail response without stock balances, valuation inputs, notes, internal IDs, or inventory aggregates.
+Cashier Dashboard shows today's sales, today's invoice count, Gold, Silver, and Platinum rates per 10 grams, and the latest sold-item activity.
+Cashier Analytics is server-locked to the current `Asia/Kolkata` day and reports sales-only KPIs and breakdowns.
+Cashiers retain access to every selected-shop invoice, all-date sold-item activity, and read-only metal rates, while all other activity history, management reporting, inventory management, and subscription usage remain manager-only.
+Rationale: The user defined the Cashier as a checkout and customer-service role that needs barcode verification, invoicing, and daily sales context without catalog valuation or administrative visibility.
+Consequences: The API enforces the same boundary independently of the client, and role-specific React components do not mount management data queries for Cashiers.
+
+Evidence:
+- `app/modules/items/routes.py::cashier_item_lookup`
+- `app/modules/dashboard/routes.py::cashier_dashboard_analytics`
+- `app/modules/changelog/routes.py::sold_change_log_history`
+- `frontend/src/pages/CashierDashboard.tsx::CashierDashboard`
+- `frontend/src/pages/CashierInventory.tsx::CashierInventory`
+- `frontend/src/pages/CashierAnalytics.tsx::CashierAnalytics`
+
 ### Raise the hosted Free inventory limit to 500
 
 Recorded: 2026-07-30

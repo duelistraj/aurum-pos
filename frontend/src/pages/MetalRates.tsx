@@ -51,6 +51,7 @@ export const MetalRates: React.FC = () => {
     onSuccess: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.metalRates(shopId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.cashierDashboard(shopId) }),
       queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'analytics'] }),
     ]),
   });
@@ -156,10 +157,10 @@ export const MetalRates: React.FC = () => {
           <div className="metal-rates-page__title">
               <h1 className="text-4xl font-bold text-slate-900 dark:text-white">Metal Rates</h1>
               <p className="text-slate-600 dark:text-slate-400 mt-1">
-                Update current market prices for metals
+                {canManage ? 'Update current market prices for metals' : 'View current market prices for metals'}
               </p>
           </div>
-          <div className="metal-rates-page__actions">
+          {canManage ? <div className="metal-rates-page__actions">
             <Button
               onClick={handleAddRateClick}
               disabled={metals.length === 0 || hasRateForAllMetals}
@@ -168,7 +169,7 @@ export const MetalRates: React.FC = () => {
               <Plus className="w-5 h-5" />
               <span>Add Rate</span>
             </Button>
-          </div>
+          </div> : null}
         </div>
 
         {/* Alerts */}
@@ -245,14 +246,16 @@ export const MetalRates: React.FC = () => {
                     </div>
                   </div>
 
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    onClick={() => handleUpdateClick(rate)}
-                    className="w-full py-2.5 rounded-app-control font-semibold shadow-xs"
-                  >
-                    Update
-                  </Button>
+                  {canManage ? (
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={() => handleUpdateClick(rate)}
+                      className="w-full py-2.5 rounded-app-control font-semibold shadow-xs"
+                    >
+                      Update
+                    </Button>
+                  ) : null}
                 </div>
               </Card>
             ))}
@@ -269,8 +272,8 @@ export const MetalRates: React.FC = () => {
         )}
 
         {/* Add/Edit Rate Modal */}
-        <Modal
-          isOpen={showModal}
+      <Modal
+        isOpen={canManage && showModal}
           title={`${formData.rate_per_gram ? 'Update' : 'Add'} Metal Rate`}
           onClose={() => setShowModal(false)}
           footer={

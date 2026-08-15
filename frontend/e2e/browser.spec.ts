@@ -291,6 +291,282 @@ test('inventory rows use one desktop body font size', async ({ page }) => {
   }
 });
 
+test('cashier workspace never requests management inventory or analytics data', async ({ page }) => {
+  const shop = {
+    id: '11111111-1111-1111-1111-111111111111',
+    organization_id: '22222222-2222-2222-2222-222222222222',
+    organization_name: 'Demo Organization',
+    is_primary: true,
+    access_mode: 'read_write',
+    name: 'Demo Shop',
+    slug: 'demo-shop',
+    role: 'CASHIER',
+  };
+  const observedPaths: string[] = [];
+  await page.route(`${API_ORIGIN}/**`, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    observedPaths.push(path);
+    if (path === '/api/v1/auth/refresh') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'e2e-access-token', refresh_token: '', token_type: 'bearer',
+          full_name: 'Demo Cashier', user_id: '33333333-3333-3333-3333-333333333333',
+          email: 'cashier@example.com',
+          memberships: [{
+            shop_id: shop.id, organization_id: shop.organization_id,
+            organization_name: shop.organization_name, is_primary: true,
+            access_mode: 'read_write', shop_name: shop.name, shop_slug: shop.slug,
+            role: 'CASHIER',
+          }],
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/shops') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([shop]) });
+      return;
+    }
+    if (path === '/api/v1/version') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          version: '0.3.0', revision: 'e2e', license: 'AGPL-3.0-only',
+          source: 'https://github.com/duelistraj/aurum-pos', deployment_mode: 'hosted',
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/dashboard/cashier/summary') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          today_sales: 2500,
+          invoice_count: 2,
+          recent_sold_activity: [{
+            id: '44444444-4444-4444-4444-444444444444',
+            entity: 'item',
+            action: 'sold',
+            payload: {
+              barcode: '12345678', invoice_no: 'INV-2026-000001', quantity: 1,
+              weight_grams: null, pricing: { total_price: 2500 },
+            },
+            created_at: '2026-08-15T08:30:00Z',
+          }],
+          metal_rates: [
+            { metal: 'gold', rate_per_10g: 75000 },
+            { metal: 'silver', rate_per_10g: 1000 },
+            { metal: 'platinum', rate_per_10g: 42000 },
+          ],
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/change-log/sold') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          entries: [{
+            id: '44444444-4444-4444-4444-444444444444',
+            entity: 'item',
+            action: 'sold',
+            payload: {
+              barcode: '12345678', invoice_no: 'INV-2026-000001', quantity: 1,
+              weight_grams: null, pricing: { total_price: 2500 },
+            },
+            created_at: '2026-08-15T08:30:00Z',
+          }],
+          total: 1, page: 1, limit: 50, pages: 1,
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/sales/invoices') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          invoices: [{
+            sale_id: '55555555-5555-5555-5555-555555555555',
+            invoice_no: 'INV-2026-000001',
+            created_at: '2026-08-15T08:30:00Z',
+            customer_name: 'Demo Customer', customer_phone: '9999999999',
+            total_amount: 2500, pdf_status: 'ready',
+            pdf_generated_at: '2026-08-15T08:31:00Z',
+            whatsapp_delivery_status: null, whatsapp_consent_confirmed_at: null,
+          }],
+          total: 1, page: 1, limit: 25, pages: 1,
+          next_cursor_created_at: null, next_cursor_id: null,
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/whatsapp/capability') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          enabled: false, available: false, pro_required: true,
+          sender_name: 'Aurum POS', template_status: 'unavailable',
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/items/cashier/barcode/12345678') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          barcode: '12345678', sku: 'RING-1', name: 'Gold Ring', category: 'ring',
+          item_type: 'jewellery', metal: 'gold', purity: 91.6, net_weight: 4.5,
+          ratti: null, status: 'in_stock', hsn: '7113', gst_rate_percent: 3,
+          price: { state: 'available', amount: 15000 },
+        }),
+      });
+      return;
+    }
+    if (path === '/api/v1/metal-rates') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { metal: 'gold', purity: 100, rate_per_gram: 7500 },
+          { metal: 'silver', purity: 100, rate_per_gram: 100 },
+          { metal: 'platinum', purity: 100, rate_per_gram: 4200 },
+        ]),
+      });
+      return;
+    }
+    if (path === '/api/v1/metal-rates/available') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ Gold: [91.6], Silver: [92.5], Platinum: [95] }),
+      });
+      return;
+    }
+    if (path === '/api/v1/dashboard/cashier/analytics') {
+      const metal = new URL(route.request().url()).searchParams.get('metal') ?? 'all';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          date: '2026-08-15', metal, total_sales: 2500,
+          invoice_count: 2, units_sold: 3, average_invoice_value: 1250,
+          sales_by_hour: Array.from({ length: 24 }, (_, hour) => ({
+            hour, total_amount: hour === 10 ? 2500 : 0,
+          })),
+          sales_by_category: metal === 'all'
+            ? [
+                { category: 'Gold Jewellery', sales_value: 1500, share: 60 },
+                { category: 'Stones', sales_value: 1000, share: 40 },
+              ]
+            : [
+                { category: 'Panna', sales_value: 1400, share: 56 },
+                { category: 'Pokhraj', sales_value: 1100, share: 44 },
+              ],
+          top_selling_items: metal === 'all'
+            ? [
+                {
+                  name: 'Gold Bridal Necklace', sku: 'GOLD-NECK-01', sales_value: 1500,
+                  sold_amount: 1, sold_unit: 'piece',
+                },
+                {
+                  name: 'Silver Chain Lot', sku: 'SILVER-CHAIN-01', sales_value: 1000,
+                  sold_amount: 12.5, sold_unit: 'gram',
+                },
+              ]
+            : [
+                {
+                  name: 'Polished Panna Emerald', sku: 'STONE-PANNA-01', sales_value: 1400,
+                  sold_amount: 2, sold_unit: 'piece',
+                },
+              ],
+        }),
+      });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.goto('/');
+  await expect(page.getByText("Today's Sales", { exact: true })).toBeVisible();
+  await expect(page.getByText('Invoices Today')).toBeVisible();
+  await expect(page.getByText('Gold Rate per 10g')).toBeVisible();
+  await expect(page.getByText('Recent activity')).toBeVisible();
+  await expect(page.getByText('Item sold: 12345678')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Transactions' })).toBeVisible();
+  if (process.env.AURUM_CAPTURE_CASHIER_UI === '1') {
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: '/tmp/aurum-cashier-dashboard.png', fullPage: true });
+  }
+
+  await page.goto('/items');
+  await expect(page.getByRole('heading', { name: 'Inventory' })).toBeVisible();
+  await expect(page.getByText('Total Items')).toHaveCount(0);
+  await page.getByLabel('Barcode').fill('12345678');
+  await expect(page.getByRole('heading', { name: 'Gold Ring' })).toBeVisible();
+  await expect(page.getByText('₹15,000.00')).toBeVisible();
+  if (process.env.AURUM_CAPTURE_CASHIER_UI === '1') {
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: '/tmp/aurum-cashier-inventory.png', fullPage: true });
+  }
+
+  await page.goto('/rates');
+  await expect(page.getByRole('heading', { name: 'Metal Rates' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add Rate' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Update' })).toHaveCount(0);
+
+  await page.goto('/transactions');
+  await expect(page.getByRole('heading', { name: 'Transactions', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText('Item sold: 12345678')).toBeVisible();
+  await expect(page.getByText('Action', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Invoices' }).click();
+  await expect(page.getByText('INV-2026-000001')).toBeVisible();
+
+  await page.goto('/analytics');
+  await expect(page.getByText('Sales overview')).toBeVisible();
+  await expect(page.getByText('Sales by hour')).toHaveCount(0);
+  await expect(page.getByText('By category')).toBeVisible();
+  await expect(page.getByText('Top items by sales value')).toBeVisible();
+  await expect(page.getByText('Gold Bridal Necklace')).toBeVisible();
+  await expect(page.getByText('12.5 gram sold')).toBeVisible();
+  await expect(page.getByText('Gold Jewellery').first()).toBeVisible();
+  await expect(page.getByText('Stones').first()).toBeVisible();
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Filter sales' }).click();
+  await expect(page.getByRole('listbox', { name: 'Sales type' })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'All sales' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  if (process.env.AURUM_CAPTURE_CASHIER_UI === '1') {
+    await page.screenshot({ path: '/tmp/aurum-cashier-analytics-filter.png', fullPage: true });
+  }
+  await page.getByRole('option', { name: 'Stones' }).click();
+  await expect(page.getByRole('listbox', { name: 'Sales type' })).toHaveCount(0);
+  await expect(page.getByText('Panna').first()).toBeVisible();
+  await expect(page.getByText('Pokhraj').first()).toBeVisible();
+  await expect(page.getByText('Polished Panna Emerald')).toBeVisible();
+  await expect(page.getByText(/inventory value/i)).toHaveCount(0);
+  if (process.env.AURUM_CAPTURE_CASHIER_UI === '1') {
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: '/tmp/aurum-cashier-analytics.png', fullPage: true });
+  }
+
+  expect(observedPaths).not.toContain('/api/v1/items/');
+  expect(observedPaths).not.toContain('/api/v1/items/summary');
+  expect(observedPaths).not.toContain('/api/v1/dashboard/summary');
+  expect(observedPaths).not.toContain('/api/v1/dashboard/analytics');
+  expect(observedPaths).not.toContain('/api/v1/change-log/history');
+  expect(observedPaths).not.toContain('/api/v1/subscriptions/entitlement');
+});
+
 test('invoice history presents compact actions and shared-sender consent', async ({ page }) => {
   const shop = {
     id: '11111111-1111-1111-1111-111111111111',

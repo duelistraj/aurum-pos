@@ -3,6 +3,9 @@ import { Capacitor } from '@capacitor/core';
 import { PLAY_PRODUCT_ID } from '../constants/billing';
 import {
   AnalyticsDashboardResponse,
+  CashierAnalyticsResponse,
+  CashierDashboardSummary,
+  CashierItemLookup,
   ChangeLogEntry,
   ChangeLogPage,
   DashboardSummary,
@@ -639,6 +642,13 @@ export const apiClient = {
     return data;
   },
 
+  async getCashierItemByBarcode(barcode: string) {
+    const { data } = await client.get<CashierItemLookup>(
+      `/items/cashier/barcode/${encodeURIComponent(barcode)}`,
+    );
+    return data;
+  },
+
   async getItemForPOS(barcode: string) {
     const { data } = await client.get<ItemPOSWithPrice>(`/items/pos/scan/${barcode}`);
     return data;
@@ -730,9 +740,21 @@ export const apiClient = {
     return data;
   },
 
+  async getCashierDashboardSummary() {
+    const { data } = await client.get<CashierDashboardSummary>('/dashboard/cashier/summary');
+    return data;
+  },
+
   async getDashboardAnalytics(from_date: string, to_date: string, metal: string) {
     const { data } = await client.get<AnalyticsDashboardResponse>('/dashboard/analytics', {
       params: { from_date, to_date, metal },
+    });
+    return data;
+  },
+
+  async getCashierAnalytics(metal: string) {
+    const { data } = await client.get<CashierAnalyticsResponse>('/dashboard/cashier/analytics', {
+      params: { metal },
     });
     return data;
   },
@@ -759,6 +781,17 @@ export const apiClient = {
         pages: data.length > 0 ? Math.ceil(data.length / limit) : 0,
       };
     }
+    return data;
+  },
+
+  async getCashierSoldHistory(params: {
+    barcode?: string;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { data } = await client.get<ChangeLogPage>('/change-log/sold', { params });
     return data;
   },
 

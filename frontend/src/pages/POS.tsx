@@ -425,6 +425,8 @@ export const POS: React.FC = () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.cashierDashboard(shopId) }),
+        queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'cashier', 'analytics'] }),
         queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'items'] }),
         queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'invoices'] }),
       ]);

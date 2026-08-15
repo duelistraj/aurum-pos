@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ResponsiveBar } from '@nivo/bar';
 import { ResponsiveLine } from '@nivo/line';
 import { PieCustomLayerProps, ResponsivePie } from '@nivo/pie';
 import {
@@ -29,9 +28,9 @@ import {
   createBreakdownColorMap,
   formatCompactCurrency,
   getChartColor,
-  getHorizontalBarMargins,
   selectEvenlySpacedTicks,
 } from '../features/analytics/chartConfig';
+import { TopSellingItems } from '../features/analytics/TopSellingItems';
 import { formatMetalName } from '../features/metalRates/display';
 import { useRotatingMetalRate } from '../hooks/useRotatingMetalRate';
 import { AnalyticsDashboardResponse, AnalyticsMetalRate } from '../types';
@@ -90,11 +89,6 @@ type AnalyticsPieDatum = {
   id: string;
   value: number;
 };
-type AnalyticsBarDatum = {
-  category: string;
-  sales: number;
-};
-
 const createNivoTheme = (theme: ChartTheme) => ({
   background: 'transparent',
   text: {
@@ -343,10 +337,6 @@ export const Analytics: React.FC = () => {
     id: category.category,
     value: category.sales_value,
   })) : [], [categoryHasData, data]);
-  const topCategoryChartData = useMemo<AnalyticsBarDatum[]>(() => data && categoryHasData ? data.sales_by_category.slice(0, 3).map((category) => ({
-    category: category.category,
-    sales: category.sales_value,
-  })) : [], [categoryHasData, data]);
   const inventoryChartData = useMemo<AnalyticsPieDatum[]>(() => data && inventoryHasData ? [
     { id: 'In stock', value: data.inventory_summary.in_stock_count },
     { id: 'Sold', value: data.inventory_summary.sold_count },
@@ -355,10 +345,6 @@ export const Analytics: React.FC = () => {
     lineChartData[0]?.data.map(({ x }) => x) ?? [],
     6,
   ), [lineChartData]);
-  const topCategoryMargins = useMemo(() => getHorizontalBarMargins(
-    topCategoryChartData.map(({ category }) => category),
-    topCategoryChartData.map(({ sales }) => formatWholeCurrency(sales)),
-  ), [topCategoryChartData]);
   const categoryTotal = categoryChartData.reduce((sum, category) => sum + category.value, 0);
   const inventoryTotal = inventoryChartData.reduce((sum, category) => sum + category.value, 0);
   const selectedJewelleryLabel = JEWELLERY_OPTIONS.find(
@@ -691,43 +677,12 @@ export const Analytics: React.FC = () => {
 
           <div className="analytics-grid analytics-grid--supporting">
             <article className="analytics-panel analytics-panel--supporting">
-              <PanelHeader eyebrow="Merchandising" title="Top selling categories" icon={<TrendingUp className="analytics-panel__icon" />} />
-              <div className="analytics-category-chart">
-                {topCategoryChartData.length > 0 ? (
-                  <ResponsiveBar
-                    data={topCategoryChartData}
-                    keys={['sales']}
-                    indexBy="category"
-                    layout="horizontal"
-                    margin={topCategoryMargins}
-                    padding={0.5}
-                    valueScale={{ type: 'linear', min: 0, max: 'auto' }}
-                    indexScale={{ type: 'band', round: true }}
-                    colors={(bar) => breakdownColor(String(bar.data.category))}
-                    borderRadius={4}
-                    enableGridX
-                    enableGridY={false}
-                    axisBottom={{ tickValues: 5, tickSize: 0, tickPadding: 8, tickRotation: 0, format: formatCompactCurrency }}
-                    axisLeft={{ tickSize: 0, tickPadding: 8, tickRotation: 0 }}
-                    enableLabel
-                    labelSkipWidth={0}
-                    labelSkipHeight={0}
-                    labelPosition="end"
-                    labelOffset={8}
-                    labelTextColor={chartTheme.label}
-                    labelFormat={(value) => formatWholeCurrency(Number(value))}
-                    valueFormat={(value) => formatWholeCurrency(Number(value))}
-                    theme={nivoTheme}
-                    ariaLabel="Top selling categories"
-                    tooltip={({ label, value, color }) => (
-                      <div className="analytics-chart-tooltip">
-                        <span style={{ color }}>{label}</span>
-                        <strong>{formatWholeCurrency(value)}</strong>
-                      </div>
-                    )}
-                  />
-                ) : <EmptyState message="No category data available" />}
-              </div>
+              <PanelHeader eyebrow="Merchandising" title="Top items by sales value" icon={<TrendingUp className="analytics-panel__icon" />} />
+              <TopSellingItems
+                items={data.top_selling_items}
+                emptyMessage="No item sales in this range"
+                emptyIcon={<TrendingUp className="analytics-empty-state__icon" />}
+              />
             </article>
 
             <article className="analytics-panel analytics-panel--supporting">

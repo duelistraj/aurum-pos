@@ -293,7 +293,7 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 "/api/v1/items/",
                 headers=second_primary_headers,
             )
-            assert restored_access.status_code == 200, restored_access.text
+            assert restored_access.status_code == 403, restored_access.text
 
             shop_profile = await client.patch(
                 f"/api/v1/shops/{shop_id}",
@@ -362,6 +362,73 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert item.status_code == 200, item.text
             item_id = UUID(item.json()["id"])
             barcode = item.json()["barcode"]
+            cashier_lookup = await client.get(
+                f"/api/v1/items/cashier/barcode/{barcode}",
+                headers=second_primary_headers,
+            )
+            assert cashier_lookup.status_code == 200, cashier_lookup.text
+            assert set(cashier_lookup.json()) == {
+                "barcode",
+                "sku",
+                "name",
+                "category",
+                "item_type",
+                "metal",
+                "purity",
+                "net_weight",
+                "ratti",
+                "status",
+                "hsn",
+                "gst_rate_percent",
+                "price",
+            }
+            assert cashier_lookup.json()["price"]["state"] == "available"
+            assert "quantity" not in cashier_lookup.text
+            assert "making_charge" not in cashier_lookup.text
+            assert "notes" not in cashier_lookup.text
+            invalid_cashier_lookup = await client.get(
+                "/api/v1/items/cashier/barcode/1234",
+                headers=second_primary_headers,
+            )
+            assert invalid_cashier_lookup.status_code == 422
+            for restricted_path in (
+                "/api/v1/items/",
+                "/api/v1/items/summary",
+                f"/api/v1/items/{item_id}",
+                f"/api/v1/items/barcode/{barcode}",
+                "/api/v1/items/latest",
+                "/api/v1/dashboard/summary",
+                "/api/v1/dashboard/analytics?from_date=2026-08-01T00:00:00Z&to_date=2026-08-02T00:00:00Z",
+                "/api/v1/change-log/history",
+                "/api/v1/subscriptions/entitlement",
+            ):
+                restricted_response = await client.get(
+                    restricted_path,
+                    headers=second_primary_headers,
+                )
+                assert restricted_response.status_code == 403, restricted_path
+            cashier_dashboard = await client.get(
+                "/api/v1/dashboard/cashier/summary",
+                headers=second_primary_headers,
+            )
+            assert cashier_dashboard.status_code == 200, cashier_dashboard.text
+            assert cashier_dashboard.json()["today_sales"] == 0
+            assert cashier_dashboard.json()["invoice_count"] == 0
+            assert cashier_dashboard.json()["recent_sold_activity"] == []
+            assert cashier_dashboard.json()["metal_rates"] == [
+                {"metal": "gold", "rate_per_10g": 0.0},
+                {"metal": "silver", "rate_per_10g": 1000.0},
+                {"metal": "platinum", "rate_per_10g": 0.0},
+            ]
+            cashier_analytics = await client.get(
+                "/api/v1/dashboard/cashier/analytics",
+                headers=second_primary_headers,
+                params={"metal": "all"},
+            )
+            assert cashier_analytics.status_code == 200, cashier_analytics.text
+            assert cashier_analytics.json()["total_sales"] == 0
+            assert cashier_analytics.json()["invoice_count"] == 0
+            assert len(cashier_analytics.json()["sales_by_hour"]) == 24
             active_entitlement = await client.get(
                 "/api/v1/subscriptions/entitlement",
                 headers=headers,
@@ -554,6 +621,78 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert sale.status_code == 200, sale.text
             sale_id = UUID(sale.json()["id"])
             assert sale.json()["invoice_no"].startswith("TEST-")
+            sold_cashier_lookup = await client.get(
+                f"/api/v1/items/cashier/barcode/{barcode}",
+                headers=second_primary_headers,
+            )
+            assert sold_cashier_lookup.status_code == 200, sold_cashier_lookup.text
+            assert sold_cashier_lookup.json()["status"] == "sold"
+            cashier_sold_history = await client.get(
+                "/api/v1/change-log/sold",
+                headers=second_primary_headers,
+                params={"page": 1, "limit": 50, "action": "create"},
+            )
+            assert cashier_sold_history.status_code == 200, cashier_sold_history.text
+            assert cashier_sold_history.json()["total"] == 1
+            sold_entry = cashier_sold_history.json()["entries"][0]
+            assert sold_entry["entity"] == "item"
+            assert sold_entry["action"] == "sold"
+            assert set(sold_entry["payload"]) == {
+                "barcode",
+                "invoice_no",
+                "quantity",
+                "weight_grams",
+                "pricing",
+            }
+            assert sold_entry["payload"]["barcode"] == barcode
+            assert sold_entry["payload"]["invoice_no"] == sale.json()["invoice_no"]
+            cashier_sales_dashboard = await client.get(
+                "/api/v1/dashboard/cashier/summary",
+                headers=second_primary_headers,
+            )
+            assert cashier_sales_dashboard.status_code == 200, cashier_sales_dashboard.text
+            assert cashier_sales_dashboard.json()["today_sales"] == confirmed_total
+            assert cashier_sales_dashboard.json()["invoice_count"] == 1
+            assert cashier_sales_dashboard.json()["recent_sold_activity"] == [sold_entry]
+            cashier_sales_analytics = await client.get(
+                "/api/v1/dashboard/cashier/analytics",
+                headers=second_primary_headers,
+                params={"metal": "silver"},
+            )
+            assert cashier_sales_analytics.status_code == 200, cashier_sales_analytics.text
+            assert cashier_sales_analytics.json()["total_sales"] == confirmed_total
+            assert cashier_sales_analytics.json()["invoice_count"] == 1
+            assert cashier_sales_analytics.json()["units_sold"] == 1
+            assert cashier_sales_analytics.json()["average_invoice_value"] == confirmed_total
+            assert cashier_sales_analytics.json()["sales_by_category"] == [
+                {
+                    "category": "Ring",
+                    "sales_value": confirmed_total,
+                    "share": 100.0,
+                }
+            ]
+            assert cashier_sales_analytics.json()["top_selling_items"] == [
+                {
+                    "name": "Integration Ring",
+                    "sku": f"SKU-{suffix}",
+                    "sales_value": confirmed_total,
+                    "sold_amount": 1.0,
+                    "sold_unit": "piece",
+                }
+            ]
+            all_cashier_sales_analytics = await client.get(
+                "/api/v1/dashboard/cashier/analytics",
+                headers=second_primary_headers,
+                params={"metal": "all"},
+            )
+            assert all_cashier_sales_analytics.status_code == 200
+            assert all_cashier_sales_analytics.json()["sales_by_category"] == [
+                {
+                    "category": "Silver Jewellery",
+                    "sales_value": confirmed_total,
+                    "share": 100.0,
+                }
+            ]
             sold_entitlement = await client.get(
                 "/api/v1/subscriptions/entitlement",
                 headers=headers,
@@ -827,6 +966,19 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
             assert weighted_depleted.json()["net_weight"] == 55
             assert weighted_depleted.json()["quantity"] == 0
             assert weighted_depleted.json()["status"] == "sold"
+            weighted_sales_analytics = await client.get(
+                "/api/v1/dashboard/cashier/analytics",
+                headers=second_primary_headers,
+                params={"metal": "silver"},
+            )
+            assert weighted_sales_analytics.status_code == 200
+            weighted_top_item = next(
+                item
+                for item in weighted_sales_analytics.json()["top_selling_items"]
+                if item["sku"] == weighted_data["sku"]
+            )
+            assert weighted_top_item["sold_amount"] == 55.0
+            assert weighted_top_item["sold_unit"] == "gram"
 
             stone_item = await client.post(
                 "/api/v1/items/",
@@ -870,6 +1022,28 @@ async def test_tenant_inventory_sale_invoice_and_isolation_flow(monkeypatch) -> 
                 },
             )
             assert stone_sale.status_code == 200, stone_sale.text
+            cashier_stone_analytics = await client.get(
+                "/api/v1/dashboard/cashier/analytics",
+                headers=second_primary_headers,
+                params={"metal": "stone"},
+            )
+            assert cashier_stone_analytics.status_code == 200
+            assert cashier_stone_analytics.json()["sales_by_category"] == [
+                {
+                    "category": "Neelam",
+                    "sales_value": stone_sale.json()["total_amount"],
+                    "share": 100.0,
+                }
+            ]
+            assert cashier_stone_analytics.json()["top_selling_items"] == [
+                {
+                    "name": "Blue sapphire",
+                    "sku": f"STONE-{suffix}",
+                    "sales_value": stone_sale.json()["total_amount"],
+                    "sold_amount": 2.0,
+                    "sold_unit": "piece",
+                }
+            ]
             all_inventory_stone_analytics = await client.get(
                 "/api/v1/dashboard/analytics",
                 headers=headers,

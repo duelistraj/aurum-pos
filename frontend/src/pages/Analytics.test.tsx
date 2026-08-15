@@ -10,7 +10,6 @@ import { Analytics } from './Analytics';
 import { AnalyticsDashboardResponse } from '../types';
 
 const nivoProps = vi.hoisted(() => ({
-  bar: null as unknown,
   line: null as unknown,
   pies: [] as unknown[],
 }));
@@ -22,12 +21,6 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../context/ConfigContext', () => ({ useConfig: vi.fn() }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
-vi.mock('@nivo/bar', () => ({
-  ResponsiveBar: (props: unknown) => {
-    nivoProps.bar = props;
-    return <div data-testid="nivo-bar-chart" />;
-  },
-}));
 vi.mock('@nivo/line', () => ({
   ResponsiveLine: (props: unknown) => {
     nivoProps.line = props;
@@ -64,6 +57,16 @@ const analyticsData: AnalyticsDashboardResponse = {
     { category: 'Gold Jewellery', sales_value: 2200, share: 68.8 },
     { category: 'Silver Jewellery', sales_value: 1000, share: 31.2 },
   ],
+  top_selling_items: [
+    {
+      name: 'Gold Bridal Necklace', sku: 'GOLD-NECK-01', sales_value: 2200,
+      sold_amount: 1, sold_unit: 'piece',
+    },
+    {
+      name: 'Silver Chain Lot', sku: 'SILVER-CHAIN-01', sales_value: 1000,
+      sold_amount: 12.5, sold_unit: 'gram',
+    },
+  ],
   inventory_summary: {
     in_stock_count: 5,
     in_stock_percentage: 71.4,
@@ -95,7 +98,6 @@ describe('Analytics', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    nivoProps.bar = null;
     nivoProps.line = null;
     nivoProps.pies = [];
     vi.mocked(useConfig).mockReturnValue({
@@ -128,12 +130,14 @@ describe('Analytics', () => {
 
     expect(await screen.findByRole('heading', { name: 'Analytics' })).toBeInTheDocument();
     expect((await screen.findAllByText('₹3,200')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Top selling categories')).toBeInTheDocument();
+    expect(screen.getByText('Top items by sales value')).toBeInTheDocument();
+    expect(screen.getByText('Gold Bridal Necklace')).toBeInTheDocument();
+    expect(screen.getByText('1 piece sold')).toBeInTheDocument();
+    expect(screen.getByText('12.5 gram sold')).toBeInTheDocument();
     expect(screen.getByText('Inventory summary')).toBeInTheDocument();
     expect(screen.getByText('Sales trend')).toBeInTheDocument();
     expect(screen.getByTestId('nivo-line-chart')).toBeInTheDocument();
     expect(screen.getAllByTestId('nivo-pie-chart')).toHaveLength(2);
-    expect(screen.getByTestId('nivo-bar-chart')).toBeInTheDocument();
 
     await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T00:00:00Z$/),
@@ -147,7 +151,7 @@ describe('Analytics', () => {
     const user = userEvent.setup();
     renderAnalytics();
 
-    await screen.findByText('Top selling categories');
+    await screen.findByText('Top items by sales value');
     await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
     await user.click(screen.getByRole('option', { name: 'Gold' }));
     await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenLastCalledWith(
@@ -174,7 +178,7 @@ describe('Analytics', () => {
     const user = userEvent.setup();
     renderAnalytics();
 
-    await screen.findByText('Top selling categories');
+    await screen.findByText('Top items by sales value');
     await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
     await user.click(screen.getByRole('option', { name: 'Stones' }));
 
@@ -197,7 +201,7 @@ describe('Analytics', () => {
     await user.click(screen.getByRole('button', { name: /Retry/ }));
 
     await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText('Top selling categories')).toBeInTheDocument();
+    expect(await screen.findByText('Top items by sales value')).toBeInTheDocument();
   });
 
   it('shows empty states for charts when the response has no activity', async () => {
@@ -205,6 +209,7 @@ describe('Analytics', () => {
       ...analyticsData,
       sales_overview: [],
       sales_by_category: [],
+      top_selling_items: [],
       inventory_summary: {
         in_stock_count: 0,
         in_stock_percentage: 0,
@@ -218,7 +223,7 @@ describe('Analytics', () => {
     expect(await screen.findByText('No sales data in this range')).toBeInTheDocument();
     expect(screen.getByText('No category sales yet')).toBeInTheDocument();
     expect(screen.getByText('No inventory yet')).toBeInTheDocument();
-    expect(screen.getByText('No category data available')).toBeInTheDocument();
+    expect(screen.getByText('No item sales in this range')).toBeInTheDocument();
   });
 
   it('constrains chart ticks, reserves value-label space, and preserves tiny inventory slices', async () => {
@@ -243,10 +248,6 @@ describe('Analytics', () => {
       axisBottom: { tickValues: string[] };
       axisLeft: { tickValues: number };
     };
-    const barProps = nivoProps.bar as {
-      axisBottom: { tickValues: number };
-      margin: { right: number };
-    };
     const inventoryPieProps = nivoProps.pies[nivoProps.pies.length - 1] as {
       innerRadius: number;
       padAngle: number;
@@ -267,8 +268,6 @@ describe('Analytics', () => {
     expect(lineProps.axisBottom.tickValues[0]).toBe('Jul 01');
     expect(lineProps.axisBottom.tickValues[lineProps.axisBottom.tickValues.length - 1]).toBe('Jul 30');
     expect(lineProps.axisLeft.tickValues).toBe(5);
-    expect(barProps.axisBottom.tickValues).toBe(5);
-    expect(barProps.margin.right).toBeGreaterThanOrEqual(72);
     expect(inventoryPieProps).toMatchObject({
       innerRadius: categoryPieProps.innerRadius,
       padAngle: categoryPieProps.padAngle,
@@ -279,7 +278,7 @@ describe('Analytics', () => {
     expect(inventoryPieProps.layers).toHaveLength(2);
   });
 
-  it('shares distinct category colors between the breakdown donut and top-category bars', async () => {
+  it('keeps distinct category colors in the sales breakdown after removing the duplicate ranking', async () => {
     vi.mocked(apiClient.getDashboardAnalytics).mockResolvedValue({
       ...analyticsData,
       sales_by_category: [
@@ -290,7 +289,7 @@ describe('Analytics', () => {
     const user = userEvent.setup();
     renderAnalytics();
 
-    await screen.findByText('Top selling categories');
+    await screen.findByText('Top items by sales value');
     await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
     await user.click(screen.getByRole('option', { name: 'Silver' }));
     await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenLastCalledWith(
@@ -302,15 +301,10 @@ describe('Analytics', () => {
     const categoryPieProps = nivoProps.pies[nivoProps.pies.length - 2] as {
       colors: (datum: { id: string }) => string;
     };
-    const barProps = nivoProps.bar as {
-      colors: (bar: { data: { category: string } }) => string;
-    };
     const ankletColor = categoryPieProps.colors({ id: 'Anklet' });
     const jewelleryColor = categoryPieProps.colors({ id: 'Jewellery' });
 
     expect(ankletColor).not.toBe(jewelleryColor);
-    expect(barProps.colors({ data: { category: 'Anklet' } })).toBe(ankletColor);
-    expect(barProps.colors({ data: { category: 'Jewellery' } })).toBe(jewelleryColor);
   });
 
   it('shows N/A when the specifically selected metal has no configured rate', async () => {
@@ -321,7 +315,7 @@ describe('Analytics', () => {
     const user = userEvent.setup();
     renderAnalytics();
 
-    await screen.findByText('Top selling categories');
+    await screen.findByText('Top items by sales value');
     await user.click(screen.getByRole('button', { name: 'Filter by jewellery' }));
     await user.click(screen.getByRole('option', { name: 'Platinum' }));
 

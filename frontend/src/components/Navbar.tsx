@@ -63,10 +63,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const shopId = activeMembership?.shop_id ?? '';
+  const isCashier = activeMembership?.role === 'CASHIER';
   const entitlement = useQuery({
     queryKey: queryKeys.entitlement(shopId),
     queryFn: () => apiClient.getEntitlement(),
-    enabled: Boolean(shopId),
+    enabled: Boolean(shopId && !isCashier),
   });
   const version = useQuery({
     queryKey: ['version'],
@@ -226,6 +227,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = item.href === '/' ? location.pathname === '/' : location.pathname.startsWith(item.href);
+            const label = item.label;
             return (
               <Link
                 key={item.href}
@@ -233,10 +235,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={handleNavigation}
                 aria-current={isActive ? 'page' : undefined}
                 className={`sidebar__nav-link${isActive ? ' is-active' : ''}`}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? label : undefined}
               >
                 <Icon className="sidebar__nav-icon" />
-                <span className="sidebar__nav-label">{item.label}</span>
+                <span className="sidebar__nav-label">{label}</span>
               </Link>
             );
           })}
@@ -362,17 +364,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="sidebar__account-heading-name">{displayName}</span>
                   <span className="sidebar__account-heading-email">{user?.email ?? 'Account settings'}</span>
                 </Link>
-                <Link
-                  to="/subscription"
-                  role="menuitem"
-                  onClick={handleNavigation}
-                  className="sidebar__menu-option sidebar__menu-option--stacked"
-                >
-                  <span>
-                    <span className="sidebar__menu-option-title">{isPro ? 'Aurum Pro' : 'Upgrade to Pro'}</span>
-                    <span className="sidebar__menu-option-description">{planDescription}</span>
-                  </span>
-                </Link>
+                {!isCashier ? (
+                  <Link
+                    to="/subscription"
+                    role="menuitem"
+                    onClick={handleNavigation}
+                    className="sidebar__menu-option sidebar__menu-option--stacked"
+                  >
+                    <span>
+                      <span className="sidebar__menu-option-title">{isPro ? 'Aurum Pro' : 'Upgrade to Pro'}</span>
+                      <span className="sidebar__menu-option-description">{planDescription}</span>
+                    </span>
+                  </Link>
+                ) : null}
                 {activeMembership
                   && activeMembership.access_mode !== 'read_only'
                   && ['OWNER', 'ADMIN'].includes(activeMembership.role) ? (

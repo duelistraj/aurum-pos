@@ -20,6 +20,7 @@ from app.modules.auth.dependencies import (
 from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
 from app.modules.items.schemas import (
+    CashierItemLookupOut,
     ItemBatchDelete,
     ItemCreate,
     ItemOut,
@@ -42,6 +43,7 @@ from app.modules.items.service import (
     list_items_paginated,
     update_item,
 )
+from app.modules.items.tax import get_tax_profile
 from app.modules.metal_rates.service import (
     calculate_effective_rate_per_gram,
     get_latest_metal_rate,
@@ -73,7 +75,7 @@ async def create(
         raise
 
 
-@router.get("/", response_model=ItemPaginationOut)
+@router.get("/", response_model=ItemPaginationOut, dependencies=[RequireManager])
 async def list_all(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
@@ -103,7 +105,7 @@ async def list_all(
     }
 
 
-@router.get("/summary")
+@router.get("/summary", dependencies=[RequireManager])
 async def get_summary(
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
@@ -111,7 +113,7 @@ async def get_summary(
     return await get_items_summary(db, shop_id=context.shop.id)
 
 
-@router.get("/barcode/{barcode}", response_model=ItemOut)
+@router.get("/barcode/{barcode}", response_model=ItemOut, dependencies=[RequireManager])
 async def get_by_barcode(
     barcode: str,
     context: ShopContext = Depends(get_shop_context),
@@ -123,7 +125,7 @@ async def get_by_barcode(
     return item
 
 
-@router.get("/latest", response_model=ItemOut)
+@router.get("/latest", response_model=ItemOut, dependencies=[RequireManager])
 async def get_latest(
     context: ShopContext = Depends(get_shop_context),
     db: AsyncSession = Depends(get_db),
@@ -165,6 +167,54 @@ async def _price_item(db: AsyncSession, item: Item, *, weight: Decimal | None = 
     )
     pricing["suggested_price"] = pricing["subtotal"]
     return pricing
+
+
+@router.get(
+    "/cashier/barcode/{barcode}",
+    response_model=CashierItemLookupOut,
+)
+async def cashier_item_lookup(
+    barcode: str,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+):
+    if len(barcode) != 8 or not barcode.isdecimal():
+        raise HTTPException(status_code=422, detail="Barcode must contain exactly 8 digits")
+    item = await get_item_by_barcode(db, barcode, shop_id=context.shop.id)
+    if item is None or item.status not in {"in_stock", "sold"}:
+        raise HTTPException(status_code=404, detail="No item found with this barcode")
+
+    if item.stock_mode == "weight":
+        price = {"state": "requires_weight", "amount": None}
+    else:
+        try:
+            pricing = await _price_item(db, item)
+            price = {"state": "available", "amount": pricing["final_price"]}
+        except HTTPException as exc:
+            if exc.status_code != 400:
+                raise
+            price = {"state": "rate_unavailable", "amount": None}
+
+    tax_profile = get_tax_profile(
+        metal=item.metal,
+        category=item.category,
+        item_type=item.item_type,
+    )
+    return {
+        "barcode": item.barcode,
+        "sku": item.sku,
+        "name": item.name,
+        "category": item.category,
+        "item_type": item.item_type,
+        "metal": item.metal,
+        "purity": None if item.item_type == "stone" else item.purity,
+        "net_weight": None if item.item_type == "stone" else item.net_weight,
+        "ratti": item.ratti,
+        "status": item.status,
+        "hsn": tax_profile["hsn"],
+        "gst_rate_percent": tax_profile["gst_rate_percent"],
+        "price": price,
+    }
 
 
 @router.get("/pos/scan/{barcode}", response_model=ItemPOSWithPrice)
@@ -306,7 +356,7 @@ async def delete_batch(
         raise HTTPException(status_code=status_code, detail=message) from exc
 
 
-@router.get("/{item_id}", response_model=ItemOut)
+@router.get("/{item_id}", response_model=ItemOut, dependencies=[RequireManager])
 async def get_by_id(
     item_id: UUID,
     context: ShopContext = Depends(get_shop_context),

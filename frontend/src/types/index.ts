@@ -52,6 +52,25 @@ export interface ItemPOSWithPrice {
   } | null;
 }
 
+export interface CashierItemLookup {
+  barcode: string;
+  sku: string;
+  name: string;
+  category: string;
+  item_type: 'jewellery' | 'stone';
+  metal: string;
+  purity: number | null;
+  net_weight: number | null;
+  ratti: number | null;
+  status: 'in_stock' | 'sold';
+  hsn: string;
+  gst_rate_percent: number;
+  price: {
+    state: 'available' | 'requires_weight' | 'rate_unavailable';
+    amount: number | null;
+  };
+}
+
 export interface MetalRate {
   id?: string;
   metal: string;
@@ -159,6 +178,13 @@ export interface DashboardSummary {
   recent_activity: ChangeLogEntry[];
 }
 
+export interface CashierDashboardSummary {
+  today_sales: number;
+  invoice_count: number;
+  recent_sold_activity: ChangeLogEntry[];
+  metal_rates: DashboardMetalRate[];
+}
+
 export interface CustomerDetails {
   name: string;
   phone: string;
@@ -174,6 +200,14 @@ export interface CategoryShare {
   category: string;
   sales_value: number;
   share: number;
+}
+
+export interface TopSellingItem {
+  name: string;
+  sku: string;
+  sales_value: number;
+  sold_amount: number;
+  sold_unit: 'piece' | 'gram';
 }
 
 export interface InventoryRatio {
@@ -208,6 +242,19 @@ export interface AnalyticsDashboardResponse {
   total_stock_value_change_percentage: number;
   sales_overview: SalesOverviewPoint[];
   sales_by_category: CategoryShare[];
+  top_selling_items: TopSellingItem[];
   inventory_summary: InventoryRatio;
   sales_trend: SalesTrendCompare;
+}
+
+export interface CashierAnalyticsResponse {
+  date: string;
+  metal: 'all' | 'gold' | 'silver' | 'platinum' | 'stone';
+  total_sales: number;
+  invoice_count: number;
+  units_sold: number;
+  average_invoice_value: number;
+  sales_by_hour: Array<{ hour: number; total_amount: number }>;
+  sales_by_category: CategoryShare[];
+  top_selling_items: TopSellingItem[];
 }

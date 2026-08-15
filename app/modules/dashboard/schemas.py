@@ -1,4 +1,45 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from app.modules.changelog.schemas import SoldChangeLogEntry
+
+
+class CashierMetalRate(BaseModel):
+    metal: Literal["gold", "silver", "platinum"]
+    rate_per_10g: float
+
+
+class CashierDashboardSummary(BaseModel):
+    today_sales: float
+    invoice_count: int
+    recent_sold_activity: list[SoldChangeLogEntry] = Field(max_length=4)
+    metal_rates: list[CashierMetalRate] = Field(min_length=3, max_length=3)
+
+
+class CashierHourlySale(BaseModel):
+    hour: int
+    total_amount: float
+
+
+class TopSellingItem(BaseModel):
+    name: str
+    sku: str
+    sales_value: float
+    sold_amount: float
+    sold_unit: Literal["piece", "gram"]
+
+
+class CashierAnalyticsResponse(BaseModel):
+    date: str
+    metal: Literal["all", "gold", "silver", "platinum", "stone"]
+    total_sales: float
+    invoice_count: int
+    units_sold: int
+    average_invoice_value: float
+    sales_by_hour: list[CashierHourlySale] = Field(min_length=24, max_length=24)
+    sales_by_category: list["CategoryShare"]
+    top_selling_items: list[TopSellingItem] = Field(max_length=3)
 
 
 class SalesOverviewPoint(BaseModel):
@@ -61,5 +102,6 @@ class AnalyticsDashboardResponse(BaseModel):
     # Charts & Breakdowns
     sales_overview: list[SalesOverviewPoint]
     sales_by_category: list[CategoryShare]
+    top_selling_items: list[TopSellingItem] = Field(max_length=3)
     inventory_summary: InventoryRatio
     sales_trend: SalesTrendCompare

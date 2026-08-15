@@ -150,6 +150,27 @@ describe('Navbar', () => {
     );
   });
 
+  it('labels the combined workspace as transactions and omits plan data for cashiers', async () => {
+    const cashierMembership = { ...memberships[0], role: 'CASHIER' as const };
+    vi.mocked(useShop).mockReturnValue({
+      user: null,
+      memberships: [cashierMembership],
+      activeMembership: cashierMembership,
+      canManage: false,
+      selectShop,
+      reload: reloadShop,
+    });
+    const user = userEvent.setup();
+
+    renderNavbar();
+
+    expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute('href', '/transactions');
+    expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Account and settings' }));
+    expect(screen.queryByRole('menuitem', { name: /Pro/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(apiClient.getEntitlement).not.toHaveBeenCalled());
+  });
+
   it('keeps shop switching in the sidebar footer', async () => {
     const user = userEvent.setup();
     renderNavbar();

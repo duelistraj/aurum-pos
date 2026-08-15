@@ -212,6 +212,30 @@ class ItemPaginationOut(BaseModel):
     pages: int
 
 
+CashierPriceState = Literal["available", "requires_weight", "rate_unavailable"]
+
+
+class CashierItemPrice(BaseModel):
+    state: CashierPriceState
+    amount: float | None = Field(default=None, ge=0)
+
+
+class CashierItemLookupOut(BaseModel):
+    barcode: str
+    sku: str
+    name: str
+    category: str
+    item_type: ItemType
+    metal: str
+    purity: float | None
+    net_weight: float | None
+    ratti: float | None
+    status: Literal["in_stock", "sold"]
+    hsn: str
+    gst_rate_percent: float
+    price: CashierItemPrice
+
+
 class ItemBatchDelete(BaseModel):
     item_ids: list[UUID] = Field(min_length=1, max_length=200)
 

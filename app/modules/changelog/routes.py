@@ -4,14 +4,66 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.auth.dependencies import ShopContext, get_shop_context
-from app.modules.changelog.schemas import ChangeLogEntry, ChangeLogPage
-from app.modules.changelog.service import get_change_log_history
+from app.modules.auth.dependencies import (
+    RequireCashier,
+    RequireManager,
+    ShopContext,
+    get_shop_context,
+)
+from app.modules.changelog.schemas import (
+    ChangeLogEntry,
+    ChangeLogPage,
+    SoldChangeLogPage,
+)
+from app.modules.changelog.service import get_change_log_history, get_sold_change_log_history
 
 router = APIRouter(prefix="/change-log", tags=["Change Log"])
 
 
-@router.get("/history", response_model=ChangeLogPage | list[ChangeLogEntry])
+@router.get(
+    "/sold",
+    response_model=SoldChangeLogPage,
+    dependencies=[RequireCashier],
+)
+async def sold_change_log_history(
+    from_date: datetime | None = Query(
+        None,
+        alias="from_date",
+        description="Filter sold entries created on or after this timestamp.",
+    ),
+    to_date: datetime | None = Query(
+        None,
+        alias="to_date",
+        description="Filter sold entries created on or before this timestamp.",
+    ),
+    barcode: str | None = Query(
+        None,
+        max_length=100,
+        description="Filter sold entries by barcode prefix.",
+    ),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> SoldChangeLogPage:
+    return SoldChangeLogPage.model_validate(
+        await get_sold_change_log_history(
+            db,
+            shop_id=context.shop.id,
+            from_date=from_date,
+            to_date=to_date,
+            barcode=barcode,
+            page=page,
+            limit=limit,
+        )
+    )
+
+
+@router.get(
+    "/history",
+    response_model=ChangeLogPage | list[ChangeLogEntry],
+    dependencies=[RequireManager],
+)
 async def change_log_history(
     from_date: datetime | None = Query(
         None,
