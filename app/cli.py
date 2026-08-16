@@ -33,6 +33,8 @@ TENANT_TABLES = (
     "sale_idempotency",
     "sale_items",
     "sales",
+    "storefront_reservation_lines",
+    "storefront_reservations",
     "subscriptions",
 )
 CLI_MAPPER_TYPES = (Item, SaleItem)

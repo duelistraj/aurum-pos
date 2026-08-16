@@ -162,7 +162,7 @@ test('downloads and prints an invoice without leaving or clearing Transactions',
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          version: '0.3.1',
+          version: '0.4.0',
           revision: 'e2e',
           license: 'AGPL-3.0-only',
           source: 'https://github.com/duelistraj/aurum-pos',

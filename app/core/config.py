@@ -1,6 +1,7 @@
 from email.utils import parseaddr
 from enum import StrEnum
 from urllib.parse import urlparse
+from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -98,6 +99,15 @@ class Settings(BaseSettings):
     worker_whatsapp_max_attempts: int = Field(default=8, ge=1, le=50)
     worker_whatsapp_batch_size: int = Field(default=20, ge=1, le=200)
     worker_whatsapp_concurrency: int = Field(default=4, ge=1, le=20)
+    storefront_integration_enabled: bool = False
+    storefront_shop_id: UUID | None = None
+    storefront_key_id: str | None = None
+    storefront_request_hmac_secret: str | None = None
+    storefront_webhook_url: str | None = None
+    storefront_webhook_hmac_secret: str | None = None
+    worker_storefront_max_attempts: int = Field(default=8, ge=1, le=50)
+    worker_storefront_batch_size: int = Field(default=20, ge=1, le=200)
+    worker_storefront_concurrency: int = Field(default=4, ge=1, le=20)
     public_site_url: str = "https://aurumpos.net"
     worker_instance_id: str | None = None
 
@@ -192,6 +202,27 @@ class Settings(BaseSettings):
                     "WhatsApp delivery requires provider configuration: "
                     f"{', '.join(missing_whatsapp)}"
                 )
+        if self.storefront_integration_enabled:
+            storefront_requirements = {
+                "STOREFRONT_SHOP_ID": self.storefront_shop_id,
+                "STOREFRONT_KEY_ID": self.storefront_key_id,
+                "STOREFRONT_REQUEST_HMAC_SECRET": self.storefront_request_hmac_secret,
+                "STOREFRONT_WEBHOOK_URL": self.storefront_webhook_url,
+                "STOREFRONT_WEBHOOK_HMAC_SECRET": self.storefront_webhook_hmac_secret,
+            }
+            missing_storefront = [
+                name for name, value in storefront_requirements.items() if not value
+            ]
+            if missing_storefront:
+                raise ValueError(
+                    "Storefront integration requires configuration: "
+                    f"{', '.join(missing_storefront)}"
+                )
+            webhook_url = urlparse(self.storefront_webhook_url or "")
+            if self.env in {Environment.STAGING, Environment.PRODUCTION} and (
+                webhook_url.scheme != "https" or not webhook_url.netloc
+            ):
+                raise ValueError("deployed storefront webhooks require an HTTPS URL")
         return self
 
     @field_validator("aws_region", "s3_invoice_bucket")

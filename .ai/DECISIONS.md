@@ -1,5 +1,24 @@
 # Decisions
 
+### Make Aurum authoritative for storefront inventory
+
+Recorded: 2026-08-16
+Status: accepted
+Basis: user-confirmed
+Decision: Aurum POS owns on-hand and reserved quantity for the Rahiti storefront through a shop-bound reservation API and signed versioned inventory events.
+Rahiti receives its one-time catalogue from the administrator's manually filtered Aurum inventory CSV and owns storefront price and presentation after import.
+The Aurum export itself includes every active inventory row and applies no metal, purity, SKU, status, or product-name filter.
+Rationale: The user explicitly required every storefront item to be quantity-based, manual selection outside the importer, Aurum reservation before payment, and immediate storefront availability updates after POS sales.
+Consequences: Checkout holds are persisted before payment, POS sales cannot consume held units, fulfil and cancel are idempotent reservation transitions, and inventory changes use a durable HMAC-signed outbox with monotonic versions.
+The selected shop UUID and independent request and webhook secrets are runtime configuration rather than tenant-editable shop settings.
+
+Evidence:
+- `app/modules/items/export.py::build_inventory_csv`
+- `app/modules/storefront/routes.py::router`
+- `app/modules/storefront/service.py::create_reservation`
+- `app/jobs/storefront.py::process_storefront_events`
+- `frontend/src/pages/Staff.tsx::DataExport`
+
 ### Give Cashiers a purpose-built sales workspace
 
 Recorded: 2026-08-15

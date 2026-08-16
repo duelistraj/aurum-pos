@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from app.modules.auth.dependencies import (
     get_shop_context,
 )
 from app.modules.auth.models import User
+from app.modules.items.export import build_inventory_csv
 from app.modules.shops.models import (
     Organization,
     OrganizationOwnershipTransfer,
@@ -182,6 +183,44 @@ async def update_shop(
         db,
         membership=context.membership,
         shop=context.shop,
+    )
+
+
+@router.get(
+    "/{shop_id}/inventory-export.csv",
+    dependencies=[RequireAdmin],
+)
+async def export_inventory(
+    shop_id: UUID,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if str(shop_id) != str(context.shop.id):
+        raise HTTPException(status_code=404, detail="Shop not found")
+    document, row_count = await build_inventory_csv(
+        db,
+        shop_id=context.shop.id,
+        shop_slug=context.shop.slug,
+    )
+    await log_change(
+        db,
+        shop_id=context.shop.id,
+        entity="shop",
+        entity_id=context.shop.id,
+        action="export_inventory",
+        event_type="shop.inventory_exported",
+        subject_label=context.shop.name,
+        reference=context.shop.slug,
+        actor=_audit_actor(context),
+        payload={"format": "aurum-pos-inventory-csv-v1", "row_count": row_count},
+    )
+    await db.flush()
+    exported_at = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    filename = f"aurum-pos-{context.shop.slug}-inventory-{exported_at}.csv"
+    return Response(
+        content=document,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

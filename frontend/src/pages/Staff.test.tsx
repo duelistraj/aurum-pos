@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
 import { ManageShop } from './Staff';
+import { downloadBlob } from '../utils';
 
 vi.mock('../api/client', () => ({
   apiClient: {
@@ -18,8 +19,11 @@ vi.mock('../api/client', () => ({
     transferOrganizationOwnership: vi.fn(),
     updateShop: vi.fn(),
     updateStaff: vi.fn(),
+    exportInventory: vi.fn(),
   },
 }));
+
+vi.mock('../utils', () => ({ downloadBlob: vi.fn() }));
 
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 
@@ -226,6 +230,27 @@ describe('Manage Shop', () => {
       expect(apiClient.updateShop).toHaveBeenCalledWith(
         'shop-1',
         expect.objectContaining({ invoice_prefix: 'TAX', phone: '9876543210' }),
+      );
+    });
+  });
+
+  it('exports the complete inventory snapshot from data export', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.exportInventory).mockResolvedValue(new ArrayBuffer(8));
+    vi.mocked(downloadBlob).mockResolvedValue(undefined);
+    renderManageShop('/manage-shop?tab=data-export');
+
+    expect(screen.getByRole('tab', { name: 'Data Export' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'Export inventory CSV' }));
+
+    await waitFor(() => {
+      expect(apiClient.exportInventory).toHaveBeenCalledWith('shop-1');
+      expect(downloadBlob).toHaveBeenCalledWith(
+        expect.any(ArrayBuffer),
+        'aurum-pos-demo-inventory.csv',
       );
     });
   });

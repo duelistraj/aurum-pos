@@ -30,6 +30,7 @@ from app.modules.shops.routes import (
 from app.modules.shops.routes import (
     router as shops_router,
 )
+from app.modules.storefront.routes import router as storefront_router
 from app.modules.subscriptions.routes import router as subscriptions_router
 from app.modules.whatsapp.routes import protected_router as whatsapp_router
 from app.modules.whatsapp.routes import webhook_router as whatsapp_webhook_router
@@ -115,6 +116,7 @@ app.include_router(organizations_router, prefix=API_PREFIX)
 app.include_router(subscriptions_router, prefix=API_PREFIX)
 app.include_router(billing_router, prefix=API_PREFIX)
 app.include_router(whatsapp_webhook_router, prefix=API_PREFIX)
+app.include_router(storefront_router, prefix=API_PREFIX)
 
 # Protect all other routers
 protected_dependencies = [RequireCashier]

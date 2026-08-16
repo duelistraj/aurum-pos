@@ -1,10 +1,11 @@
 import React from 'react';
-import { FileText, Users } from 'lucide-react';
+import { Download, FileText, Users } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { Alert, Button, Card, ListboxSelect, Modal } from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import { InvoiceSettings } from './Invoices';
+import { downloadBlob } from '../utils';
 
 type StaffRole = 'ADMIN' | 'MANAGER' | 'CASHIER';
 type MembershipRole = 'OWNER' | StaffRole;
@@ -34,7 +35,66 @@ interface TeamEntitlement {
 const OWNER_INVITE_ROLES: StaffRole[] = ['ADMIN', 'MANAGER', 'CASHIER'];
 const ADMIN_INVITE_ROLES: StaffRole[] = ['MANAGER', 'CASHIER'];
 
-type ManageShopTab = 'invoice-settings' | 'staff';
+type ManageShopTab = 'invoice-settings' | 'staff' | 'data-export';
+const MANAGE_SHOP_TABS: ManageShopTab[] = ['invoice-settings', 'staff', 'data-export'];
+
+const DataExport: React.FC = () => {
+  const { activeMembership } = useShop();
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [message, setMessage] = React.useState('');
+
+  const exportInventory = async () => {
+    if (!activeMembership) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const document = await apiClient.exportInventory(activeMembership.shop_id);
+      await downloadBlob(
+        document,
+        `aurum-pos-${activeMembership.shop_slug}-inventory.csv`,
+      );
+      setMessage('Inventory export downloaded.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to export inventory');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      id="data-export-panel"
+      role="tabpanel"
+      aria-labelledby="data-export-tab"
+      className="space-y-5"
+    >
+      {error ? <Alert type="error" message={error} /> : null}
+      {message ? <Alert type="success" message={message} /> : null}
+      <Card className="p-6">
+        <h2 className="text-lg font-bold">Export inventory</h2>
+        <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+          Download every active inventory row as a CSV snapshot. The export includes item
+          identity, pricing inputs, current unit price, and on-hand, reserved, and available
+          quantities.
+        </p>
+        <p className="mt-3 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+          Keep the original column names when filtering this file for another system.
+        </p>
+        <Button
+          type="button"
+          className="mt-5"
+          isLoading={busy}
+          onClick={() => void exportInventory()}
+        >
+          <Download className="h-4 w-4" />
+          Export inventory CSV
+        </Button>
+      </Card>
+    </div>
+  );
+};
 
 const StaffManagement: React.FC = () => {
   const { activeMembership } = useShop();
@@ -351,8 +411,10 @@ export const ManageShop: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const invoiceSettingsTabRef = React.useRef<HTMLButtonElement>(null);
   const staffTabRef = React.useRef<HTMLButtonElement>(null);
-  const activeTab: ManageShopTab = searchParams.get('tab') === 'staff'
-    ? 'staff'
+  const dataExportTabRef = React.useRef<HTMLButtonElement>(null);
+  const requestedTab = searchParams.get('tab');
+  const activeTab: ManageShopTab = MANAGE_SHOP_TABS.includes(requestedTab as ManageShopTab)
+    ? requestedTab as ManageShopTab
     : 'invoice-settings';
 
   if (
@@ -387,10 +449,19 @@ export const ManageShop: React.FC = () => {
   ) => {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    const nextTab = tab === 'invoice-settings' ? 'staff' : 'invoice-settings';
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    const currentIndex = MANAGE_SHOP_TABS.indexOf(tab);
+    const nextTab = MANAGE_SHOP_TABS[
+      (currentIndex + direction + MANAGE_SHOP_TABS.length) % MANAGE_SHOP_TABS.length
+    ];
     selectTab(nextTab);
     window.requestAnimationFrame(() => {
-      (nextTab === 'invoice-settings' ? invoiceSettingsTabRef : staffTabRef).current?.focus();
+      const refs = {
+        'invoice-settings': invoiceSettingsTabRef,
+        staff: staffTabRef,
+        'data-export': dataExportTabRef,
+      };
+      refs[nextTab].current?.focus();
     });
   };
 
@@ -437,12 +508,29 @@ export const ManageShop: React.FC = () => {
             <Users className="h-4 w-4" />
             Staff
           </button>
+          <button
+            ref={dataExportTabRef}
+            id="data-export-tab"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'data-export'}
+            aria-controls="data-export-panel"
+            tabIndex={activeTab === 'data-export' ? 0 : -1}
+            className={`app-segmented-control__tab ${activeTab === 'data-export' ? 'is-active' : ''}`}
+            onClick={() => selectTab('data-export')}
+            onKeyDown={(event) => handleTabKeyDown(event, 'data-export')}
+          >
+            <Download className="h-4 w-4" />
+            Data Export
+          </button>
         </div>
 
         {activeTab === 'invoice-settings' ? (
           <InvoiceSettings shopId={activeMembership.shop_id} />
-        ) : (
+        ) : activeTab === 'staff' ? (
           <StaffManagement />
+        ) : (
+          <DataExport />
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 [project]
 name = "aurum-pos"
-version = "0.3.1"
+version = "0.4.0"
 description = "Open-source POS and inventory system for jewellery shops"
 authors = [{ name = "zephyr" }]
 license = "AGPL-3.0-only"

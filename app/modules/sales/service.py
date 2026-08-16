@@ -24,6 +24,11 @@ from app.modules.sales.storage import (
     build_invoice_object_key,
 )
 from app.modules.shops.models import Shop
+from app.modules.storefront.service import (
+    apply_availability_status,
+    queue_inventory_event,
+    reserved_quantity_by_item,
+)
 
 
 async def get_sale_by_id(
@@ -196,9 +201,14 @@ async def _execute_create_sale(
         raise HTTPException(400, "One or more items not found")
 
     item_by_id = {item.id: item for item in items}
+    reserved_by_item = await reserved_quantity_by_item(
+        db,
+        shop_id=shop_id,
+        item_ids=item_ids,
+    )
 
     for item in items:
-        if item.status != "in_stock":
+        if item.status not in {"in_stock", "reserved"}:
             raise HTTPException(
                 400,
                 f"Item {item.sku} already sold or unavailable",
@@ -216,10 +226,11 @@ async def _execute_create_sale(
             if item.id in item_weights:
                 raise HTTPException(400, f"Item {item.sku} is sold by quantity")
             quantity_requested = item_quantities[item.id]
-            if item.quantity < quantity_requested:
+            available_quantity = item.quantity - reserved_by_item.get(item.id, 0)
+            if available_quantity < quantity_requested:
                 raise HTTPException(
                     400,
-                    f"Item {item.sku} only has {item.quantity} unit(s) available",
+                    f"Item {item.sku} only has {max(available_quantity, 0)} unit(s) available",
                 )
 
     shop = await db.scalar(select(Shop).where(Shop.id == shop_id).with_for_update())
@@ -384,11 +395,16 @@ async def _execute_create_sale(
                 item.status = "in_stock"
         else:
             item.quantity -= si.quantity
-            if item.quantity <= 0:
-                item.quantity = 0
-                item.status = "sold"
-            else:
-                item.status = "in_stock"
+            apply_availability_status(
+                item,
+                reserved_quantity=reserved_by_item.get(item.id, 0),
+            )
+            queue_inventory_event(
+                db,
+                item=item,
+                reserved_quantity=reserved_by_item.get(item.id, 0),
+                source="pos.sale_completed",
+            )
         record_item_history(db, item, event_type="sale")
 
         await log_change(

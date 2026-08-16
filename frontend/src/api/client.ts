@@ -455,6 +455,13 @@ export const apiClient = {
     return data;
   },
 
+  async exportInventory(shopId: string) {
+    const response = await client.get(`/shops/${shopId}/inventory-export.csv`, {
+      responseType: 'arraybuffer',
+    });
+    return response.data as ArrayBuffer;
+  },
+
   async listStaff(shopId: string) {
     const { data } = await client.get<Array<{
       id: string;
