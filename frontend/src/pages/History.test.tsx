@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../api/client';
 import { useShop } from '../context/ShopContext';
-import { downloadUrl, printInvoicePdf } from '../utils';
+import { downloadInvoicePdf, printInvoicePdf } from '../utils';
 import { Transactions } from './History';
 
 vi.mock('../api/client', () => ({
@@ -23,7 +23,7 @@ vi.mock('../api/client', () => ({
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 vi.mock('../utils', async (importOriginal) => {
   const original = await importOriginal<typeof import('../utils')>();
-  return { ...original, downloadUrl: vi.fn(), printInvoicePdf: vi.fn() };
+  return { ...original, downloadInvoicePdf: vi.fn(), printInvoicePdf: vi.fn() };
 });
 
 const managerMembership = {
@@ -178,7 +178,7 @@ describe('Transactions', () => {
       url: 'https://example.invalid/invoice',
       expires_in_seconds: 600,
     });
-    vi.mocked(downloadUrl).mockResolvedValue(undefined);
+    vi.mocked(downloadInvoicePdf).mockResolvedValue(undefined);
     vi.mocked(printInvoicePdf).mockResolvedValue(undefined);
     vi.mocked(apiClient.getInvoicePdf).mockResolvedValue(new ArrayBuffer(8));
     vi.mocked(apiClient.getWhatsAppCapability).mockResolvedValue({
@@ -335,6 +335,11 @@ describe('Transactions', () => {
 
     await waitFor(() => {
       expect(apiClient.getInvoiceDownload).toHaveBeenCalledWith('sale-1');
+      expect(downloadInvoicePdf).toHaveBeenCalledWith(
+        'https://example.invalid/invoice',
+        'INV-2026-000001.pdf',
+        expect.any(Function),
+      );
       expect(apiClient.getInvoicePdf).toHaveBeenCalledWith('sale-1');
       expect(apiClient.sendInvoiceToWhatsApp).toHaveBeenCalledWith(
         'sale-1',

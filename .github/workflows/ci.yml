@@ -171,9 +171,9 @@ jobs:
           VITE_GOOGLE_AUTH_ENABLED: "false"
         run: npm run build
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox
 
       - name: Test browser application
         working-directory: frontend

@@ -26,7 +26,7 @@ import { TablePagination } from '../components/TablePagination';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useShop } from '../context/ShopContext';
 import type { InvoicePdfStatus, InvoiceSummary } from '../types';
-import { downloadUrl, formatCurrency, formatDate, printInvoicePdf } from '../utils';
+import { downloadInvoicePdf, formatCurrency, formatDate, printInvoicePdf } from '../utils';
 import {
   acceptIndianPhoneInput,
   INDIAN_PHONE_ERROR,
@@ -190,7 +190,11 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
     setDownloadError('');
     try {
       const download = await apiClient.getInvoiceDownload(invoice.sale_id);
-      await downloadUrl(download.url, `${invoice.invoice_no}.pdf`);
+      await downloadInvoicePdf(
+        download.url,
+        `${invoice.invoice_no}.pdf`,
+        () => apiClient.getInvoicePdf(invoice.sale_id),
+      );
       await queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'invoices'] });
     } catch (caught) {
       setDownloadError(

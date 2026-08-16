@@ -40,7 +40,10 @@ public class AurumPrintingPlugin extends Plugin {
                 call.reject("Android printing is unavailable");
                 return;
             }
-            printManager.print(jobName, new PdfPrintAdapter(pdf), null);
+            PrintAttributes attributes = new PrintAttributes.Builder()
+                .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                .build();
+            printManager.print(jobName, new PdfPrintAdapter(pdf), attributes);
             call.resolve();
         } catch (IOException | IllegalArgumentException exception) {
             call.reject("Unable to print this PDF", exception);

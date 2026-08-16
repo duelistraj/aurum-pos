@@ -18,7 +18,7 @@ describe('device information', () => {
   it('reports the canonical application version', () => {
     expect(getDeviceInfo()).toEqual({
       platform: 'android',
-      app_version: '0.3.0',
+      app_version: '0.3.1',
       device_name: 'android Device',
     });
   });
@@ -34,7 +34,7 @@ describe('device information', () => {
     expect(second).toBe(first);
     expect(getDeviceInfo()).toEqual({
       platform: 'web',
-      app_version: '0.3.0',
+      app_version: '0.3.1',
       device_name: 'Web browser',
     });
   });

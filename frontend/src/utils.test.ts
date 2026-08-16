@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   isNative: false,
@@ -48,9 +48,14 @@ vi.mock('./native/printing', () => ({
   },
 }));
 
-import { downloadBlob, downloadUrl, printInvoicePdf } from './utils';
+import { downloadBlob, downloadInvoicePdf, downloadUrl, printInvoicePdf } from './utils';
 
 describe('signed URL downloads', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     mocks.isNative = false;
     mocks.checkPermissions.mockReset().mockResolvedValue({ publicStorage: 'granted' });
@@ -99,6 +104,45 @@ describe('signed URL downloads', () => {
     );
   });
 
+  it('downloads browser invoices from authenticated PDF bytes without navigating to S3', async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const createObjectURL = vi.fn(() => 'blob:https://app.aurumpos.net/invoice');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    const loadBrowserPdf = vi.fn(async () => new TextEncoder().encode('%PDF invoice').buffer);
+
+    await downloadInvoicePdf(
+      'https://invoice-bucket.example/signed',
+      'INV-1.pdf',
+      loadBrowserPdf,
+    );
+
+    expect(loadBrowserPdf).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
+    const anchor = click.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.href).toBe('blob:https://app.aurumpos.net/invoice');
+    expect(anchor.href).not.toContain('invoice-bucket.example');
+    expect(anchor.download).toBe('INV-1.pdf');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:https://app.aurumpos.net/invoice');
+  });
+
+  it('keeps native invoice downloads on signed URL transfer without proxying PDF bytes', async () => {
+    mocks.isNative = true;
+    const loadBrowserPdf = vi.fn(async () => new ArrayBuffer(8));
+
+    await downloadInvoicePdf(
+      'https://invoice-bucket.example/signed',
+      'INV-1.pdf',
+      loadBrowserPdf,
+    );
+
+    expect(loadBrowserPdf).not.toHaveBeenCalled();
+    expect(mocks.downloadFile).toHaveBeenCalledWith({
+      url: 'https://invoice-bucket.example/signed',
+      path: 'file:///data/user/0/com.duelistraj.aurumpos/cache/invoice.pdf',
+    });
+  });
+
   it('notifies with the exact URI returned after a native blob write', async () => {
     mocks.isNative = true;
     mocks.writeFile.mockResolvedValue({ uri: 'file:///documents/labels.xlsx' });
@@ -128,6 +172,55 @@ describe('signed URL downloads', () => {
       jobName: 'INV-1.pdf',
     });
     expect(mocks.showDownloadedFile).not.toHaveBeenCalled();
+  });
+
+  it('loads browser invoice frames before opening the print dialog and cleans them up', async () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.fn(() => 'blob:https://app.aurumpos.net/print');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    const printing = printInvoicePdf(
+      new TextEncoder().encode('%PDF invoice').buffer,
+      'INV-1.pdf',
+    );
+    const frame = document.querySelector('iframe');
+    expect(frame).not.toBeNull();
+    const focus = vi.spyOn(frame!.contentWindow!, 'focus').mockImplementation(() => {});
+    const print = vi.spyOn(frame!.contentWindow!, 'print').mockImplementation(() => {});
+
+    frame!.dispatchEvent(new Event('load'));
+    await printing;
+
+    expect(focus).toHaveBeenCalledOnce();
+    expect(print).toHaveBeenCalledOnce();
+    expect(frame).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(frame).not.toBeInTheDocument();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:https://app.aurumpos.net/print');
+  });
+
+  it('fails and cleans up when a browser invoice frame does not load', async () => {
+    vi.useFakeTimers();
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:https://app.aurumpos.net/blocked-print'),
+      revokeObjectURL,
+    });
+    const printing = printInvoicePdf(
+      new TextEncoder().encode('%PDF invoice').buffer,
+      'INV-2.pdf',
+    );
+    const failure = expect(printing).rejects.toThrow(
+      'Unable to open the invoice for printing',
+    );
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await failure;
+
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledWith(
+      'blob:https://app.aurumpos.net/blocked-print',
+    );
   });
 
   it('does not report a completed download when native transfer fails', async () => {

@@ -15,7 +15,7 @@ import { apiClient } from '../api/client';
 import { queryKeys } from '../api/queryKeys';
 import { useShop } from '../context/ShopContext';
 import { ItemPOSWithPrice, CustomerDetails } from '../types';
-import { downloadUrl, formatCurrency } from '../utils';
+import { downloadInvoicePdf, formatCurrency } from '../utils';
 import {
   clearCheckoutIdempotencyKey,
   getCheckoutIdempotencyKey,
@@ -434,7 +434,11 @@ export const POS: React.FC = () => {
       let invoiceDownloaded = true;
       try {
         const invoice = await apiClient.getInvoiceDownload(sale.id);
-        await downloadUrl(invoice.url, `${sale.invoice_no}.pdf`);
+        await downloadInvoicePdf(
+          invoice.url,
+          `${sale.invoice_no}.pdf`,
+          () => apiClient.getInvoicePdf(sale.id),
+        );
       } catch (pdfErr) {
         invoiceDownloaded = false;
         console.error('Failed to download PDF:', pdfErr);

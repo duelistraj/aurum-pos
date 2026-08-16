@@ -29,7 +29,7 @@ vi.mock('../api/client', () => ({
 }));
 vi.mock('../context/ShopContext', () => ({ useShop: vi.fn() }));
 vi.mock('../utils', () => ({
-  downloadUrl: vi.fn(),
+  downloadInvoicePdf: vi.fn(),
   formatCurrency: (amount: number) => `₹${amount.toFixed(2)}`,
 }));
 vi.mock('../utils/checkout', () => ({

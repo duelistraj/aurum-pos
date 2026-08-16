@@ -30,7 +30,7 @@ def test_release_metadata_uses_the_canonical_version() -> None:
         package for package in uv_lock["package"] if package["name"] == "aurum-pos"
     )
 
-    assert canonical_version == "0.3.0"
+    assert canonical_version == "0.3.1"
     assert APP_VERSION == canonical_version
     assert python_project["project"]["version"] == canonical_version
     assert frontend_package["version"] == canonical_version

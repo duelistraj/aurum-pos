@@ -241,7 +241,7 @@ test('inventory rows use one desktop body font size', async ({ page }) => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          version: '0.3.0',
+          version: '0.3.1',
           revision: 'e2e',
           license: 'AGPL-3.0-only',
           source: 'https://github.com/duelistraj/aurum-pos',
@@ -355,6 +355,7 @@ test('inventory rows use one desktop body font size', async ({ page }) => {
 });
 
 test('management transactions use a responsive audit table with structured details', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-08-15T12:00:00+05:30'));
   let rateWasUpdated = false;
   const auditHistoryRequests: URL[] = [];
   const shop = {
@@ -544,7 +545,7 @@ test('management transactions use a responsive audit table with structured detai
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          version: '0.3.0', revision: 'e2e', license: 'AGPL-3.0-only',
+          version: '0.3.1', revision: 'e2e', license: 'AGPL-3.0-only',
           source: 'https://github.com/duelistraj/aurum-pos', deployment_mode: 'hosted',
         }),
       });
@@ -722,7 +723,7 @@ test('cashier workspace never requests management inventory or analytics data', 
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          version: '0.3.0', revision: 'e2e', license: 'AGPL-3.0-only',
+          version: '0.3.1', revision: 'e2e', license: 'AGPL-3.0-only',
           source: 'https://github.com/duelistraj/aurum-pos', deployment_mode: 'hosted',
         }),
       });
@@ -1083,7 +1084,7 @@ test('invoice history presents compact actions and shared-sender consent', async
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          version: '0.3.0',
+          version: '0.3.1',
           revision: 'e2e',
           license: 'AGPL-3.0-only',
           source: 'https://github.com/duelistraj/aurum-pos',

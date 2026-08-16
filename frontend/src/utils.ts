@@ -115,6 +115,20 @@ export const downloadUrl = async (url: string, filename: string) => {
   document.body.removeChild(link);
 };
 
+export const downloadInvoicePdf = async (
+  signedUrl: string,
+  filename: string,
+  loadBrowserPdf: () => Promise<ArrayBuffer>,
+) => {
+  if (Capacitor.isNativePlatform()) {
+    await downloadUrl(signedUrl, filename);
+    return;
+  }
+
+  const pdf = await loadBrowserPdf();
+  await downloadBlob(pdf, filename);
+};
+
 const arrayBufferToBase64 = (data: ArrayBuffer): string => {
   let binary = '';
   const bytes = new Uint8Array(data);
@@ -143,19 +157,43 @@ export const printInvoicePdf = async (data: ArrayBuffer, filename: string) => {
   frame.style.width = '1px';
   frame.style.height = '1px';
   frame.style.opacity = '0';
-  frame.src = blobUrl;
-  document.body.appendChild(frame);
+  frame.title = `Print ${filename}`;
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanupFailure = () => {
+      frame.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(loadTimeout);
+      cleanupFailure();
+      reject(error);
+    };
+    const loadTimeout = window.setTimeout(() => {
+      fail(new Error('Unable to open the invoice for printing'));
+    }, 15_000);
+
     frame.onload = () => {
+      if (settled) return;
       try {
-        frame.contentWindow?.focus();
-        frame.contentWindow?.print();
+        if (!frame.contentWindow) {
+          fail(new Error('Unable to open the invoice for printing'));
+          return;
+        }
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        settled = true;
+        window.clearTimeout(loadTimeout);
         resolve();
       } catch (error) {
-        reject(error);
+        fail(error instanceof Error ? error : new Error('Unable to print the invoice'));
       }
     };
-    frame.onerror = () => reject(new Error('Unable to open the invoice for printing'));
+    frame.onerror = () => fail(new Error('Unable to open the invoice for printing'));
+    frame.src = blobUrl;
+    document.body.appendChild(frame);
   });
   window.setTimeout(() => {
     frame.remove();

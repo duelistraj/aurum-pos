@@ -199,7 +199,7 @@ describe('Inventory entitlement usage', () => {
       status: 'in_stock',
     });
     vi.mocked(apiClient.version).mockResolvedValue({
-      version: '0.3.0',
+      version: '0.3.1',
       revision: 'abc123',
       license: 'AGPL-3.0-only',
       source: 'https://github.com/duelistraj/aurum-pos',

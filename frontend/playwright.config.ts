@@ -19,6 +19,11 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'firefox-invoice-actions',
+      testMatch: /invoice-actions\.spec\.ts/,
+      use: { ...devices['Desktop Firefox'] },
+    },
   ],
   webServer: externalBaseUrl ? undefined : {
     command:

@@ -9,6 +9,10 @@ ANDROID_MANIFEST = REPOSITORY_ROOT / "frontend/android/app/src/main/AndroidManif
 ANDROID_ACTIVITY = (
     REPOSITORY_ROOT / "frontend/android/app/src/main/java/com/duelistraj/aurumpos/MainActivity.java"
 )
+ANDROID_PRINTING_PLUGIN = (
+    REPOSITORY_ROOT
+    / "frontend/android/app/src/main/java/com/duelistraj/aurumpos/AurumPrintingPlugin.java"
+)
 
 
 def test_debug_apk_excludes_google_authentication() -> None:
@@ -84,3 +88,10 @@ def test_android_auth_storage_uses_keystore_plugin_and_is_not_backed_up() -> Non
 
     assert 'android:allowBackup="false"' in manifest
     assert "registerPlugin(AurumSecureStoragePlugin.class)" in activity
+
+
+def test_android_invoice_printing_defaults_to_iso_a4() -> None:
+    source = ANDROID_PRINTING_PLUGIN.read_text(encoding="utf-8")
+
+    assert ".setMediaSize(PrintAttributes.MediaSize.ISO_A4)" in source
+    assert "printManager.print(jobName, new PdfPrintAdapter(pdf), attributes)" in source
