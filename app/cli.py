@@ -1,24 +1,15 @@
 import argparse
 import asyncio
-import hashlib
-import json
 import os
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select, text
-from sqlalchemy.orm import configure_mappers
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.modules.auth.models import User
 from app.modules.auth.security import get_password_hash
-from app.modules.items.models import Item, ItemHistory
-from app.modules.items.schemas import ItemBase
-
-# Importing the related mapper lets Item relationships configure in CLI-only processes.
-from app.modules.sales.models import SaleItem
 from app.modules.shops.models import Shop, ShopMembership
 from app.modules.shops.service import create_shop
 from app.modules.subscriptions.models import Subscription
@@ -33,40 +24,9 @@ TENANT_TABLES = (
     "sale_idempotency",
     "sale_items",
     "sales",
-    "storefront_reservation_lines",
-    "storefront_reservations",
     "subscriptions",
 )
-CLI_MAPPER_TYPES = (Item, SaleItem)
 OWNER_PASSWORD_ENV = "AURUM_BOOTSTRAP_OWNER_PASSWORD"
-LEGACY_ITEM_FIELDS = (
-    "id",
-    "sku",
-    "barcode",
-    "category",
-    "name",
-    "metal",
-    "purity",
-    "net_weight",
-    "making_charge",
-    "fixed_rate",
-    "quantity",
-    "status",
-    "notes",
-    "created_at",
-    "updated_at",
-)
-ITEM_FIELDS = (
-    *LEGACY_ITEM_FIELDS,
-    "item_type",
-    "pricing_method",
-    "stock_mode",
-    "stock_weight",
-    "ratti",
-    "rate_per_ratti",
-)
-
-configure_mappers()
 
 
 def _owner_password() -> str:
@@ -187,85 +147,6 @@ async def grant_subscription(args: argparse.Namespace) -> None:
         print(f"Granted Pro to {shop.slug}: {subscription.id}")
 
 
-def _manifest_digest(items: list[dict]) -> str:
-    normalized = json.dumps(items, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(normalized.encode()).hexdigest()
-
-
-async def import_items(args: argparse.Namespace) -> None:
-    source = Path(args.file)
-    payload = json.loads(source.read_text())
-    items = payload["items"] if isinstance(payload, dict) else payload
-    if isinstance(payload, dict):
-        if payload.get("format") != "aurum-pos-item-export-v1":
-            raise ValueError("Unsupported item export format")
-        if payload.get("count") != len(items):
-            raise ValueError("Item manifest count does not match")
-    expected_digest = payload.get("sha256") if isinstance(payload, dict) else None
-    actual_digest = _manifest_digest(items)
-    if expected_digest and expected_digest != actual_digest:
-        raise ValueError("Item manifest checksum does not match")
-
-    async with AsyncSessionLocal.begin() as session:
-        shop = await _get_shop(session, args.shop)
-        await session.execute(
-            text("SELECT set_config('app.current_shop_id', :shop_id, true)"),
-            {"shop_id": str(shop.id)},
-        )
-        if await session.scalar(select(Item.id).where(Item.shop_id == shop.id).limit(1)):
-            raise ValueError("Target shop already contains items")
-        imported_items: list[Item] = []
-        for row in items:
-            missing = set(LEGACY_ITEM_FIELDS) - set(row)
-            if missing:
-                raise ValueError(f"Missing item fields: {sorted(missing)}")
-            unknown = set(row) - set(ITEM_FIELDS)
-            if unknown:
-                raise ValueError(f"Unknown item fields: {sorted(unknown)}")
-            values = {field: row.get(field) for field in ITEM_FIELDS}
-            values["id"] = UUID(values["id"])
-            values["created_at"] = datetime.fromisoformat(values["created_at"])
-            values["updated_at"] = datetime.fromisoformat(values["updated_at"])
-            status = str(values["status"])
-            if status not in {"in_stock", "sold", "reserved", "archived"}:
-                raise ValueError(f"Unsupported item status: {status}")
-            validated = ItemBase.model_validate(
-                {field: row[field] for field in ItemBase.model_fields if field in row}
-            )
-            values.update(validated.model_dump())
-            imported_items.append(Item(shop_id=shop.id, **values))
-        session.add_all(imported_items)
-        await session.flush()
-        session.add_all(
-            [
-                ItemHistory(
-                    shop_id=item.shop_id,
-                    item_id=item.id,
-                    event_type="baseline",
-                    sku=item.sku,
-                    category=item.category,
-                    item_type=item.item_type,
-                    pricing_method=item.pricing_method,
-                    stock_mode=item.stock_mode,
-                    metal=item.metal,
-                    purity=item.purity,
-                    net_weight=item.net_weight,
-                    making_charge=item.making_charge,
-                    fixed_rate=item.fixed_rate,
-                    stock_weight=item.stock_weight,
-                    ratti=item.ratti,
-                    rate_per_ratti=item.rate_per_ratti,
-                    quantity=item.quantity,
-                    status=item.status,
-                    effective_from=item.created_at,
-                )
-                for item in imported_items
-            ]
-        )
-        await session.flush()
-        print(f"Imported {len(items)} items into {shop.slug}; sha256={actual_digest}")
-
-
 async def validate_runtime_db(_args: argparse.Namespace) -> None:
     async with AsyncSessionLocal.begin() as session:
         connection_ssl = await session.scalar(
@@ -339,11 +220,6 @@ def build_parser() -> argparse.ArgumentParser:
     grant.add_argument("--notes")
     grant.add_argument("--external-reference")
     grant.set_defaults(handler=grant_subscription)
-
-    importer = commands.add_parser("import-items")
-    importer.add_argument("--shop", required=True)
-    importer.add_argument("--file", required=True)
-    importer.set_defaults(handler=import_items)
 
     runtime_check = commands.add_parser("validate-runtime-db")
     runtime_check.set_defaults(handler=validate_runtime_db)

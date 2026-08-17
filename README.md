@@ -142,22 +142,6 @@ uv run python -m app.cli grant-subscription \
 The selected shop resolves its organization's entitlement.
 There are no customer-specific entitlement branches.
 
-## BMR item-only cutover
-
-1. Stop legacy writes.
-2. Set `LEGACY_DATABASE_URL` and run `uv run python scripts/export_legacy_items.py`.
-3. Create the clean SaaS database and run Alembic.
-4. Bootstrap the BMR shop and verified owner.
-5. Run `uv run python -m app.cli import-items --shop bmr-chandiwala --file bmr-items.json`.
-6. Apply the complimentary grant above and verify the reported row count and SHA-256.
-7. Keep the isolated old database for 30 days, then drop it.
-
-The importer preserves item UUIDs, values, quantities, status, and timestamps.
-It does not import users, devices, rates, sales, sale lines, or change history.
-Do not point the SaaS migration at the live BMR database: use a clean Aiven
-database and retain the old EC2/database deployment only as the 30-day rollback
-environment.
-
 ## Production
 
 `compose.cloud.yml` is the lean single-EC2 topology: a loopback-only two-process API and a reliable worker behind host Nginx, with Aiven PostgreSQL.

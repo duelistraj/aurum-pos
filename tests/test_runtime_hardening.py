@@ -1,6 +1,4 @@
-import argparse
 import asyncio
-import json
 import os
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -9,7 +7,6 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select, text
 
-from app.cli import _manifest_digest, import_items
 from app.core.database import AsyncSessionLocal
 from app.jobs import emails
 from app.modules.auth.dependencies import AuthContext, get_shop_context
@@ -17,7 +14,7 @@ from app.modules.auth.models import AuthToken, Device, User
 from app.modules.auth.rate_limit import _increment
 from app.modules.auth.service import request_password_reset
 from app.modules.dashboard.routes import dashboard_analytics
-from app.modules.items.models import Item, ItemHistory
+from app.modules.items.models import Item
 from app.modules.notifications.models import EmailOutbox
 from app.modules.shops.models import Organization, ShopDeviceAccess
 from tests.support import create_test_shop
@@ -123,70 +120,6 @@ async def test_parallel_first_shop_access_is_conflict_safe() -> None:
         assert access_count == 1
         await session.execute(delete(Organization).where(Organization.id == shop_id))
         await session.execute(delete(User).where(User.id == user_id))
-
-
-@pytest.mark.integration
-@pytest.mark.skipif(os.getenv("RUN_INTEGRATION") != "1", reason="PostgreSQL not requested")
-@pytest.mark.asyncio
-async def test_item_import_creates_analytics_baseline(tmp_path) -> None:
-    shop_id = uuid4()
-    item_id = uuid4()
-    timestamp = datetime.now(UTC).isoformat()
-    async with AsyncSessionLocal.begin() as session:
-        await create_test_shop(
-            session,
-            shop_id=shop_id,
-            name="Import Baseline",
-            slug=f"import-{shop_id}",
-        )
-
-    rows = [
-        {
-            "id": str(item_id),
-            "sku": "IMPORT-1",
-            "barcode": "99887766",
-            "category": "jewellery",
-            "name": "Imported item",
-            "metal": "silver",
-            "purity": 92.5,
-            "net_weight": 2.5,
-            "making_charge": 100,
-            "fixed_rate": 0,
-            "quantity": 3,
-            "status": "in_stock",
-            "notes": None,
-            "created_at": timestamp,
-            "updated_at": timestamp,
-        }
-    ]
-    source = tmp_path / "items.json"
-    source.write_text(
-        json.dumps(
-            {
-                "format": "aurum-pos-item-export-v1",
-                "count": len(rows),
-                "sha256": _manifest_digest(rows),
-                "items": rows,
-            }
-        )
-    )
-
-    await import_items(argparse.Namespace(file=str(source), shop=str(shop_id)))
-
-    async with AsyncSessionLocal.begin() as session:
-        await session.execute(select(func.set_config("app.current_shop_id", str(shop_id), True)))
-        item = await session.get(Item, item_id)
-        history = await session.scalar(
-            select(ItemHistory).where(
-                ItemHistory.shop_id == shop_id,
-                ItemHistory.item_id == item_id,
-            )
-        )
-        assert item is not None
-        assert history is not None
-        assert history.event_type == "baseline"
-        assert history.quantity == item.quantity
-        await session.execute(delete(Organization).where(Organization.id == shop_id))
 
 
 @pytest.mark.integration

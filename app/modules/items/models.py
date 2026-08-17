@@ -187,13 +187,6 @@ class Item(Base):
         server_default="1",
     )
 
-    inventory_version: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=0,
-        server_default="0",
-    )
-
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

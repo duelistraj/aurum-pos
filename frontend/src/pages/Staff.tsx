@@ -76,8 +76,7 @@ const DataExport: React.FC = () => {
         <h2 className="text-lg font-bold">Export inventory</h2>
         <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
           Download every active inventory row as a CSV snapshot. The export includes item
-          identity, pricing inputs, current unit price, and on-hand, reserved, and available
-          quantities.
+          identity, pricing inputs, current unit price, native quantity, and stock details.
         </p>
         <p className="mt-3 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
           Keep the original column names when filtering this file for another system.

@@ -32,20 +32,17 @@ Evidence:
 - `app/modules/subscriptions/service.py::resolve_entitlement`
 - `frontend/src/utils/apiConfig.ts::getApiBaseUrl`
 
-### Secrets and cutover safety
+### Secrets and deployment safety
 
 Never commit `.env`, signing keys, Play service-account JSON,
 billing encryption keys, access tokens, customer records, database dumps, or
-item exports. BMR cutover uses a clean SaaS database and the checksummed
-item-only export/import; keep the old deployment isolated for 30 days. Do not
-run the SaaS reset against the live BMR database.
+inventory exports.
 Official production values are individual KMS-encrypted SSM SecureStrings and are assembled into the host `.env` by the private operations deployment.
 Operators do not copy production values into a local `.env`.
 The migration administrator URL remains a separate parameter and is never installed in the API or worker runtime file.
 
 Evidence:
 - `SECURITY.md::Secrets`
-- `README.md::BMR item-only cutover`
 - `deploy/OPERATIONS.md::Current hosted configuration`
 
 ### Verification commands

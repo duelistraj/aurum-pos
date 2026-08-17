@@ -11,7 +11,6 @@ from app.modules.items.models import Item
 from app.modules.items.pricing import lock_price_at_sale
 from app.modules.metal_rates.models import MetalRate
 from app.modules.metal_rates.service import calculate_effective_rate_per_gram
-from app.modules.storefront.service import inventory_states
 
 INVENTORY_EXPORT_FORMAT = "aurum-pos-inventory-csv-v1"
 INVENTORY_EXPORT_FIELDS = (
@@ -35,14 +34,11 @@ INVENTORY_EXPORT_FIELDS = (
     "stock_weight_grams",
     "ratti",
     "rate_per_ratti",
-    "on_hand_quantity",
-    "reserved_quantity",
-    "available_quantity",
+    "quantity",
     "status",
     "notes",
     "created_at",
     "updated_at",
-    "inventory_version",
     "price_state",
     "subtotal",
     "gst_rate_percent",
@@ -124,16 +120,12 @@ async def build_inventory_csv(
             .order_by(Item.created_at, Item.id)
         )
     )
-    state_by_item = {
-        state.item_id: state for state in await inventory_states(db, shop_id=shop_id, items=items)
-    }
     rate_by_metal = await _latest_rate_by_metal(db, shop_id=shop_id)
     exported_at = datetime.now(UTC).isoformat()
     output = StringIO(newline="")
     writer = csv.DictWriter(output, fieldnames=INVENTORY_EXPORT_FIELDS)
     writer.writeheader()
     for item in items:
-        state = state_by_item[item.id]
         writer.writerow(
             {
                 "export_format": INVENTORY_EXPORT_FORMAT,
@@ -156,14 +148,11 @@ async def build_inventory_csv(
                 "stock_weight_grams": "" if item.stock_weight is None else str(item.stock_weight),
                 "ratti": "" if item.ratti is None else str(item.ratti),
                 "rate_per_ratti": "" if item.rate_per_ratti is None else str(item.rate_per_ratti),
-                "on_hand_quantity": state.on_hand_quantity,
-                "reserved_quantity": state.reserved_quantity,
-                "available_quantity": state.available_quantity,
+                "quantity": item.quantity,
                 "status": item.status,
                 "notes": _spreadsheet_safe(item.notes),
                 "created_at": item.created_at.isoformat(),
                 "updated_at": item.updated_at.isoformat(),
-                "inventory_version": item.inventory_version,
                 **_price_columns(item, rate_by_metal=rate_by_metal),
             }
         )

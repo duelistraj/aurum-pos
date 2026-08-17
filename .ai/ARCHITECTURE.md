@@ -84,13 +84,7 @@ Customer and optional shop phone fields accept exactly ten Indian digits for new
 Metal-rate writes preserve one compatible current row and append immutable history for as-of analytics.
 Sale creation locks inventory rows, prices with `Decimal`, stores seller, tax, item, and price snapshots, decrements stock, assigns a server-controlled invoice sequence, and records a shop-scoped idempotency result.
 Administrators can export every active inventory row as a versioned UTF-8 CSV snapshot from Manage Shop.
-The export includes stable item and barcode identity, pricing inputs, the current tax-inclusive unit price, quantity-mode state, on-hand quantity, active storefront reservations, available quantity, and the monotonic inventory version.
-The export applies no product-selection policy, so a downstream storefront can make its own explicit one-time catalogue selection.
-A configured storefront integration is bound to one shop UUID and authenticates every server-to-server request with a timestamped HMAC over the method, path, and raw body digest.
-Storefront checkout creates an idempotent expiring reservation before payment, confirmation preserves that allocation, fulfilment atomically consumes the reserved units, and release or expiry returns the units to availability.
-POS sales lock the same item rows and subtract active reservations before accepting an in-store quantity sale.
-Every availability change increments the item inventory version and commits a durable global outbox event in the same transaction.
-The worker delivers signed inventory events with fenced leases and bounded retry, while downstream consumers ignore duplicate or stale versions.
+The standalone export includes stable item and barcode identity, pricing inputs, the current tax-inclusive unit price, native quantity, stock weight, and item status.
 The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
 Dashboard analytics use bounded date ranges and database aggregates instead of loading sale and inventory graphs into application memory.
 Cashier dashboard sales and invoice metrics plus Cashier analytics derive the current calendar day in `Asia/Kolkata`, convert its half-open bounds to UTC, and never accept a client-selected date range.
@@ -121,7 +115,6 @@ Authenticated RTDN pushes and periodic lease-based reconciliation keep state cur
 The worker also delivers branded multipart HTML and plain-text messages from the PostgreSQL email outbox through SES.
 Email, invoice, Play, and deletion work is claimed with expiring database leases plus unique fencing tokens, processed with bounded concurrency, and finalized only by the current lease owner.
 Independent perpetual queue loops run concurrently inside the lean worker process so a slow provider or deletion path does not stall unrelated queues.
-The storefront worker also expires due holds and delivers the durable inventory-event outbox without coupling provider latency to POS or reservation transactions.
 Failed email delivery uses bounded attempts and a durable failed state.
 
 Evidence:
@@ -219,5 +212,4 @@ Evidence:
 - `frontend/src/pages/Invoices.tsx::InvoiceHistory`
 - `app/modules/subscriptions/service.py::get_entitlement_response`
 - `app/jobs/ownership_transfers.py::process_organization_ownership_transfers`
-- `app/jobs/storefront.py::process_storefront_events`
 - `frontend/android/app/src/main/java/com/duelistraj/aurumpos/AurumFileNotificationsPlugin.java`
