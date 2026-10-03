@@ -402,17 +402,17 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="invoice-table w-full table-fixed text-left sm:min-w-[820px] sm:table-auto">
+          <div className="table-overflow-guard">
+            <table className="invoice-table w-full table-fixed text-left">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-950/60 dark:text-slate-400">
                 <tr>
-                  <th className="w-[7.5rem] px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Invoice</th>
-                  <th className="hidden px-5 py-3 font-bold sm:table-cell">Customer</th>
-                  <th className="hidden px-5 py-3 font-bold sm:table-cell">Date</th>
-                  <th className="w-[5.5rem] px-2 py-3 text-right text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Amount</th>
-                  <th className="w-[5.5rem] whitespace-nowrap px-2 py-3 text-[0.65rem] font-bold sm:w-auto sm:px-5 sm:text-xs">Status</th>
-                  <th className="hidden px-5 py-3 text-right font-bold sm:table-cell">Action</th>
-                  <th className="w-11 px-1 py-3 sm:hidden">
+                  <th className="invoice-col-invoice px-2 py-3 text-[0.65rem] font-bold sm:px-5 sm:text-xs">Invoice</th>
+                  <th className="invoice-col-customer px-5 py-3 font-bold">Customer</th>
+                  <th className="invoice-col-date px-5 py-3 font-bold">Date</th>
+                  <th className="invoice-col-amount px-2 py-3 text-right text-[0.65rem] font-bold sm:px-5 sm:text-xs">Amount</th>
+                  <th className="invoice-col-status whitespace-nowrap px-2 py-3 text-[0.65rem] font-bold sm:px-5 sm:text-xs">Status</th>
+                  <th className="invoice-col-action px-5 py-3 text-right font-bold">Action</th>
+                  <th className="invoice-col-disclosure px-1 py-3">
                     <span className="sr-only">Details</span>
                   </th>
                 </tr>
@@ -428,12 +428,12 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                         onClick={(event) => handleMobileRowClick(event, invoice.sale_id)}
                         className="bg-white transition-colors hover:bg-slate-50/70 max-sm:cursor-pointer dark:bg-slate-900 dark:hover:bg-slate-800/50"
                       >
-                        <td className="min-w-0 px-2 py-3 font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4">
+                        <td className="invoice-col-invoice min-w-0 px-2 py-3 font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4">
                           <span title={invoice.invoice_no} className="block truncate text-xs sm:text-sm">
                             {invoice.invoice_no}
                           </span>
                         </td>
-                        <td className="hidden px-5 py-4 sm:table-cell">
+                        <td className="invoice-col-customer px-5 py-4">
                           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                             {invoice.customer_name}
                           </p>
@@ -441,13 +441,13 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                             {invoice.customer_phone}
                           </p>
                         </td>
-                        <td className="hidden px-5 py-4 text-sm text-slate-600 dark:text-slate-300 sm:table-cell">
+                        <td className="invoice-col-date px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
                           <InvoiceDateTime createdAt={invoice.created_at} />
                         </td>
-                        <td className="px-2 py-3 text-right text-xs font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4 sm:text-sm">
+                        <td className="invoice-col-amount px-2 py-3 text-right text-xs font-bold text-slate-900 dark:text-white sm:px-5 sm:py-4 sm:text-sm">
                           {formatCurrency(invoice.total_amount)}
                         </td>
-                        <td className="invoice-status-cell px-2 py-3 sm:px-5 sm:py-4">
+                        <td className="invoice-col-status invoice-status-cell px-2 py-3 sm:px-5 sm:py-4">
                           <div className="invoice-status-badges flex flex-col items-start gap-1.5">
                             <Badge variant={status.variant}>{status.label}</Badge>
                             {invoice.whatsapp_delivery_status ? (
@@ -457,10 +457,10 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                             ) : null}
                           </div>
                         </td>
-                        <td className="hidden px-5 py-4 text-right sm:table-cell">
+                        <td className="invoice-col-action px-5 py-4 text-right">
                           {invoiceActions(invoice)}
                         </td>
-                        <td className="px-1 py-2 sm:hidden">
+                        <td className="invoice-col-disclosure px-1 py-2">
                           <button
                             type="button"
                             aria-expanded={isExpanded}
@@ -477,7 +477,7 @@ export const InvoiceHistory: React.FC<{ shopId: string }> = ({ shopId }) => {
                         </td>
                       </tr>
                       {isExpanded ? (
-                        <tr id={detailsId} className="bg-slate-50/60 dark:bg-slate-950/40 sm:hidden">
+                        <tr id={detailsId} className="invoice-details-row bg-slate-50/60 dark:bg-slate-950/40">
                           <td colSpan={4} className="px-3 pb-4 pt-2">
                             <div className="grid grid-cols-2 gap-3 rounded-app-inset border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                               <div className="col-span-2">

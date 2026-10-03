@@ -1,5 +1,23 @@
 # Decisions
 
+### Make inventory data management safe and history-preserving
+
+Recorded: 2026-08-22
+Status: accepted
+Basis: user-confirmed
+Decision: Manage Shop provides a dedicated CSV import template whose required columns are `sku`, `name`, `category`, `item_type`, `pricing_method`, `stock_mode`, `metal`, `purity`, `quantity`, `net_weight_grams`, `making_charge`, `fixed_rate`, `ratti`, and `rate_per_ratti`; `barcode`, `notes`, and `stock_weight_grams` are optional.
+Compatible inventory exports may include additional columns, and non-stock export rows are ignored during re-import.
+Existing and repeated barcodes are skipped and returned as a correction CSV rather than overwriting inventory.
+Clear inventory requires the exact shop name and soft-archives only currently in-stock rows, preserving sold items, invoices, item history, and audit history.
+Rationale: The user selected a correction-file workflow for duplicate barcodes and a history-preserving clear operation.
+Consequences: Imports validate completely before writing, enforce the active-row entitlement as one batch, generate missing barcodes, and create one summary audit event; clearing also creates one summary audit event.
+
+Evidence:
+- `app/modules/items/importer.py::import_inventory_csv`
+- `app/modules/items/service.py::clear_in_stock_inventory`
+- `app/modules/shops/routes.py::import_inventory`
+- `frontend/src/pages/Staff.tsx::DataManagement`
+
 ### Give Cashiers a purpose-built sales workspace
 
 Recorded: 2026-08-15

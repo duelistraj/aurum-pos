@@ -1,8 +1,10 @@
 import React from 'react';
-import { Download, FileText, Users } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, Download, FileDown, FileText, Trash2, Upload, Users } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
-import { Alert, Button, Card, ListboxSelect, Modal } from '../components/UI';
+import { queryKeys } from '../api/queryKeys';
+import { Alert, Button, Card, Input, ListboxSelect, Modal } from '../components/UI';
 import { useShop } from '../context/ShopContext';
 import { InvoiceSettings } from './Invoices';
 import { downloadBlob } from '../utils';
@@ -35,20 +37,51 @@ interface TeamEntitlement {
 const OWNER_INVITE_ROLES: StaffRole[] = ['ADMIN', 'MANAGER', 'CASHIER'];
 const ADMIN_INVITE_ROLES: StaffRole[] = ['MANAGER', 'CASHIER'];
 
-type ManageShopTab = 'invoice-settings' | 'staff' | 'data-export';
-const MANAGE_SHOP_TABS: ManageShopTab[] = ['invoice-settings', 'staff', 'data-export'];
+type ManageShopTab = 'invoice-settings' | 'staff' | 'data-management';
+const MANAGE_SHOP_TABS: ManageShopTab[] = ['invoice-settings', 'staff', 'data-management'];
 
-const DataExport: React.FC = () => {
+interface ImportIssue {
+  row: number | null;
+  field: string;
+  message: string;
+}
+
+const DataManagement: React.FC = () => {
   const { activeMembership } = useShop();
-  const [busy, setBusy] = React.useState(false);
+  const queryClient = useQueryClient();
+  const [exportBusy, setExportBusy] = React.useState(false);
+  const [templateBusy, setTemplateBusy] = React.useState(false);
+  const [importBusy, setImportBusy] = React.useState(false);
+  const [clearBusy, setClearBusy] = React.useState(false);
   const [error, setError] = React.useState('');
   const [message, setMessage] = React.useState('');
+  const [importIssues, setImportIssues] = React.useState<ImportIssue[]>([]);
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const [duplicateCsv, setDuplicateCsv] = React.useState<string | null>(null);
+  const [duplicateFilename, setDuplicateFilename] = React.useState<string | null>(null);
+  const [clearOpen, setClearOpen] = React.useState(false);
+  const [shopNameConfirmation, setShopNameConfirmation] = React.useState('');
+
+  const clearFeedback = () => {
+    setError('');
+    setMessage('');
+    setImportIssues([]);
+  };
+
+  const refreshInventoryData = async (shopId: string) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'items'] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.entitlement(shopId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(shopId) }),
+      queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'dashboard', 'analytics'] }),
+      queryClient.invalidateQueries({ queryKey: ['shops', shopId, 'change-log'] }),
+    ]);
+  };
 
   const exportInventory = async () => {
     if (!activeMembership) return;
-    setBusy(true);
-    setError('');
-    setMessage('');
+    setExportBusy(true);
+    clearFeedback();
     try {
       const document = await apiClient.exportInventory(activeMembership.shop_id);
       await downloadBlob(
@@ -59,15 +92,87 @@ const DataExport: React.FC = () => {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to export inventory');
     } finally {
-      setBusy(false);
+      setExportBusy(false);
+    }
+  };
+
+  const downloadImportTemplate = async () => {
+    if (!activeMembership) return;
+    setTemplateBusy(true);
+    clearFeedback();
+    try {
+      const template = await apiClient.downloadInventoryImportTemplate(
+        activeMembership.shop_id,
+      );
+      await downloadBlob(template, 'aurum-pos-inventory-import.csv');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to download import template');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const importInventory = async () => {
+    if (!activeMembership || !selectedFile) return;
+    setImportBusy(true);
+    clearFeedback();
+    setDuplicateCsv(null);
+    setDuplicateFilename(null);
+    try {
+      const result = await apiClient.importInventory(activeMembership.shop_id, selectedFile);
+      const summaries = [`Imported ${result.imported_count} inventory rows.`];
+      if (result.duplicate_count > 0) {
+        summaries.push(`Skipped ${result.duplicate_count} duplicate barcodes.`);
+      }
+      if (result.ignored_non_stock_count > 0) {
+        summaries.push(`Ignored ${result.ignored_non_stock_count} non-stock export rows.`);
+      }
+      setMessage(summaries.join(' '));
+      setDuplicateCsv(result.duplicate_csv);
+      setDuplicateFilename(result.duplicate_filename);
+      await refreshInventoryData(activeMembership.shop_id);
+    } catch (caught) {
+      const detail = (caught as { detail?: { issues?: ImportIssue[] } } | null)?.detail;
+      setImportIssues(detail?.issues ?? []);
+      setError(caught instanceof Error ? caught.message : 'Unable to import inventory');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const downloadDuplicates = async () => {
+    if (!duplicateCsv || !duplicateFilename) return;
+    await downloadBlob(
+      new Blob([duplicateCsv], { type: 'text/csv;charset=utf-8' }),
+      duplicateFilename,
+    );
+  };
+
+  const clearInventory = async () => {
+    if (!activeMembership || shopNameConfirmation !== activeMembership.shop_name) return;
+    setClearBusy(true);
+    clearFeedback();
+    try {
+      const result = await apiClient.clearInventory(
+        activeMembership.shop_id,
+        shopNameConfirmation,
+      );
+      setClearOpen(false);
+      setShopNameConfirmation('');
+      setMessage(`Archived ${result.archived_count} in-stock inventory rows.`);
+      await refreshInventoryData(activeMembership.shop_id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to clear inventory');
+    } finally {
+      setClearBusy(false);
     }
   };
 
   return (
     <div
-      id="data-export-panel"
+      id="data-management-panel"
       role="tabpanel"
-      aria-labelledby="data-export-tab"
+      aria-labelledby="data-management-tab"
       className="space-y-5"
     >
       {error ? <Alert type="error" message={error} /> : null}
@@ -84,13 +189,182 @@ const DataExport: React.FC = () => {
         <Button
           type="button"
           className="mt-5"
-          isLoading={busy}
+          isLoading={exportBusy}
           onClick={() => void exportInventory()}
         >
           <Download className="h-4 w-4" />
           Export inventory CSV
         </Button>
       </Card>
+      <Card className="p-6">
+        <h2 className="text-lg font-bold">Import inventory</h2>
+        <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+          Import new inventory from a UTF-8 CSV. Existing barcodes are skipped, never
+          overwritten, and returned in a correction file.
+        </p>
+        <p className="mt-3 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+          Keep all template columns. Barcode and notes are optional; pricing and stock fields
+          are required according to each row's item type and pricing method.
+        </p>
+        <div className="data-management__button-row mt-5">
+          <Button
+            type="button"
+            variant="secondary"
+            isLoading={templateBusy}
+            onClick={() => void downloadImportTemplate()}
+          >
+            <FileDown className="h-4 w-4" />
+            Download CSV template
+          </Button>
+        </div>
+        <div className="data-management__file mt-5">
+          <span id="inventory-csv-file-label" className="ui-field-label">
+            Inventory CSV file
+          </span>
+          <div className="data-management__file-picker">
+            <input
+              id="inventory-csv-file"
+              type="file"
+              accept=".csv,text/csv"
+              aria-labelledby="inventory-csv-file-label"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                clearFeedback();
+                setDuplicateCsv(null);
+                setDuplicateFilename(null);
+                if (file && file.size > 5 * 1024 * 1024) {
+                  setSelectedFile(null);
+                  setError('Inventory CSV must be 5 MiB or smaller.');
+                  event.currentTarget.value = '';
+                  return;
+                }
+                setSelectedFile(file);
+              }}
+            />
+            <label
+              htmlFor="inventory-csv-file"
+              className="data-management__file-picker-control ui-button ui-button--secondary ui-button--md"
+            >
+              <Upload className="h-4 w-4" />
+              Choose CSV
+            </label>
+            <span
+              className={`data-management__file-name ${selectedFile ? 'has-file' : ''}`}
+              title={selectedFile?.name}
+            >
+              {selectedFile?.name ?? 'No file selected.'}
+            </span>
+          </div>
+        </div>
+        <Button
+          type="button"
+          className="mt-5"
+          disabled={!selectedFile}
+          isLoading={importBusy}
+          onClick={() => void importInventory()}
+        >
+          <Upload className="h-4 w-4" />
+          Import inventory CSV
+        </Button>
+        {importIssues.length > 0 ? (
+          <ul className="data-management__issues mt-4" aria-label="CSV import errors">
+            {importIssues.map((issue, index) => (
+              <li key={`${issue.row}-${issue.field}-${index}`}>
+                {issue.row ? `Row ${issue.row}, ` : ''}{issue.field}: {issue.message}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {duplicateCsv && duplicateFilename ? (
+          <div className="data-management__duplicates mt-5" role="status">
+            <AlertTriangle className="h-5 w-5" />
+            <div>
+              <p className="font-bold">Duplicate barcodes need attention</p>
+              <p className="mt-1 text-sm">
+                Download the skipped rows, assign new unique barcodes, and import the file again.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-3"
+                onClick={() => void downloadDuplicates()}
+              >
+                <Download className="h-4 w-4" />
+                Download duplicate barcodes CSV
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+      <Card className="data-management__danger p-6">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 flex-none" />
+          <div>
+            <h2 className="text-lg font-bold">Clear inventory</h2>
+            <p className="mt-2 max-w-2xl text-sm">
+              Archive every in-stock item in this shop. Sold items, invoices, and audit history
+              remain unchanged. Archived items cannot be restored through Aurum POS.
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="danger"
+          className="mt-5"
+          onClick={() => {
+            clearFeedback();
+            setShopNameConfirmation('');
+            setClearOpen(true);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          Clear inventory
+        </Button>
+      </Card>
+      <Modal
+        isOpen={clearOpen}
+        title="Clear inventory"
+        className="data-management__clear-modal"
+        onClose={() => {
+          if (!clearBusy) setClearOpen(false);
+        }}
+        footer={(
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={clearBusy}
+              onClick={() => setClearOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={shopNameConfirmation !== activeMembership?.shop_name}
+              isLoading={clearBusy}
+              onClick={() => void clearInventory()}
+            >
+              Clear inventory
+            </Button>
+          </>
+        )}
+      >
+        <div className="data-management__clear-warning">
+          <AlertTriangle className="h-6 w-6 flex-none" />
+          <p>
+            This archives all in-stock inventory. Sold items and invoice history are preserved,
+            but archived stock cannot be restored through the app.
+          </p>
+        </div>
+        <Input
+          id="clear-inventory-shop-name"
+          label={`Type ${activeMembership?.shop_name ?? ''} to confirm`}
+          autoComplete="off"
+          value={shopNameConfirmation}
+          onChange={(event) => setShopNameConfirmation(event.target.value)}
+        />
+      </Modal>
     </div>
   );
 };
@@ -410,10 +684,11 @@ export const ManageShop: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const invoiceSettingsTabRef = React.useRef<HTMLButtonElement>(null);
   const staffTabRef = React.useRef<HTMLButtonElement>(null);
-  const dataExportTabRef = React.useRef<HTMLButtonElement>(null);
+  const dataManagementTabRef = React.useRef<HTMLButtonElement>(null);
   const requestedTab = searchParams.get('tab');
-  const activeTab: ManageShopTab = MANAGE_SHOP_TABS.includes(requestedTab as ManageShopTab)
-    ? requestedTab as ManageShopTab
+  const normalizedRequestedTab = requestedTab === 'data-export' ? 'data-management' : requestedTab;
+  const activeTab: ManageShopTab = MANAGE_SHOP_TABS.includes(normalizedRequestedTab as ManageShopTab)
+    ? normalizedRequestedTab as ManageShopTab
     : 'invoice-settings';
 
   if (
@@ -458,7 +733,7 @@ export const ManageShop: React.FC = () => {
       const refs = {
         'invoice-settings': invoiceSettingsTabRef,
         staff: staffTabRef,
-        'data-export': dataExportTabRef,
+        'data-management': dataManagementTabRef,
       };
       refs[nextTab].current?.focus();
     });
@@ -508,19 +783,19 @@ export const ManageShop: React.FC = () => {
             Staff
           </button>
           <button
-            ref={dataExportTabRef}
-            id="data-export-tab"
+            ref={dataManagementTabRef}
+            id="data-management-tab"
             type="button"
             role="tab"
-            aria-selected={activeTab === 'data-export'}
-            aria-controls="data-export-panel"
-            tabIndex={activeTab === 'data-export' ? 0 : -1}
-            className={`app-segmented-control__tab ${activeTab === 'data-export' ? 'is-active' : ''}`}
-            onClick={() => selectTab('data-export')}
-            onKeyDown={(event) => handleTabKeyDown(event, 'data-export')}
+            aria-selected={activeTab === 'data-management'}
+            aria-controls="data-management-panel"
+            tabIndex={activeTab === 'data-management' ? 0 : -1}
+            className={`app-segmented-control__tab ${activeTab === 'data-management' ? 'is-active' : ''}`}
+            onClick={() => selectTab('data-management')}
+            onKeyDown={(event) => handleTabKeyDown(event, 'data-management')}
           >
             <Download className="h-4 w-4" />
-            Data Export
+            Data Management
           </button>
         </div>
 
@@ -529,7 +804,7 @@ export const ManageShop: React.FC = () => {
         ) : activeTab === 'staff' ? (
           <StaffManagement />
         ) : (
-          <DataExport />
+          <DataManagement />
         )}
       </div>
     </div>

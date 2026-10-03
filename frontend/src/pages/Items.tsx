@@ -1302,12 +1302,12 @@ export const Items: React.FC = () => {
                 aria-label="Loading inventory page"
               />
             ) : null}
-            <div className="overflow-x-auto">
-              <table className="inventory-table w-full table-fixed sm:table-auto">
+            <div className="table-overflow-guard">
+              <table className="inventory-table w-full table-fixed">
                 <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className={`w-9 px-1 py-3 text-left text-xs font-semibold text-slate-400 sm:w-12 sm:px-5 sm:py-4 ${
-                      canManage ? 'table-cell' : 'hidden'
+                    <th className={`inventory-col-select px-1 py-3 text-left text-xs font-semibold text-slate-400 sm:px-5 sm:py-4 ${
+                      canManage ? '' : 'inventory-col-select--hidden'
                     }`}>
                       <input
                         type="checkbox"
@@ -1318,37 +1318,37 @@ export const Items: React.FC = () => {
                         className="checkbox-round"
                       />
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-sku px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       SKU
                     </th>
-                    <th className="w-[6.5rem] px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:w-auto sm:px-6 sm:py-4 sm:text-xs">
+                    <th className="inventory-col-barcode px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:px-6 sm:py-4 sm:text-xs">
                       Barcode
                     </th>
-                    <th className="px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:px-6 sm:py-4 sm:text-xs">
+                    <th className="inventory-col-name px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:px-6 sm:py-4 sm:text-xs">
                       Name
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-category px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Category
                     </th>
-                    <th className="hidden whitespace-nowrap px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-qty whitespace-nowrap px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Qty
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-metal px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Metal
                     </th>
-                    <th className="hidden px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-weight px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Weight
                     </th>
-                    <th className="hidden whitespace-nowrap px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-charge whitespace-nowrap px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Charge / Rate
                     </th>
-                    <th className="w-20 px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:w-auto sm:px-6 sm:py-4 sm:text-xs">
+                    <th className="inventory-col-status px-2 py-3 text-left text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 sm:px-6 sm:py-4 sm:text-xs">
                       Status
                     </th>
-                    <th className="hidden min-w-48 px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:table-cell">
+                    <th className="inventory-col-notes px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Notes
                     </th>
-                    <th className="w-11 px-1 py-3 sm:hidden">
+                    <th className="inventory-col-disclosure px-1 py-3">
                       <span className="sr-only">Details</span>
                     </th>
                   </tr>
@@ -1393,8 +1393,8 @@ export const Items: React.FC = () => {
                                 : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
                             } ${pressingRowId === item.id ? 'inventory-table__row--pressing' : ''}`}
                           >
-                            <td className={`px-1 py-3 sm:px-5 sm:py-5 ${
-                              canManage ? 'table-cell' : 'hidden'
+                            <td className={`inventory-col-select px-1 py-3 sm:px-5 sm:py-5 ${
+                              canManage ? '' : 'inventory-col-select--hidden'
                             }`}>
                               <input
                                 type="checkbox"
@@ -1405,12 +1405,12 @@ export const Items: React.FC = () => {
                                 className="checkbox-round"
                               />
                             </td>
-                            <td className="inventory-sku-cell hidden px-6 py-5 sm:table-cell">
+                            <td className="inventory-col-sku inventory-sku-cell px-6 py-5">
                               <span className="inventory-sku-pill font-mono text-sm font-bold tracking-wider text-slate-700 dark:text-slate-300">
                                 {item.sku}
                               </span>
                             </td>
-                            <td className="min-w-0 px-2 py-3 sm:px-6 sm:py-5">
+                            <td className="inventory-col-barcode min-w-0 px-2 py-3 sm:px-6 sm:py-5">
                               <span
                                 title={item.barcode}
                                 className="block truncate rounded-app-control border border-amber-100/50 bg-amber-50 px-2 py-1 font-mono text-sm font-bold tracking-wider text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400 sm:inline-block sm:px-3"
@@ -1418,7 +1418,7 @@ export const Items: React.FC = () => {
                                 {item.barcode}
                               </span>
                             </td>
-                            <td className="min-w-0 px-2 py-3 sm:px-6 sm:py-5">
+                            <td className="inventory-col-name min-w-0 px-2 py-3 sm:px-6 sm:py-5">
                               <p
                                 title={item.name}
                                 className="truncate text-sm font-bold text-slate-900 dark:text-white"
@@ -1426,28 +1426,28 @@ export const Items: React.FC = () => {
                                 {item.name}
                               </p>
                             </td>
-                            <td className="hidden px-6 py-5 sm:table-cell">
+                            <td className="inventory-col-category px-6 py-5">
                               <span className="inventory-category-label inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">
                                 <CategoryIcon aria-hidden="true" className="h-3.5 w-3.5" />
                                 {categoryOption.label}
                               </span>
                             </td>
-                            <td className="hidden whitespace-nowrap px-6 py-5 text-sm font-bold text-slate-800 dark:text-slate-100 sm:table-cell">
+                            <td className="inventory-col-qty whitespace-nowrap px-6 py-5 text-sm font-bold text-slate-800 dark:text-slate-100">
                               {item.stock_mode === 'weight'
                                 ? formatInventoryQtyGrams(item.stock_weight ?? 0)
                                 : item.quantity}
                             </td>
-                            <td className="inventory-metal-cell hidden px-6 py-5 sm:table-cell">
+                            <td className="inventory-col-metal inventory-metal-cell px-6 py-5">
                               <span className={`inventory-metal-pill inventory-metal-pill--${metalTone} border px-3 py-1.5 text-sm font-semibold rounded-app-control`}>
                                 <span>{item.item_type === 'stone' ? 'Stone' : formatMetalName(item.metal)}</span>
                                 <span aria-hidden="true">·</span>
                                 <span>{item.item_type === 'stone' ? `${item.ratti} Ratti` : item.purity > 0 ? `${item.purity}%` : 'Unspecified'}</span>
                               </span>
                             </td>
-                            <td className="hidden whitespace-nowrap px-6 py-5 text-sm font-medium text-slate-500 dark:text-slate-400 sm:table-cell">
+                            <td className="inventory-col-weight whitespace-nowrap px-6 py-5 text-sm font-medium text-slate-500 dark:text-slate-400">
                               {getInventoryWeightText(item)}
                             </td>
-                            <td className="hidden whitespace-nowrap px-6 py-5 text-sm font-semibold text-slate-900 dark:text-white sm:table-cell">
+                            <td className="inventory-col-charge whitespace-nowrap px-6 py-5 text-sm font-semibold text-slate-900 dark:text-white">
                               {item.item_type === 'stone'
                                 ? `${formatCurrency(item.rate_per_ratti ?? 0)} / ratti`
                                 : item.pricing_method === 'fixed_rate' || item.category === 'unique'
@@ -1456,17 +1456,17 @@ export const Items: React.FC = () => {
                                     ? `${formatCurrency(item.making_charge)} fixed`
                                     : `${formatCurrency(item.making_charge)} / gram`}
                             </td>
-                            <td className="inventory-status-cell px-2 py-3 sm:px-6 sm:py-5">
+                            <td className="inventory-col-status inventory-status-cell px-2 py-3 sm:px-6 sm:py-5">
                               <div className="inventory-status-cell__content">
                                 <ItemStatusBadge status={item.status} />
                               </div>
                             </td>
-                            <td className="hidden max-w-64 px-6 py-5 text-sm font-medium text-slate-600 dark:text-slate-300 sm:table-cell">
+                            <td className="inventory-col-notes px-6 py-5 text-sm font-medium text-slate-600 dark:text-slate-300">
                               <span className="inventory-notes-clamp block" title={item.notes ?? undefined}>
                                 {item.notes || '-'}
                               </span>
                             </td>
-                            <td className="px-1 py-2 sm:hidden">
+                            <td className="inventory-col-disclosure px-1 py-2">
                               <button
                                 type="button"
                                 aria-expanded={isExpanded}
@@ -1486,8 +1486,8 @@ export const Items: React.FC = () => {
                             </td>
                           </tr>
                           {isExpanded ? (
-                            <tr id={detailsId} className="bg-slate-50/60 dark:bg-slate-950/40 sm:hidden">
-                              <td colSpan={canManage ? 5 : 4} className="px-3 pb-4 pt-2">
+                            <tr id={detailsId} className="inventory-details-row bg-slate-50/60 dark:bg-slate-950/40">
+                              <td colSpan={4} className="px-3 pb-4 pt-2">
                                 <div className="grid grid-cols-2 gap-3 rounded-app-inset border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                                   <div className="col-span-2">
                                     <p className="text-xs font-bold uppercase tracking-wider text-slate-400">

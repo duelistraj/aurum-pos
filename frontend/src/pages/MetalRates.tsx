@@ -165,10 +165,11 @@ export const MetalRates: React.FC = () => {
             <Button
               onClick={handleAddRateClick}
               disabled={metals.length === 0 || hasRateForAllMetals}
-              className="flex items-center space-x-2"
+              aria-label="Add rate"
+              title="Add rate"
+              className="inventory-page__icon-action inventory-page__add-action"
             >
-              <Plus className="w-5 h-5" />
-              <span>Add Rate</span>
+              <Plus className="h-6 w-6" />
             </Button>
           </div> : null}
         </div>

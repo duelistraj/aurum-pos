@@ -133,6 +133,22 @@ class OwnershipTransferResponse(BaseModel):
     completed_at: datetime | None = None
 
 
+class InventoryImportResponse(BaseModel):
+    imported_count: int = Field(ge=0)
+    duplicate_count: int = Field(ge=0)
+    ignored_non_stock_count: int = Field(ge=0)
+    duplicate_csv: str | None = None
+    duplicate_filename: str | None = None
+
+
+class InventoryClearRequest(BaseModel):
+    confirmation_shop_name: str = Field(min_length=1, max_length=150)
+
+
+class InventoryClearResponse(BaseModel):
+    archived_count: int = Field(ge=0)
+
+
 class MembershipResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID

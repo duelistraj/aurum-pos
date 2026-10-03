@@ -24,13 +24,14 @@ import { queryKeys } from '../api/queryKeys';
 import { Button, Card, Input, ListboxSelect, Loader } from '../components/UI';
 import { TablePagination } from '../components/TablePagination';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useViewportWidth } from '../hooks/useViewportWidth';
 import { useShop } from '../context/ShopContext';
 import type {
   AuditLogEntry,
   AuditLogPage,
   SoldTransactionPage,
 } from '../types';
-import { formatCurrency, formatDate } from '../utils';
+import { formatCurrency } from '../utils';
 import { InvoiceHistory } from './Invoices';
 
 type TransactionTab = 'activity' | 'invoices';
@@ -55,6 +56,8 @@ const EVENT_OPTIONS = [
   { value: 'inventory.item_created', label: 'Item created' },
   { value: 'inventory.item_updated', label: 'Item updated' },
   { value: 'inventory.item_archived', label: 'Item archived' },
+  { value: 'inventory.imported', label: 'Inventory imported' },
+  { value: 'inventory.cleared', label: 'Inventory cleared' },
   { value: 'sales.sale_completed', label: 'Sale completed' },
   { value: 'rates.rate_created', label: 'Rate created' },
   { value: 'rates.rate_updated', label: 'Rate updated' },
@@ -82,6 +85,16 @@ const EVENT_META: Record<string, {
   },
   'inventory.item_archived': {
     label: 'Item archived',
+    icon: Archive,
+    tone: 'audit-event--red',
+  },
+  'inventory.imported': {
+    label: 'Inventory imported',
+    icon: PackagePlus,
+    tone: 'audit-event--green',
+  },
+  'inventory.cleared': {
+    label: 'Inventory cleared',
     icon: Archive,
     tone: 'audit-event--red',
   },
@@ -135,6 +148,27 @@ const EVENT_META: Record<string, {
 const titleCase = (value: string) =>
   value.toLowerCase().replace(/\b\w/g, (character) => character.toUpperCase());
 
+const auditDateFormatter = new Intl.DateTimeFormat('en-IN', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+const auditTimeFormatter = new Intl.DateTimeFormat('en-IN', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const AuditDateTime: React.FC<{ createdAt: string }> = ({ createdAt }) => {
+  const date = new Date(createdAt);
+  return (
+    <time dateTime={createdAt} className="audit-table__date-time">
+      <span className="audit-table__date-value">{auditDateFormatter.format(date)}</span>
+      <span className="audit-table__time-value">{auditTimeFormatter.format(date)}</span>
+    </time>
+  );
+};
+
 const formatAuditValue = (value: unknown): string => {
   if (value === null || value === undefined || value === '') return 'Not set';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -163,7 +197,11 @@ const AuditDetails: React.FC<{ entry: AuditLogEntry }> = ({ entry }) => {
   const { details } = entry;
   return (
     <div className="audit-details">
-      <dl className="audit-details__mobile-meta sm:hidden">
+      <dl className="audit-details__mobile-meta audit-details__responsive-meta">
+        <div>
+          <dt>Record</dt>
+          <dd>{entry.subject.label}</dd>
+        </div>
         <div>
           <dt>Reference</dt>
           <dd>{entry.subject.reference || 'Not available'}</dd>
@@ -178,7 +216,7 @@ const AuditDetails: React.FC<{ entry: AuditLogEntry }> = ({ entry }) => {
       </dl>
 
       {details.kind === 'changes' ? (
-        <div className="overflow-x-auto">
+        <div className="table-overflow-guard">
           <table className="audit-details__table">
             <thead>
               <tr>
@@ -207,7 +245,7 @@ const AuditDetails: React.FC<{ entry: AuditLogEntry }> = ({ entry }) => {
             {details.total !== null ? <strong>{formatCurrency(details.total)}</strong> : null}
           </div>
           {details.sale_items.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="table-overflow-guard">
               <table className="audit-details__table audit-details__table--sale">
                 <thead>
                   <tr>
@@ -263,6 +301,8 @@ const AuditDetails: React.FC<{ entry: AuditLogEntry }> = ({ entry }) => {
 };
 
 const AuditLogTable: React.FC = () => {
+  const viewportWidth = useViewportWidth();
+  const detailColumnCount = viewportWidth < 640 ? 4 : 6;
   const { activeMembership } = useShop();
   const shopId = activeMembership?.shop_id ?? '';
   const [filters, setFilters] = React.useState<AuditFilters>(EMPTY_AUDIT_FILTERS);
@@ -401,16 +441,16 @@ const AuditLogTable: React.FC = () => {
             <p>Try adjusting the selected search or filters.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="audit-table w-full table-fixed text-left sm:min-w-[980px] sm:table-auto">
+          <div className="table-overflow-guard">
+            <table className="audit-table w-full table-fixed text-left">
               <thead>
                 <tr>
-                  <th className="w-[6.5rem] sm:w-auto">Date and time</th>
+                  <th className="audit-col-date">Date and time</th>
                   <th className="audit-table__event-cell">Event</th>
-                  <th>Record</th>
-                  <th className="hidden sm:table-cell">Reference</th>
-                  <th className="hidden sm:table-cell">Performed by</th>
-                  <th className="w-11 sm:w-auto"><span className="sr-only sm:not-sr-only">Summary</span></th>
+                  <th className="audit-col-record">Record</th>
+                  <th className="audit-col-reference">Reference</th>
+                  <th className="audit-col-actor">Performed by</th>
+                  <th className="audit-col-disclosure"><span className="sr-only sm:not-sr-only">Summary</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -428,25 +468,27 @@ const AuditLogTable: React.FC = () => {
                         className={`audit-table__row ${expanded ? 'is-expanded' : ''}`}
                         onClick={() => setExpandedId(expanded ? null : entry.id)}
                       >
-                        <td className="audit-table__date">{formatDate(entry.created_at)}</td>
+                        <td className="audit-col-date audit-table__date">
+                          <AuditDateTime createdAt={entry.created_at} />
+                        </td>
                         <td className="audit-table__event-cell">
                           <span className={`audit-event ${meta.tone}`}>
                             <EventIcon />
                             <span>{meta.label}</span>
                           </span>
                         </td>
-                        <td>
+                        <td className="audit-col-record">
                           <strong className="audit-table__record">{entry.subject.label}</strong>
                           <small>{entry.area}</small>
                         </td>
-                        <td className="hidden font-mono text-sm sm:table-cell">
+                        <td className="audit-col-reference font-mono text-sm">
                           {entry.subject.reference || 'Not available'}
                         </td>
-                        <td className="hidden sm:table-cell">
+                        <td className="audit-col-actor">
                           <strong className="audit-table__actor">{entry.actor.name}</strong>
                           <small>{entry.actor.role ? titleCase(entry.actor.role) : titleCase(entry.actor.kind)}</small>
                         </td>
-                        <td>
+                        <td className="audit-col-disclosure">
                           <button
                             type="button"
                             className="audit-table__disclosure"
@@ -458,14 +500,14 @@ const AuditLogTable: React.FC = () => {
                               setExpandedId(expanded ? null : entry.id);
                             }}
                           >
-                            <span className="hidden sm:inline">{entry.summary}</span>
+                            <span className="audit-disclosure-summary">{entry.summary}</span>
                             <ChevronDown className={expanded ? 'is-expanded' : ''} />
                           </button>
                         </td>
                       </tr>
                       {expanded ? (
                         <tr id={`audit-details-${entry.id}`} className="audit-table__details-row">
-                          <td colSpan={6}><AuditDetails entry={entry} /></td>
+                          <td colSpan={detailColumnCount}><AuditDetails entry={entry} /></td>
                         </tr>
                       ) : null}
                     </React.Fragment>

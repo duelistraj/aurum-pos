@@ -20,6 +20,9 @@ vi.mock('../api/client', () => ({
     updateShop: vi.fn(),
     updateStaff: vi.fn(),
     exportInventory: vi.fn(),
+    downloadInventoryImportTemplate: vi.fn(),
+    importInventory: vi.fn(),
+    clearInventory: vi.fn(),
   },
 }));
 
@@ -115,7 +118,7 @@ describe('Manage Shop', () => {
       organization_id: 'organization-1',
       plan: 'free',
       source: 'hosted_free',
-      active_item_limit: 50,
+      active_item_limit: 500,
       active_item_count: 12,
       can_add_item: true,
       shop_limit: 1,
@@ -137,6 +140,14 @@ describe('Manage Shop', () => {
     });
     vi.mocked(apiClient.updateShop).mockResolvedValue({});
     vi.mocked(apiClient.updateStaff).mockResolvedValue({});
+    vi.mocked(apiClient.importInventory).mockResolvedValue({
+      imported_count: 1,
+      duplicate_count: 0,
+      ignored_non_stock_count: 0,
+      duplicate_csv: null,
+      duplicate_filename: null,
+    });
+    vi.mocked(apiClient.clearInventory).mockResolvedValue({ archived_count: 2 });
   });
 
   it('uses the app listbox and submits the selected role', async () => {
@@ -240,7 +251,7 @@ describe('Manage Shop', () => {
     vi.mocked(downloadBlob).mockResolvedValue(undefined);
     renderManageShop('/manage-shop?tab=data-export');
 
-    expect(screen.getByRole('tab', { name: 'Data Export' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Data Management' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -253,6 +264,53 @@ describe('Manage Shop', () => {
         'aurum-pos-demo-inventory.csv',
       );
     });
+  });
+
+  it('imports inventory and provides duplicate rows for barcode correction', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.importInventory).mockResolvedValue({
+      imported_count: 2,
+      duplicate_count: 1,
+      ignored_non_stock_count: 0,
+      duplicate_csv: '\ufeffsku,barcode\nRING-2,12345678\n',
+      duplicate_filename: 'aurum-pos-demo-duplicate-barcodes.csv',
+    });
+    vi.mocked(downloadBlob).mockResolvedValue(undefined);
+    renderManageShop('/manage-shop?tab=data-management');
+
+    expect(screen.getByText('Choose CSV')).toBeInTheDocument();
+    expect(screen.getByText('No file selected.')).toBeInTheDocument();
+    const file = new File(['sku,barcode'], 'inventory.csv', { type: 'text/csv' });
+    await user.upload(screen.getByLabelText('Inventory CSV file'), file);
+    expect(screen.getByText('inventory.csv')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Import inventory CSV' }));
+
+    expect(await screen.findByText(/Imported 2 inventory rows/)).toBeInTheDocument();
+    expect(screen.getByText(/Skipped 1 duplicate barcodes/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download duplicate barcodes CSV' }));
+    expect(downloadBlob).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'aurum-pos-demo-duplicate-barcodes.csv',
+    );
+  });
+
+  it('requires the exact shop name before clearing inventory', async () => {
+    const user = userEvent.setup();
+    renderManageShop('/manage-shop?tab=data-management');
+
+    await user.click(screen.getByRole('button', { name: 'Clear inventory' }));
+    const dialog = screen.getByRole('dialog', { name: 'Clear inventory' });
+    const confirmButton = within(dialog).getByRole('button', { name: 'Clear inventory' });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(within(dialog).getByLabelText('Type Demo Shop to confirm'), 'Demo Shop');
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(apiClient.clearInventory).toHaveBeenCalledWith('shop-1', 'Demo Shop');
+    });
+    expect(await screen.findByText('Archived 2 in-stock inventory rows.')).toBeInTheDocument();
   });
 
   it('blocks lower-privilege memberships', () => {

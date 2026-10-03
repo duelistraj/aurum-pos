@@ -16,6 +16,8 @@ EVENT_PRESENTATION: dict[str, tuple[str, str]] = {
     "inventory.item_created": ("Inventory", "Item created"),
     "inventory.item_updated": ("Inventory", "Item updated"),
     "inventory.item_archived": ("Inventory", "Item archived"),
+    "inventory.imported": ("Inventory", "Inventory imported"),
+    "inventory.cleared": ("Inventory", "Inventory cleared"),
     "sales.sale_completed": ("Sales", "Sale completed"),
     "rates.rate_created": ("Metal rates", "Rate created"),
     "rates.rate_updated": ("Metal rates", "Rate updated"),

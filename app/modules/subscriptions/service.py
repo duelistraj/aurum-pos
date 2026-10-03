@@ -206,7 +206,13 @@ async def enforce_shop_write_access(db: AsyncSession, shop_id: UUID) -> None:
         )
 
 
-async def enforce_item_activation_limit(db: AsyncSession, shop_id: UUID) -> None:
+async def enforce_item_activation_capacity(
+    db: AsyncSession,
+    shop_id: UUID,
+    additional_items: int,
+) -> None:
+    if additional_items <= 0:
+        return
     shop = await db.scalar(select(Shop).where(Shop.id == shop_id).with_for_update())
     if shop is None or not shop.is_active:
         raise HTTPException(status_code=404, detail="Shop does not exist")
@@ -215,7 +221,7 @@ async def enforce_item_activation_limit(db: AsyncSession, shop_id: UUID) -> None
     if entitlement.item_limit is None:
         return
     active_count = await count_active_items(db, shop_id)
-    if active_count >= entitlement.item_limit:
+    if active_count + additional_items > entitlement.item_limit:
         raise HTTPException(
             status_code=409,
             detail={
@@ -226,8 +232,13 @@ async def enforce_item_activation_limit(db: AsyncSession, shop_id: UUID) -> None
                 ),
                 "active_item_count": active_count,
                 "active_item_limit": entitlement.item_limit,
+                "requested_item_count": additional_items,
             },
         )
+
+
+async def enforce_item_activation_limit(db: AsyncSession, shop_id: UUID) -> None:
+    await enforce_item_activation_capacity(db, shop_id, 1)
 
 
 async def enforce_shop_creation_limit(

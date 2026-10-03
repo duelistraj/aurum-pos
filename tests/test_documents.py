@@ -4,6 +4,7 @@ from io import BytesIO
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from openpyxl import load_workbook
 
 from app.modules.sales import invoice as invoice_module
@@ -59,6 +60,27 @@ def test_xlsx_labels_treat_user_values_as_literals() -> None:
     assert worksheet["A2"].value.startswith("'=")
     assert worksheet["M2"].data_type == "s"
     assert worksheet["M2"].value == "'+123"
+
+
+def test_xlsx_labels_repeat_quantity_stock_but_not_weight_stock() -> None:
+    quantity_item = _item(name="Quantity Ring", quantity=4, stock_mode="quantity")
+    weighted_item = _item(name="Weighted Chain", quantity=9, stock_mode="weight")
+    workbook = load_workbook(BytesIO(generate_batch_labels_xlsx([quantity_item, weighted_item])))
+    worksheet = workbook.active
+    names = [
+        cell.value
+        for row in worksheet.iter_rows(min_row=2, min_col=1, max_col=3)
+        for cell in row
+        if cell.value
+    ]
+
+    assert names.count("Quantity Ring") == 4
+    assert names.count("Weighted Chain") == 1
+
+
+def test_xlsx_label_quantity_has_a_bounded_total() -> None:
+    with pytest.raises(ValueError, match="limited to 5000 total labels"):
+        generate_batch_labels_xlsx([_item(quantity=5_001, stock_mode="quantity")])
 
 
 def test_invoice_is_generated_from_locked_sale_values() -> None:

@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,12 @@ from app.modules.auth.dependencies import (
 )
 from app.modules.auth.models import User
 from app.modules.items.export import build_inventory_csv
+from app.modules.items.importer import (
+    InventoryImportValidationError,
+    build_inventory_import_template,
+    import_inventory_csv,
+)
+from app.modules.items.service import clear_in_stock_inventory
 from app.modules.shops.models import (
     Organization,
     OrganizationOwnershipTransfer,
@@ -27,6 +33,9 @@ from app.modules.shops.models import (
     ShopMembership,
 )
 from app.modules.shops.schemas import (
+    InventoryClearRequest,
+    InventoryClearResponse,
+    InventoryImportResponse,
     InvitationCreate,
     InvitationResponse,
     MembershipResponse,
@@ -222,6 +231,94 @@ async def export_inventory(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get(
+    "/{shop_id}/inventory-import-template.csv",
+    dependencies=[RequireAdmin],
+)
+async def inventory_import_template(
+    shop_id: UUID,
+    context: ShopContext = Depends(get_shop_context),
+) -> Response:
+    if shop_id != context.shop.id:
+        raise HTTPException(status_code=404, detail="Shop not found")
+    return Response(
+        content=build_inventory_import_template(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="aurum-pos-inventory-import.csv"'},
+    )
+
+
+@router.post(
+    "/{shop_id}/inventory-import.csv",
+    response_model=InventoryImportResponse,
+    dependencies=[RequireAdmin, RequireWritableShop],
+)
+async def import_inventory(
+    shop_id: UUID,
+    document: Annotated[bytes, Body(media_type="text/csv")],
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> InventoryImportResponse:
+    if shop_id != context.shop.id:
+        raise HTTPException(status_code=404, detail="Shop not found")
+    try:
+        result = await import_inventory_csv(
+            db,
+            document=document,
+            shop_id=context.shop.id,
+            shop_name=context.shop.name,
+            shop_slug=context.shop.slug,
+            actor=_audit_actor(context),
+        )
+    except InventoryImportValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVENTORY_IMPORT_INVALID",
+                "message": str(exc),
+                "issues": [issue.as_dict() for issue in exc.issues[:100]],
+                "total_issue_count": len(exc.issues),
+            },
+        ) from exc
+    duplicate_filename = (
+        f"aurum-pos-{context.shop.slug}-duplicate-barcodes.csv"
+        if result.duplicate_csv is not None
+        else None
+    )
+    return InventoryImportResponse(
+        imported_count=result.imported_count,
+        duplicate_count=result.duplicate_count,
+        ignored_non_stock_count=result.ignored_non_stock_count,
+        duplicate_csv=result.duplicate_csv,
+        duplicate_filename=duplicate_filename,
+    )
+
+
+@router.post(
+    "/{shop_id}/inventory/clear",
+    response_model=InventoryClearResponse,
+    dependencies=[RequireAdmin, RequireWritableShop],
+)
+async def clear_inventory(
+    shop_id: UUID,
+    data: InventoryClearRequest,
+    context: ShopContext = Depends(get_shop_context),
+    db: AsyncSession = Depends(get_db),
+) -> InventoryClearResponse:
+    if shop_id != context.shop.id:
+        raise HTTPException(status_code=404, detail="Shop not found")
+    if data.confirmation_shop_name != context.shop.name:
+        raise HTTPException(status_code=422, detail="Shop name confirmation does not match")
+    archived_count = await clear_in_stock_inventory(
+        db,
+        shop_id=context.shop.id,
+        shop_name=context.shop.name,
+        shop_slug=context.shop.slug,
+        actor=_audit_actor(context),
+    )
+    return InventoryClearResponse(archived_count=archived_count)
 
 
 @router.get(

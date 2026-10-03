@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from io import BytesIO
+from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -13,6 +14,7 @@ PDF_LABEL_WIDTH = 50 * mm
 PDF_LABEL_HEIGHT = 25 * mm
 HALF_WIDTH = LABEL_WIDTH / 2
 SPREADSHEET_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+XLSX_LABEL_LIMIT = 5_000
 
 
 def _spreadsheet_literal(value: object) -> object:
@@ -164,7 +166,7 @@ def _draw_pdf_batch_label(c, item):
         )
 
 
-def generate_batch_labels_pdf(items: Sequence) -> bytes:
+def generate_batch_labels_pdf(items: Sequence[Any]) -> bytes:
     """
     Generates a PDF where each page contains one label with:
     - name on the first line
@@ -187,7 +189,7 @@ def generate_batch_labels_pdf(items: Sequence) -> bytes:
     return buffer.read()
 
 
-def generate_batch_labels_xlsx(items: Sequence) -> bytes:
+def generate_batch_labels_xlsx(items: Sequence[Any]) -> bytes:
     """
     Generates an XLSX file where:
     - Each row contains 3 items (Name, Purity, Charge or Rate, Weight, Barcode)
@@ -232,7 +234,16 @@ def generate_batch_labels_xlsx(items: Sequence) -> bytes:
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    items_list = list(items)
+    items_list: list[Any] = []
+    for item in items:
+        copies = (
+            1
+            if getattr(item, "stock_mode", "quantity") == "weight"
+            else max(int(getattr(item, "quantity", 1)), 0)
+        )
+        if len(items_list) + copies > XLSX_LABEL_LIMIT:
+            raise ValueError(f"XLSX label exports are limited to {XLSX_LABEL_LIMIT} total labels")
+        items_list.extend([item] * copies)
 
     # Add data rows (3 items per row)
     for i in range(0, len(items_list), 3):

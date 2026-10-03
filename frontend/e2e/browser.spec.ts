@@ -308,6 +308,27 @@ test('inventory rows use one desktop body font size', async ({ page }) => {
   expect(phoneFilters.metalTop).toBeGreaterThan(phoneFilters.searchBottom);
   expect(Math.abs(phoneFilters.metalTop - phoneFilters.categoryTop)).toBeLessThan(2);
   expect(phoneFilters.statusTop).toBeGreaterThan(phoneFilters.metalTop);
+  await expect(page.getByRole('columnheader', { name: 'Barcode' })).toBeHidden();
+  await expect(page.getByRole('columnheader', { name: 'Name' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Status' })).toBeVisible();
+  const phoneInventoryLayout = await page.locator('.inventory-table').evaluate((table) => ({
+    containerWidth: table.parentElement?.clientWidth ?? 0,
+    scrollWidth: table.parentElement?.scrollWidth ?? 0,
+  }));
+  expect(phoneInventoryLayout.scrollWidth).toBeLessThanOrEqual(
+    phoneInventoryLayout.containerWidth,
+  );
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await expect(page.getByRole('columnheader', { name: 'Barcode' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Category' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Notes' })).toBeVisible();
+  const tabletInventoryLayout = await page.locator('.inventory-table').evaluate((table) => ({
+    containerWidth: table.parentElement?.clientWidth ?? 0,
+    scrollWidth: table.parentElement?.scrollWidth ?? 0,
+    overflowX: table.parentElement ? getComputedStyle(table.parentElement).overflowX : '',
+  }));
+  expect(tabletInventoryLayout.overflowX).toBe('auto');
+  expect(tabletInventoryLayout.scrollWidth).toBeGreaterThan(tabletInventoryLayout.containerWidth);
   await page.setViewportSize({ width: 1280, height: 720 });
 
   await page.getByRole('checkbox', { name: 'Select 12345678' }).check();
@@ -619,6 +640,16 @@ test('management transactions use a responsive audit table with structured detai
     auditFilterRows.to,
   )).toBeLessThanOrEqual(2);
   expect(auditFilterRows.actor).toBeGreaterThan(auditFilterRows.search);
+  for (const heading of ['Reference', 'Performed by', 'Summary']) {
+    await expect(page.getByRole('columnheader', { name: heading })).toBeVisible();
+  }
+  const tabletAuditLayout = await page.locator('.audit-table').evaluate((table) => ({
+    containerWidth: table.parentElement?.clientWidth ?? 0,
+    scrollWidth: table.parentElement?.scrollWidth ?? 0,
+    overflowX: table.parentElement ? getComputedStyle(table.parentElement).overflowX : '',
+  }));
+  expect(tabletAuditLayout.overflowX).toBe('auto');
+  expect(tabletAuditLayout.scrollWidth).toBeGreaterThan(tabletAuditLayout.containerWidth);
   if (process.env.AURUM_CAPTURE_AUDIT_UI === '1') {
     await page.screenshot({ path: '/tmp/aurum-audit-portrait.png', fullPage: true });
   }
@@ -657,6 +688,31 @@ test('management transactions use a responsive audit table with structured detai
   await page.goto('/transactions');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  const phoneAuditDates = await page.locator('.audit-filter-layout').evaluate((form) => {
+    const from = form.querySelector('.transaction-filter-from')!.getBoundingClientRect();
+    const to = form.querySelector('.transaction-filter-to')!.getBoundingClientRect();
+    return { fromTop: from.top, toTop: to.top };
+  });
+  expect(Math.abs(phoneAuditDates.fromTop - phoneAuditDates.toTop)).toBeLessThan(2);
+  const phoneAuditTimestamp = await page.locator('.audit-table__date').first().evaluate((cell) => {
+    const date = cell.querySelector('.audit-table__date-value')!;
+    const time = cell.querySelector('.audit-table__time-value')!;
+    const dateBounds = date.getBoundingClientRect();
+    const timeBounds = time.getBoundingClientRect();
+    return {
+      dateText: date.textContent,
+      timeText: time.textContent,
+      dateFits: date.scrollWidth <= date.clientWidth,
+      timeFits: time.scrollWidth <= time.clientWidth,
+      dateBottom: dateBounds.bottom,
+      timeTop: timeBounds.top,
+    };
+  });
+  expect(phoneAuditTimestamp.dateText).toBeTruthy();
+  expect(phoneAuditTimestamp.timeText).toBeTruthy();
+  expect(phoneAuditTimestamp.dateFits).toBe(true);
+  expect(phoneAuditTimestamp.timeFits).toBe(true);
+  expect(phoneAuditTimestamp.timeTop).toBeGreaterThanOrEqual(phoneAuditTimestamp.dateBottom - 1);
   await page.getByRole('button', { name: 'Show details for Gold Ring' }).click();
   const details = page.locator('#audit-details-44444444-4444-4444-4444-444444444444');
   await expect(details.getByText('Performed by', { exact: true })).toBeVisible();
@@ -670,6 +726,12 @@ test('management transactions use a responsive audit table with structured detai
   expect(mobileTableLayout.scrollWidth).toBeLessThanOrEqual(
     Math.ceil(mobileTableLayout.containerWidth),
   );
+  const mobileRateRecord = await page.getByText('Gold 100%', { exact: true }).evaluate((record) => {
+    const bounds = record.getBoundingClientRect();
+    return { width: bounds.width, height: bounds.height };
+  });
+  expect(mobileRateRecord.width).toBeGreaterThanOrEqual(64);
+  expect(mobileRateRecord.height).toBeLessThan(40);
   const mobilePageLayout = await page.evaluate(() => ({
     viewportWidth: window.innerWidth,
     documentWidth: document.documentElement.scrollWidth,
@@ -1154,6 +1216,16 @@ test('invoice history presents compact actions and shared-sender consent', async
     'white-space',
     'nowrap',
   );
+  const tabletInvoiceTable = await page.locator('.invoice-table').evaluate((table) => ({
+    containerWidth: table.parentElement?.clientWidth ?? 0,
+    scrollWidth: table.parentElement?.scrollWidth ?? 0,
+    overflowX: table.parentElement ? getComputedStyle(table.parentElement).overflowX : '',
+  }));
+  await expect(page.getByRole('columnheader', { name: 'Customer' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Date' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Action' })).toBeVisible();
+  expect(tabletInvoiceTable.overflowX).toBe('auto');
+  expect(tabletInvoiceTable.scrollWidth).toBeGreaterThan(tabletInvoiceTable.containerWidth);
   const portraitInvoiceOverflow = await page.evaluate(() => ({
     viewport: window.innerWidth,
     document: document.documentElement.scrollWidth,
@@ -1162,6 +1234,18 @@ test('invoice history presents compact actions and shared-sender consent', async
   if (process.env.AURUM_CAPTURE_INVOICE_UI === '1') {
     await page.screenshot({ path: '/tmp/aurum-invoice-portrait.png', fullPage: true });
   }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phoneInvoiceDates = await page.locator('.invoice-filter-layout').evaluate((form) => {
+    const from = form.querySelector('.transaction-filter-from')!.getBoundingClientRect();
+    const to = form.querySelector('.transaction-filter-to')!.getBoundingClientRect();
+    return { fromTop: from.top, toTop: to.top };
+  });
+  expect(Math.abs(phoneInvoiceDates.fromTop - phoneInvoiceDates.toTop)).toBeLessThan(2);
+  const phoneInvoiceTable = await page.locator('.invoice-table').evaluate((table) => ({
+    containerWidth: table.parentElement?.clientWidth ?? 0,
+    scrollWidth: table.parentElement?.scrollWidth ?? 0,
+  }));
+  expect(phoneInvoiceTable.scrollWidth).toBeLessThanOrEqual(phoneInvoiceTable.containerWidth);
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.locator('.sidebar__brand')).not.toHaveAttribute('href');
   if (process.env.AURUM_CAPTURE_INVOICE_UI === '1') {

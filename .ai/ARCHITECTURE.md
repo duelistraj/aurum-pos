@@ -85,6 +85,9 @@ Metal-rate writes preserve one compatible current row and append immutable histo
 Sale creation locks inventory rows, prices with `Decimal`, stores seller, tax, item, and price snapshots, decrements stock, assigns a server-controlled invoice sequence, and records a shop-scoped idempotency result.
 Administrators can export every active inventory row as a versioned UTF-8 CSV snapshot from Manage Shop.
 The standalone export includes stable item and barcode identity, pricing inputs, the current tax-inclusive unit price, native quantity, stock weight, and item status.
+Administrators can import UTF-8 CSV inventory through a dedicated template or a compatible inventory export, with atomic row validation, entitlement enforcement, generated missing barcodes, and a correction CSV for skipped duplicate barcodes.
+Manage Shop can archive all currently in-stock rows after exact shop-name confirmation while preserving sold items, invoices, immutable inventory history, and the management audit trail.
+XLSX label exports repeat quantity-stock rows once per remaining item quantity and emit one row for weighted stock, while PDF label behavior remains one label per selected inventory row.
 The client persists only a checkout fingerprint and operation UUID so an ambiguous retry reuses the same idempotency key.
 Dashboard analytics use bounded date ranges and database aggregates instead of loading sale and inventory graphs into application memory.
 Cashier dashboard sales and invoice metrics plus Cashier analytics derive the current calendar day in `Asia/Kolkata`, convert its half-open bounds to UTC, and never accept a client-selected date range.
@@ -102,6 +105,9 @@ Evidence:
 - `app/modules/sales/service.py::_execute_create_sale`
 - `app/modules/items/tax.py::get_tax_profile`
 - `app/modules/items/routes.py::cashier_item_lookup`
+- `app/modules/items/importer.py::import_inventory_csv`
+- `app/modules/items/service.py::clear_in_stock_inventory`
+- `app/utils/label.py::generate_batch_labels_xlsx`
 - `app/modules/dashboard/service.py::get_cashier_analytics`
 
 ### Billing and asynchronous work
@@ -193,8 +199,8 @@ The React client dispatches Cashiers to separate Dashboard, Inventory, and Analy
 Transactions presents a normalized Audit Log table to manager-level roles and a current-day Sold Items table to Cashiers, while reusing the existing invoice history without mounting management audit queries for Cashiers.
 The authenticated client rotates configured dashboard rates and gives writable manager-level users one device-local reminder after 08:00 Asia/Kolkata when configured rates have not been refreshed during that IST day.
 Completed Android downloads are written to app-owned storage, and a native bridge accepts only those app-owned paths before posting a file-backed notification whose read-granted FileProvider URI opens the downloaded PDF or spreadsheet.
-Inventory and invoice data remain full tables at viewport widths of 640 pixels and above.
-Below 640 pixels, each becomes a compact disclosure table whose essential columns remain scannable and whose expanded row exposes the remaining details and actions.
+Inventory, invoice, and management audit data remain full tables with card-contained horizontal scrolling at viewport widths of 640 pixels and above.
+Below 640 pixels, each becomes a compact non-scrolling disclosure table whose essential columns remain scannable and whose expanded row exposes the remaining details and actions.
 Each shop belongs to one organization.
 Hosted subscriptions, shop limits, and distinct-person seat limits resolve at the organization boundary, while inventory, sales, rates, invoices, staff assignment, and RLS remain shop-scoped.
 The organization identifies one primary shop for Free-plan write access after a Pro downgrade.

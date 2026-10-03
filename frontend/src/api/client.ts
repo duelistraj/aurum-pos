@@ -106,6 +106,12 @@ interface StructuredErrorDetail {
   message?: string;
   email?: string;
   full_name?: string;
+  issues?: Array<{
+    row: number | null;
+    field: string;
+    message: string;
+  }>;
+  total_issue_count?: number;
 }
 
 interface ApiErrorBody {
@@ -119,6 +125,14 @@ export interface TokenResponse {
   user_id: string;
   email: string;
   memberships: MembershipInfo[];
+}
+
+export interface InventoryImportResult {
+  imported_count: number;
+  duplicate_count: number;
+  ignored_non_stock_count: number;
+  duplicate_csv: string | null;
+  duplicate_filename: string | null;
 }
 
 interface LoginPayload {
@@ -460,6 +474,30 @@ export const apiClient = {
       responseType: 'arraybuffer',
     });
     return response.data as ArrayBuffer;
+  },
+
+  async downloadInventoryImportTemplate(shopId: string) {
+    const response = await client.get(`/shops/${shopId}/inventory-import-template.csv`, {
+      responseType: 'arraybuffer',
+    });
+    return response.data as ArrayBuffer;
+  },
+
+  async importInventory(shopId: string, file: File) {
+    const { data } = await client.post<InventoryImportResult>(
+      `/shops/${shopId}/inventory-import.csv`,
+      file,
+      { headers: { 'Content-Type': 'text/csv' } },
+    );
+    return data;
+  },
+
+  async clearInventory(shopId: string, confirmationShopName: string) {
+    const { data } = await client.post<{ archived_count: number }>(
+      `/shops/${shopId}/inventory/clear`,
+      { confirmation_shop_name: confirmationShopName },
+    );
+    return data;
   },
 
   async listStaff(shopId: string) {

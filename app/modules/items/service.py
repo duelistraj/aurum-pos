@@ -55,10 +55,17 @@ def record_item_history(db: AsyncSession, item: Item, *, event_type: str) -> Non
     )
 
 
-async def generate_unique_barcode(db: AsyncSession, *, shop_id: UUID) -> str:
+async def generate_unique_barcode(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    reserved_barcodes: set[str] | None = None,
+) -> str:
     """Generate a unique 8-digit barcode"""
     for _attempt in range(20):
         barcode = "".join(secrets.choice(string.digits) for _ in range(8))
+        if reserved_barcodes is not None and barcode in reserved_barcodes:
+            continue
 
         # Check if barcode already exists
         stmt = select(Item).where(
@@ -67,6 +74,8 @@ async def generate_unique_barcode(db: AsyncSession, *, shop_id: UUID) -> str:
         )
         result = await db.execute(stmt)
         if not result.scalar_one_or_none():
+            if reserved_barcodes is not None:
+                reserved_barcodes.add(barcode)
             return barcode
     raise RuntimeError("Unable to generate a unique barcode")
 
@@ -309,38 +318,44 @@ async def _archive_item(
     *,
     shop_id: UUID,
     actor: AuditActor,
+    log_item_change: bool = True,
 ) -> None:
-    payload = {
-        "sku": item.sku,
-        "barcode": item.barcode,
-        "category": item.category,
-        "item_type": item.item_type,
-        "pricing_method": item.pricing_method,
-        "stock_mode": item.stock_mode,
-        "name": item.name,
-        "metal": item.metal,
-        "purity": float(item.purity),
-        "net_weight": float(item.net_weight),
-        "making_charge": float(item.making_charge) if item.making_charge is not None else None,
-        "fixed_rate": float(item.fixed_rate),
-        "stock_weight": float(item.stock_weight) if item.stock_weight is not None else None,
-        "ratti": float(item.ratti) if item.ratti is not None else None,
-        "rate_per_ratti": float(item.rate_per_ratti) if item.rate_per_ratti is not None else None,
-        "quantity": item.quantity,
-        "notes": item.notes,
-    }
+    if log_item_change:
+        payload = {
+            "sku": item.sku,
+            "barcode": item.barcode,
+            "category": item.category,
+            "item_type": item.item_type,
+            "pricing_method": item.pricing_method,
+            "stock_mode": item.stock_mode,
+            "name": item.name,
+            "metal": item.metal,
+            "purity": float(item.purity),
+            "net_weight": float(item.net_weight),
+            "making_charge": (
+                float(item.making_charge) if item.making_charge is not None else None
+            ),
+            "fixed_rate": float(item.fixed_rate),
+            "stock_weight": (float(item.stock_weight) if item.stock_weight is not None else None),
+            "ratti": float(item.ratti) if item.ratti is not None else None,
+            "rate_per_ratti": (
+                float(item.rate_per_ratti) if item.rate_per_ratti is not None else None
+            ),
+            "quantity": item.quantity,
+            "notes": item.notes,
+        }
 
-    await log_change(
-        db,
-        shop_id=shop_id,
-        entity="item",
-        entity_id=item.id,
-        action="delete",
-        payload=payload,
-        actor=actor,
-        subject_label=item.name,
-        reference=item.barcode,
-    )
+        await log_change(
+            db,
+            shop_id=shop_id,
+            entity="item",
+            entity_id=item.id,
+            action="delete",
+            payload=payload,
+            actor=actor,
+            subject_label=item.name,
+            reference=item.barcode,
+        )
     item.quantity = 0
     item.status = "archived"
     item.archived_at = datetime.now(UTC)
@@ -392,6 +407,53 @@ async def delete_items(
         await _archive_item(db, item_by_id[item_id], shop_id=shop_id, actor=actor)
 
     await db.flush()
+
+
+async def clear_in_stock_inventory(
+    db: AsyncSession,
+    *,
+    shop_id: UUID,
+    shop_name: str,
+    shop_slug: str,
+    actor: AuditActor,
+) -> int:
+    items = list(
+        await db.scalars(
+            select(Item)
+            .where(
+                Item.shop_id == shop_id,
+                Item.status == "in_stock",
+                Item.archived_at.is_(None),
+            )
+            .with_for_update()
+        )
+    )
+    if not items:
+        return 0
+
+    for item in items:
+        await _archive_item(
+            db,
+            item,
+            shop_id=shop_id,
+            actor=actor,
+            log_item_change=False,
+        )
+
+    await log_change(
+        db,
+        shop_id=shop_id,
+        entity="shop",
+        entity_id=shop_id,
+        action="clear_inventory",
+        event_type="inventory.cleared",
+        subject_label=shop_name,
+        reference=shop_slug,
+        actor=actor,
+        payload={"archived_count": len(items)},
+    )
+    await db.flush()
+    return len(items)
 
 
 async def get_item_by_id(

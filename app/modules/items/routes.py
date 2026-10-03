@@ -298,11 +298,14 @@ async def print_labels_for_all_items(
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=all-item-labels.pdf"},
         )
-    document = await anyio.to_thread.run_sync(
-        generate_batch_labels_xlsx,
-        items,
-        limiter=LABEL_EXPORT_LIMITER,
-    )
+    try:
+        document = await anyio.to_thread.run_sync(
+            generate_batch_labels_xlsx,
+            items,
+            limiter=LABEL_EXPORT_LIMITER,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return StreamingResponse(
         iter([document]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -340,11 +343,14 @@ async def print_labels_batch(
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=jewellery-labels.pdf"},
         )
-    document = await anyio.to_thread.run_sync(
-        generate_batch_labels_xlsx,
-        items,
-        limiter=LABEL_EXPORT_LIMITER,
-    )
+    try:
+        document = await anyio.to_thread.run_sync(
+            generate_batch_labels_xlsx,
+            items,
+            limiter=LABEL_EXPORT_LIMITER,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return StreamingResponse(
         iter([document]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
