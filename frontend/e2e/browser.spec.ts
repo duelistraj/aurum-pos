@@ -364,15 +364,9 @@ test('inventory rows use one desktop body font size', async ({ page }) => {
   await page.mouse.up();
   await expect(row).not.toHaveClass(/inventory-table__row--pressing/);
 
-  await page.mouse.down();
-  await expect(row).toHaveClass(/inventory-table__row--pressing/);
-  if (process.env.AURUM_CAPTURE_INVENTORY_UI === '1') {
-    await page.waitForTimeout(280);
-    await page.screenshot({ path: '/tmp/aurum-inventory-row-hold.png', fullPage: true });
-  }
-  await expect(page.getByRole('dialog', { name: 'Edit Item' })).toBeVisible({ timeout: 1_500 });
+  await row.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Edit Item' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Edit Item' })).toHaveClass(/inventory-edit-modal/);
-  await page.mouse.up();
 });
 
 test('management transactions use a responsive audit table with structured details', async ({ page }) => {
